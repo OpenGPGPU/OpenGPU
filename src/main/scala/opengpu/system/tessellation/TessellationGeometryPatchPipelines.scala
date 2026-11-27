@@ -87,8 +87,32 @@ class TessellationSystemIsolineGeometryViewportPipeline(
     useSramBlackBoxes: Boolean = false,
     tessellationUniforms: Boolean = false,
     evaluationPatchAvailable: Boolean = false,
-    tessellationInfoAvailable: Boolean = false
+    tessellationInfoAvailable: Boolean = false,
+    exclusiveGsSequence: Boolean = false
 ) extends Module {
+  def this(
+      config: GpuConfig,
+      p: VertexShaderStageConfig,
+      w: Int,
+      numComputeUnits: Int,
+      viewport: Fp32ViewportConfig,
+      useSramBlackBoxes: Boolean,
+      tessellationUniforms: Boolean,
+      evaluationPatchAvailable: Boolean,
+      tessellationInfoAvailable: Boolean
+  ) =
+    this(
+      config,
+      p,
+      w,
+      numComputeUnits,
+      viewport,
+      useSramBlackBoxes,
+      tessellationUniforms,
+      evaluationPatchAvailable,
+      tessellationInfoAvailable,
+      false
+    )
   val io = IO(new Bundle {
     val task = Flipped(Decoupled(new TessellationSystemIsolineGeometryViewportTask(config, p, w)))
     val opened = Decoupled(UInt(2.W)); val load = Flipped(Decoupled(new TessellationPatchAccess))
@@ -97,6 +121,7 @@ class TessellationSystemIsolineGeometryViewportPipeline(
     val out = Decoupled(new GeometryWindowPrimitive(p))
     val outProvenance = Valid(new TessellationGeometryViewportProvenance(w))
     val completion = Decoupled(new TessellationSystemIsolineGeometryViewportCompletion(p, w))
+    val nextSequenceExclusive = if (exclusiveGsSequence) Some(Output(UInt(65.W))) else None
     val sourceShared = Flipped(
       new SharedCuGraphicsPort(
         config,
@@ -134,9 +159,18 @@ class TessellationSystemIsolineGeometryViewportPipeline(
       tessellationInfoAvailable
     )
   )
-  private val owner = Module(new TessellationGeometryPatchDispatch(p, w, 0))
+  private val owner = Module(new TessellationGeometryPatchDispatch(p, w, 0, exclusiveGsSequence))
   private val geometry = Module(
-    new TessellationGeometryViewportPipeline(config, p, w, numComputeUnits, 0, viewport, useSramBlackBoxes)
+    new TessellationGeometryViewportPipeline(
+      config,
+      p,
+      w,
+      numComputeUnits,
+      0,
+      viewport,
+      useSramBlackBoxes,
+      exclusiveGsSequence
+    )
   )
   private val sourceTask = Reg(new TessellationCuIsolineSystemTask(config, w))
   private val inputBinding = Reg(Valid(new TessellationInputPatchBinding))
@@ -185,6 +219,10 @@ class TessellationSystemIsolineGeometryViewportPipeline(
   owner.io.sourceCompletion.bits.published := source.io.completion.bits.published.pad(17)
   when(source.io.completion.fire) { sourceReport := source.io.completion.bits }
   geometry.io.task <> owner.io.geometryTask; owner.io.geometryCompletion <> geometry.io.completion
+  if (exclusiveGsSequence) {
+    owner.io.geometryNextSequenceExclusive.get := geometry.io.nextSequenceExclusive.get
+    io.nextSequenceExclusive.get := owner.io.nextSequenceExclusive.get
+  }
   geometry.io.cancel := owner.io.geometryCancel; owner.io.geometryBusy := geometry.io.busy
   owner.io.geometryDrained := geometry.io.drained; geometry.io.ownerTransportDrained := io.geometryTransportDrained
   io.out <> geometry.io.out; io.outProvenance := geometry.io.outProvenance
@@ -231,8 +269,32 @@ class TessellationSystemTriangleGeometryViewportPipeline(
     useSramBlackBoxes: Boolean = false,
     tessellationUniforms: Boolean = false,
     evaluationPatchAvailable: Boolean = false,
-    tessellationInfoAvailable: Boolean = false
+    tessellationInfoAvailable: Boolean = false,
+    exclusiveGsSequence: Boolean = false
 ) extends Module {
+  def this(
+      config: GpuConfig,
+      p: VertexShaderStageConfig,
+      w: Int,
+      numComputeUnits: Int,
+      viewport: Fp32ViewportConfig,
+      useSramBlackBoxes: Boolean,
+      tessellationUniforms: Boolean,
+      evaluationPatchAvailable: Boolean,
+      tessellationInfoAvailable: Boolean
+  ) =
+    this(
+      config,
+      p,
+      w,
+      numComputeUnits,
+      viewport,
+      useSramBlackBoxes,
+      tessellationUniforms,
+      evaluationPatchAvailable,
+      tessellationInfoAvailable,
+      false
+    )
   val io = IO(new Bundle {
     val task = Flipped(Decoupled(new TessellationSystemTriangleGeometryViewportTask(config, p, w)))
     val opened = Decoupled(UInt(2.W)); val load = Flipped(Decoupled(new TessellationPatchAccess))
@@ -241,6 +303,7 @@ class TessellationSystemTriangleGeometryViewportPipeline(
     val out = Decoupled(new GeometryWindowPrimitive(p))
     val outProvenance = Valid(new TessellationGeometryViewportProvenance(w))
     val completion = Decoupled(new TessellationSystemTriangleGeometryViewportCompletion(p, w))
+    val nextSequenceExclusive = if (exclusiveGsSequence) Some(Output(UInt(65.W))) else None
     val sourceShared = Flipped(
       new SharedCuGraphicsPort(
         config,
@@ -278,9 +341,18 @@ class TessellationSystemTriangleGeometryViewportPipeline(
       tessellationInfoAvailable
     )
   )
-  private val owner = Module(new TessellationGeometryPatchDispatch(p, w, 1))
+  private val owner = Module(new TessellationGeometryPatchDispatch(p, w, 1, exclusiveGsSequence))
   private val geometry = Module(
-    new TessellationGeometryViewportPipeline(config, p, w, numComputeUnits, 1, viewport, useSramBlackBoxes)
+    new TessellationGeometryViewportPipeline(
+      config,
+      p,
+      w,
+      numComputeUnits,
+      1,
+      viewport,
+      useSramBlackBoxes,
+      exclusiveGsSequence
+    )
   )
   private val sourceTask = Reg(new TessellationCuTriangleSystemTask(config, w))
   private val inputBinding = Reg(Valid(new TessellationInputPatchBinding))
@@ -329,6 +401,10 @@ class TessellationSystemTriangleGeometryViewportPipeline(
   owner.io.sourceCompletion.bits.published := source.io.completion.bits.published.pad(17)
   when(source.io.completion.fire) { sourceReport := source.io.completion.bits }
   geometry.io.task <> owner.io.geometryTask; owner.io.geometryCompletion <> geometry.io.completion
+  if (exclusiveGsSequence) {
+    owner.io.geometryNextSequenceExclusive.get := geometry.io.nextSequenceExclusive.get
+    io.nextSequenceExclusive.get := owner.io.nextSequenceExclusive.get
+  }
   geometry.io.cancel := owner.io.geometryCancel; owner.io.geometryBusy := geometry.io.busy
   owner.io.geometryDrained := geometry.io.drained; geometry.io.ownerTransportDrained := io.geometryTransportDrained
   io.out <> geometry.io.out; io.outProvenance := geometry.io.outProvenance
@@ -374,8 +450,32 @@ class TessellationSystemQuadGeometryViewportPipeline(
     useSramBlackBoxes: Boolean = false,
     tessellationUniforms: Boolean = false,
     evaluationPatchAvailable: Boolean = false,
-    tessellationInfoAvailable: Boolean = false
+    tessellationInfoAvailable: Boolean = false,
+    exclusiveGsSequence: Boolean = false
 ) extends Module {
+  def this(
+      config: GpuConfig,
+      p: VertexShaderStageConfig,
+      w: Int,
+      numComputeUnits: Int,
+      viewport: Fp32ViewportConfig,
+      useSramBlackBoxes: Boolean,
+      tessellationUniforms: Boolean,
+      evaluationPatchAvailable: Boolean,
+      tessellationInfoAvailable: Boolean
+  ) =
+    this(
+      config,
+      p,
+      w,
+      numComputeUnits,
+      viewport,
+      useSramBlackBoxes,
+      tessellationUniforms,
+      evaluationPatchAvailable,
+      tessellationInfoAvailable,
+      false
+    )
   val io = IO(new Bundle {
     val task = Flipped(Decoupled(new TessellationSystemQuadGeometryViewportTask(config, p, w)))
     val opened = Decoupled(UInt(2.W)); val load = Flipped(Decoupled(new TessellationPatchAccess))
@@ -384,6 +484,7 @@ class TessellationSystemQuadGeometryViewportPipeline(
     val out = Decoupled(new GeometryWindowPrimitive(p))
     val outProvenance = Valid(new TessellationGeometryViewportProvenance(w))
     val completion = Decoupled(new TessellationSystemQuadGeometryViewportCompletion(p, w))
+    val nextSequenceExclusive = if (exclusiveGsSequence) Some(Output(UInt(65.W))) else None
     val sourceShared = Flipped(
       new SharedCuGraphicsPort(
         config,
@@ -421,9 +522,18 @@ class TessellationSystemQuadGeometryViewportPipeline(
       tessellationInfoAvailable
     )
   )
-  private val owner = Module(new TessellationGeometryPatchDispatch(p, w, 2))
+  private val owner = Module(new TessellationGeometryPatchDispatch(p, w, 2, exclusiveGsSequence))
   private val geometry = Module(
-    new TessellationGeometryViewportPipeline(config, p, w, numComputeUnits, 2, viewport, useSramBlackBoxes)
+    new TessellationGeometryViewportPipeline(
+      config,
+      p,
+      w,
+      numComputeUnits,
+      2,
+      viewport,
+      useSramBlackBoxes,
+      exclusiveGsSequence
+    )
   )
   private val sourceTask = Reg(new TessellationCuQuadSystemTask(config, w))
   private val inputBinding = Reg(Valid(new TessellationInputPatchBinding))
@@ -472,6 +582,10 @@ class TessellationSystemQuadGeometryViewportPipeline(
   owner.io.sourceCompletion.bits.published := source.io.completion.bits.published.pad(17)
   when(source.io.completion.fire) { sourceReport := source.io.completion.bits }
   geometry.io.task <> owner.io.geometryTask; owner.io.geometryCompletion <> geometry.io.completion
+  if (exclusiveGsSequence) {
+    owner.io.geometryNextSequenceExclusive.get := geometry.io.nextSequenceExclusive.get
+    io.nextSequenceExclusive.get := owner.io.nextSequenceExclusive.get
+  }
   geometry.io.cancel := owner.io.geometryCancel; owner.io.geometryBusy := geometry.io.busy
   owner.io.geometryDrained := geometry.io.drained; geometry.io.ownerTransportDrained := io.geometryTransportDrained
   io.out <> geometry.io.out; io.outProvenance := geometry.io.outProvenance

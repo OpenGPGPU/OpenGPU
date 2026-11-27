@@ -543,7 +543,8 @@ class TessellationSystemQuadImagePipeline(
   private val gsPublished = RegInit(0.U(158.W)); private val gsReceived = RegInit(0.U(161.W));
   private val gsDropped = RegInit(0.U(161.W))
   private val gsAdmitted = RegInit(0.U(97.W)); private val gsTasks = RegInit(0.U(64.W));
-  private val gsNext = RegInit(0.U(64.W)); private val gsBinNext = RegInit(0.U(33.W))
+  private val gsNext = RegInit(0.U(64.W)); private val gsNextExclusive = RegInit(0.U(65.W))
+  private val gsBinNext = RegInit(0.U(33.W))
   private val geometryTaskFault =
     source.io.geometryTaskCompletion.map(x => x.valid && x.bits.status =/= 0.U).getOrElse(false.B)
   private val tasks = RegInit(0.U(64.W)); private val localTaskValid = RegInit(false.B);
@@ -695,6 +696,7 @@ class TessellationSystemQuadImagePipeline(
           gsAdmitted := gsAdmitted + actual.bits.admitted; gsBinNext := actual.bits.nextSequence
           when(actual.bits.publicationValid) {
             gsPublished := gsPublished + actual.bits.actualGsPublished; gsNext := actual.bits.nextGsSequence
+            gsNextExclusive := actual.bits.nextGsSequenceExclusive
           }
         }
     }
@@ -1053,7 +1055,7 @@ class TessellationSystemQuadImagePipeline(
         geometryResult.actualGsPublished := gsPublished; geometryResult.received := gsReceived;
         geometryResult.dropped := gsDropped
         geometryResult.admitted := gsAdmitted; geometryResult.tasks := gsTasks; geometryResult.nextGsSequence := gsNext;
-        geometryResult.nextSequence := gsBinNext
+        geometryResult.nextGsSequenceExclusive := gsNextExclusive; geometryResult.nextSequence := gsBinNext
         result := 0.U.asTypeOf(result); result.identity := descriptor.states.identity
         result.status := Mux(externalCancel && status === 0.U, 4.U, status); result.faultStage := faultStage;
         result.faultTileValid := faultTileValid; result.faultTile := faultTile
