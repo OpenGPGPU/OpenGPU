@@ -17,10 +17,9 @@ class ScalarCommitRequest(config: GpuConfig) extends Bundle {
 
 /** Atomically commits a scalar result and makes its warp runnable.
   *
-  * A destination write and scheduler redirect transfer in the same cycle.
-  * Instructions without a destination require only redirect acceptance. This
-  * prevents a warp from observing its next instruction before the previous
-  * destination has reached the RF/scoreboard writeback port.
+  * A destination write and scheduler redirect transfer in the same cycle. Instructions without a destination require
+  * only redirect acceptance. This prevents a warp from observing its next instruction before the previous destination
+  * has reached the RF/scoreboard writeback port.
   */
 class ScalarCommitStage(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {

@@ -6,8 +6,8 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-/** Consecutive instructions must preserve lane ownership while requests and
-  * results stall. Exact texel centres provide a direct colour oracle.
+/** Consecutive instructions must preserve lane ownership while requests and results stall. Exact texel centres provide
+  * a direct colour oracle.
   */
 class TexSampleLaneHandoffSpec extends AnyFlatSpec {
   for (lanes <- Seq(1, 2, 4, 8, 16, 32)) {
@@ -16,7 +16,8 @@ class TexSampleLaneHandoffSpec extends AnyFlatSpec {
       simulate(new TexSampleUnit(config)) { dut =>
         val base = 0x4000L
         val full = (BigInt(1) << lanes) - 1
-        val sparse = (0 until lanes).filter(_ % 3 != 0)
+        val sparse = (0 until lanes)
+          .filter(_ % 3 != 0)
           .foldLeft(BigInt(0))((mask, lane) => mask | (BigInt(1) << lane))
         val masks = Seq(full, sparse, BigInt(0), BigInt(1) << (lanes - 1), full)
         def colour(index: Int, operation: Int): BigInt =
@@ -71,7 +72,9 @@ class TexSampleLaneHandoffSpec extends AnyFlatSpec {
           while (!dut.io.vectorCommit.valid.peek().litToBoolean && cycle < 4000) {
             dut.io.mem.req.ready.poke((cycle % 7 != 0).B)
             if (presenting.isEmpty) {
-              pending.indices.filter(i => pending(i)._2 <= cycle).lastOption
+              pending.indices
+                .filter(i => pending(i)._2 <= cycle)
+                .lastOption
                 .foreach(i => presenting = Some(pending(i)._1))
             }
             dut.io.mem.resp.valid.poke(presenting.nonEmpty.B)

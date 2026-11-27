@@ -10,8 +10,7 @@ object ClipFloatComponentReference {
   import Fp32ViewportReference.{E, calc, pack, rational}
   case class V(e: E = E(), special: Int = 0)
   case class Request(weights: Vector[V], values: Vector[V], denominator: V)
-  case class Expected(value: V, arithmetic: Int, packing: Int, finalPacking: Int,
-      error: Int = 0, operations: Int = 6)
+  case class Expected(value: V, arithmetic: Int, packing: Int, finalPacking: Int, error: Int = 0, operations: Int = 6)
   val one = V(E(sig = 0x800000))
   val baseline = Request(Vector.fill(3)(one), Vector.fill(3)(one), V(E(exponent = 1, sig = 0xc00000)))
   private def legal(v: V): Boolean = v.special == 0 && v.e.exponent >= -512 && v.e.exponent <= 511 &&
@@ -22,8 +21,8 @@ object ClipFloatComponentReference {
     else {
       val bits = pack(e); val (n, d) = rational(e)
       val (pn, pd) = rational(Fp32ViewportReference.decode(bits))
-      val lost = n*pd != pn*d
-      (if (lost) 1 else 0) | (if (lost && ((bits >> 23)&255) == 0) 2 else 0)
+      val lost = n * pd != pn * d
+      (if (lost) 1 else 0) | (if (lost && ((bits >> 23) & 255) == 0) 2 else 0)
     }
   }
   // Independent rational rounding at each specified operation, not fused math.
@@ -36,13 +35,13 @@ object ClipFloatComponentReference {
       if (!legal(a) || !legal(b)) { error = 1; return V() }
       val (an, ad) = rational(a.e); val (bn, bd) = rational(b.e)
       val (n, d) = op match {
-        case 0 => (an*bd + bn*ad, ad*bd)
-        case 2 => (an*bn, ad*bd)
-        case 3 => (an*bd, ad*bn)
+        case 0 => (an * bd + bn * ad, ad * bd)
+        case 2 => (an * bn, ad * bd)
+        case 3 => (an * bd, ad * bn)
       }
       require(d != 0)
       val value = calc(a.e, b.e, op); val (vn, vd) = rational(value)
-      if (n*vd != vn*d) flags |= 1
+      if (n * vd != vn * d) flags |= 1
       if (value.sig != 0 && (value.exponent < -512 || value.exponent > 511)) {
         error = 2; finalPacking = 0; return V()
       }
@@ -55,8 +54,7 @@ object ClipFloatComponentReference {
     val p2 = operation(r.weights(2), r.values(2), 2)
     val sum = operation(s01, p2, 0)
     val value = operation(sum, r.denominator, 3)
-    Expected(if (error == 0) value else V(), flags, packedFlags,
-      if (error == 0) finalPacking else 0, error, operations)
+    Expected(if (error == 0) value else V(), flags, packedFlags, if (error == 0) finalPacking else 0, error, operations)
   }
 }
 
@@ -78,8 +76,10 @@ class ClipFloatWeightedComponentSpec extends AnyFlatSpec {
       out.tag.expect(tag.U); out.cancelled.expect(cancelled.B)
       out.value.negative.expect(e.value.e.sign.B); out.value.exponent.expect(e.value.e.exponent.S)
       out.value.significand.expect(e.value.e.sig.U); out.value.special.expect(e.value.special.U)
-      val bits = if (e.value.special == 0) pack(e.value.e) else
-        (if (e.value.e.sign) BigInt(1) << 31 else BigInt(0)) | (BigInt(255) << 23) | e.value.e.sig
+      val bits =
+        if (e.value.special == 0) pack(e.value.e)
+        else
+          (if (e.value.e.sign) BigInt(1) << 31 else BigInt(0)) | (BigInt(255) << 23) | e.value.e.sig
       out.fp32.expect(bits.U); out.arithmeticStatus.expect(e.arithmetic.U)
       out.packingStatus.expect(e.packing.U); out.finalPackingStatus.expect(e.finalPacking.U)
       out.error.expect(e.error.U); out.operations.expect(e.operations.U)
@@ -92,7 +92,7 @@ class ClipFloatWeightedComponentSpec extends AnyFlatSpec {
   private def run(d: ClipFloatWeightedComponent, requests: Seq[(Request, Expected)], dense: Boolean): Unit = {
     val random = new Random(71); val pending = mutable.Queue.empty[(Int, Int)]
     var sent = 0; var seen = 0; var cycle = 0; var held: Option[BigInt] = None
-    while (seen < requests.size && cycle < requests.size*8 + latency*4) {
+    while (seen < requests.size && cycle < requests.size * 8 + latency * 4) {
       val offer = sent < requests.size && (dense || random.nextInt(4) != 0)
       val ready = dense || random.nextInt(3) != 0
       d.io.in.valid.poke(offer.B); d.io.out.ready.poke(ready.B)
@@ -103,7 +103,7 @@ class ClipFloatWeightedComponentSpec extends AnyFlatSpec {
       if (valid && ready) {
         assert(pending.nonEmpty)
         val (tag, accepted) = pending.dequeue()
-        if (dense) assert(cycle-accepted == latency, s"component latency ${cycle-accepted} != $latency")
+        if (dense) assert(cycle - accepted == latency, s"component latency ${cycle - accepted} != $latency")
         check(d, requests(tag)._2, tag); seen += 1
       }
       if (dense) d.io.in.ready.expect(true.B)
@@ -112,32 +112,36 @@ class ClipFloatWeightedComponentSpec extends AnyFlatSpec {
     }
     assert(sent == requests.size && seen == requests.size && pending.isEmpty)
     d.io.in.valid.poke(false.B); d.io.busy.expect(false.B); d.io.out.valid.expect(false.B)
-    if (dense) assert(cycle == requests.size+latency)
+    if (dense) assert(cycle == requests.size + latency)
   }
   behavior of "ClipFloatWeightedComponent"
   it should "sustain one independently rounded weighted component per cycle" in {
     simulate(new ClipFloatWeightedComponent(tagWidth = 16)) { d =>
       initialize(d)
       val random = new Random(312)
-      def value = V(E(random.nextBoolean(), random.nextInt(161)-80, 0x800000 | random.nextInt(0x800000)))
+      def value = V(E(random.nextBoolean(), random.nextInt(161) - 80, 0x800000 | random.nextInt(0x800000)))
       val requests = (0 until 512).map { _ =>
         val r = Request(Vector.fill(3)(value), Vector.fill(3)(value), value)
         (r, reference(r))
       }
       run(d, requests, dense = true)
-      info(s"WEIGHTED_COMPONENT components=512 scalarOperations=3072 initiationInterval=1 latency=$latency exactSeparateRNE=true")
+      info(
+        s"WEIGHTED_COMPONENT components=512 scalarOperations=3072 initiationInterval=1 latency=$latency exactSeparateRNE=true"
+      )
     }
   }
   it should "preserve flags first-error order and ownership under mixed traffic and stalls" in {
     simulate(new ClipFloatWeightedComponent(tagWidth = 16)) { d =>
       initialize(d)
       val random = new Random(193)
-      def value = V(E(random.nextBoolean(), random.nextInt(1024)-512, 0x800000 | random.nextInt(0x800000)))
+      def value = V(E(random.nextBoolean(), random.nextInt(1024) - 512, 0x800000 | random.nextInt(0x800000)))
       val bad = V(E(exponent = 512, sig = 0x800000))
       val malformed = (0 until 3).map(i => baseline.copy(values = baseline.values.updated(i, bad))) :+
         baseline.copy(denominator = bad)
-      val overflow = baseline.copy(weights = baseline.weights.updated(0, one.copy(e = one.e.copy(exponent = 511))),
-        values = baseline.values.updated(0, one.copy(e = one.e.copy(exponent = 511))))
+      val overflow = baseline.copy(
+        weights = baseline.weights.updated(0, one.copy(e = one.e.copy(exponent = 511))),
+        values = baseline.values.updated(0, one.copy(e = one.e.copy(exponent = 511)))
+      )
       val normal = (malformed :+ overflow) ++ (0 until 768).map { _ =>
         Request(Vector.fill(3)(value), Vector.fill(3)(value), value)
       }
@@ -147,7 +151,8 @@ class ClipFloatWeightedComponentSpec extends AnyFlatSpec {
         baseline.copy(values = baseline.values.updated(0, inf)) -> Expected(inf, 0, 0, 0),
         baseline.copy(denominator = V()) -> Expected(inf, 8, 0, 0),
         baseline.copy(values = Vector.fill(3)(V()), denominator = V()) -> Expected(nan, 16, 0, 0),
-        baseline.copy(values = Vector(bad, one, nan)) -> Expected(V(), 0, 0, 0, error = 1, operations = 1))
+        baseline.copy(values = Vector(bad, one, nan)) -> Expected(V(), 0, 0, 0, error = 1, operations = 1)
+      )
       run(d, normal.map(r => r -> reference(r)) ++ specials, dense = false)
     }
   }
@@ -164,7 +169,7 @@ class ClipFloatWeightedComponentSpec extends AnyFlatSpec {
       for (_ <- 0 until 5) { d.clock.step(); assert(d.io.out.bits.peek().litValue == held) }
       d.io.out.ready.poke(true.B)
       var seen = 0; var cycles = 0
-      while (d.io.busy.peek().litToBoolean && cycles < accepted+latency*2) {
+      while (d.io.busy.peek().litToBoolean && cycles < accepted + latency * 2) {
         d.io.in.ready.expect(false.B)
         if (d.io.out.valid.peek().litToBoolean) {
           check(d, reference(baseline), seen, cancelled = seen != 0); seen += 1
@@ -178,7 +183,7 @@ class ClipFloatWeightedComponentSpec extends AnyFlatSpec {
       d.io.in.valid.poke(true.B)
       for (i <- 0 until 10) { input(d, baseline, i); d.clock.step() }
       d.io.cancel.poke(true.B); seen = 0; cycles = 0
-      while (d.io.busy.peek().litToBoolean && cycles < latency+20) {
+      while (d.io.busy.peek().litToBoolean && cycles < latency + 20) {
         d.io.in.ready.expect(false.B)
         if (d.io.out.valid.peek().litToBoolean) {
           check(d, reference(baseline), seen, cancelled = true); seen += 1

@@ -137,8 +137,10 @@ class WidenAluBackendSpec extends AnyFlatSpec {
           dut.clock.step()
           spins += 1
         }
-        assert(dut.io.fetch.ready.peek().litToBoolean,
-          f"insn $index%02d ${word}%08x not accepted; writes=$writes stores=$stores unimpl=${dut.io.unimplemented.peek().litToBoolean}")
+        assert(
+          dut.io.fetch.ready.peek().litToBoolean,
+          f"insn $index%02d ${word}%08x not accepted; writes=$writes stores=$stores unimpl=${dut.io.unimplemented.peek().litToBoolean}"
+        )
         dut.clock.step()
         dut.io.fetch.valid.poke(false.B)
         spins = 0
@@ -158,15 +160,14 @@ class WidenAluBackendSpec extends AnyFlatSpec {
           dut.clock.step()
           spins += 1
         }
-        assert(retired,
-          f"insn $index%02d ${word}%08x did not retire; writes=$writes stores=$stores")
+        assert(retired, f"insn $index%02d ${word}%08x did not retire; writes=$writes stores=$stores")
       }
-      assert(writes.exists { case (vd, data) => vd == 4 && data == 8 },
-        s"vwadd did not write 8: $writes")
-      assert(writes.exists { case (vd, data) => vd == 5 && data == BigInt("fffffffe", 16) },
-        s"vwsub did not write -2: $writes")
-      assert(writes.exists { case (vd, data) => vd == 6 && data == 15 },
-        s"vwmul did not write 15: $writes")
+      assert(writes.exists { case (vd, data) => vd == 4 && data == 8 }, s"vwadd did not write 8: $writes")
+      assert(
+        writes.exists { case (vd, data) => vd == 5 && data == BigInt("fffffffe", 16) },
+        s"vwsub did not write -2: $writes"
+      )
+      assert(writes.exists { case (vd, data) => vd == 6 && data == 15 }, s"vwmul did not write 15: $writes")
       assert(stores.contains((BigInt(0x1008), BigInt(8))), s"missing add store: $stores")
       assert(stores.contains((BigInt(0x100c), BigInt("fffffffe", 16))), s"missing sub store: $stores")
       assert(stores.contains((BigInt(0x1010), BigInt(15))), s"missing mul store: $stores")

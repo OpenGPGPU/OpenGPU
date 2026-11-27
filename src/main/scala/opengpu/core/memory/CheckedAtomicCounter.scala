@@ -4,8 +4,8 @@ import chisel3._
 import chisel3.util._
 import opengpu.config.{CachePolicy, GpuConfig}
 
-/** A task-owned, independent counter table. The publisher retains the table,
-  * backing allocation and VM context until the task and accepted traffic drain.
+/** A task-owned, independent counter table. The publisher retains the table, backing allocation and VM context until
+  * the task and accepted traffic drain.
   */
 class AtomicCounterRequest(config: GpuConfig) extends Bundle {
   val table = new StorageDescriptorTable
@@ -39,10 +39,9 @@ class AtomicCounterResult extends Bundle {
   val pageFault = Bool()
 }
 
-/** Checks one of eight counter offsets against binding zero, then issues an
-  * acknowledged word atomic. The atomic request is virtual: the caller owns
-  * translation, arbitration and the task's descriptor/VM lifetime. A held
-  * offer remains stable on cancellation and accepted requests always drain.
+/** Checks one of eight counter offsets against binding zero, then issues an acknowledged word atomic. The atomic
+  * request is virtual: the caller owns translation, arbitration and the task's descriptor/VM lifetime. A held offer
+  * remains stable on cancellation and accepted requests always drain.
   */
 class CheckedAtomicCounter(config: GpuConfig = GpuConfig(), cacheDescriptor: Boolean = false) extends Module {
   require(config.xLen == 32)
@@ -54,13 +53,16 @@ class CheckedAtomicCounter(config: GpuConfig = GpuConfig(), cacheDescriptor: Boo
     val atomicRequest = Decoupled(new SharedAtomicRequest(config))
     val atomicResponse = Flipped(Decoupled(new SharedAtomicResponse(config)))
     val cancel = Input(Bool())
-    /** The owner must invalidate on task retirement/start and VM flush. A
-      * pulse also prevents an in-flight descriptor read from filling later.
+
+    /** The owner must invalidate on task retirement/start and VM flush. A pulse also prevents an in-flight descriptor
+      * read from filling later.
       */
     val invalidateDescriptor = if (cacheDescriptor) Some(Input(Bool())) else None
     val busy = Output(Bool())
   })
-  private object State extends ChiselEnum { val idle, validate, descriptorOffer, descriptorWait, checkView, atomicOffer, atomicWait, complete = Value }
+  private object State extends ChiselEnum {
+    val idle, validate, descriptorOffer, descriptorWait, checkView, atomicOffer, atomicWait, complete = Value
+  }
   private val state = RegInit(State.idle)
   private val request = Reg(new AtomicCounterRequest(config))
   private val view = Reg(new StorageWordView)
@@ -78,10 +80,10 @@ class CheckedAtomicCounter(config: GpuConfig = GpuConfig(), cacheDescriptor: Boo
   private val address = view.base.pad(33) + (request.counter.pad(33) << 2)
   private val end = address + 4.U
   private val addressSpace = (BigInt(1) << 32).U(33.W)
-  private val line = Cat(address(31,6), 0.U(6.W))
+  private val line = Cat(address(31, 6), 0.U(6.W))
   private val legalView = view.bound && view.readable && view.writable &&
-    view.base(1,0) === 0.U && view.limit > view.base && view.limit <= addressSpace &&
-    view.allocationBase(5,0) === 0.U && view.allocationLimit(5,0) === 0.U &&
+    view.base(1, 0) === 0.U && view.limit > view.base && view.limit <= addressSpace &&
+    view.allocationBase(5, 0) === 0.U && view.allocationLimit(5, 0) === 0.U &&
     view.allocationLimit <= addressSpace && view.base >= view.allocationBase && view.limit <= view.allocationLimit
   private val legalAddress = address < addressSpace && end <= view.limit &&
     line >= view.allocationBase && line.pad(33) + 64.U <= view.allocationLimit
@@ -106,10 +108,13 @@ class CheckedAtomicCounter(config: GpuConfig = GpuConfig(), cacheDescriptor: Boo
   io.atomicRequest.valid := state === State.atomicOffer
   io.atomicRequest.bits := 0.U.asTypeOf(io.atomicRequest.bits)
   io.atomicRequest.bits.warpId := request.warpId
-  io.atomicRequest.bits.address := address(31,0)
+  io.atomicRequest.bits.address := address(31, 0)
   io.atomicRequest.bits.operation := AtomicMemoryOp.add
-  io.atomicRequest.bits.operand := Mux(request.operation === AtomicCounterOperation.increment.U, 1.U,
-    Mux(request.operation === AtomicCounterOperation.decrement.U, "hffffffff".U, 0.U))
+  io.atomicRequest.bits.operand := Mux(
+    request.operation === AtomicCounterOperation.increment.U,
+    1.U,
+    Mux(request.operation === AtomicCounterOperation.decrement.U, "hffffffff".U, 0.U)
+  )
   io.atomicRequest.bits.cachePolicy := CachePolicy.cached
   io.atomicResponse.ready := state === State.atomicWait && io.atomicResponse.bits.warpId === request.warpId
   when(state =/= State.idle && state =/= State.complete && io.cancel) { cancelled := true.B }
@@ -128,10 +133,12 @@ class CheckedAtomicCounter(config: GpuConfig = GpuConfig(), cacheDescriptor: Boo
       when(io.cancel || cancelled) { result.status := AtomicCounterStatus.cancelled.U; state := State.complete }
         .elsewhen(request.counter >= 8.U || request.operation > AtomicCounterOperation.decrement.U) {
           result.status := AtomicCounterStatus.invalid.U; state := State.complete
-        }.elsewhen(cacheHit) {
+        }
+        .elsewhen(cacheHit) {
           if (cacheDescriptor) { view := cached.get }
           state := State.checkView
-        }.otherwise { state := State.descriptorOffer }
+        }
+        .otherwise { state := State.descriptorOffer }
     }
     is(State.descriptorOffer) {
       when(io.cancel || cancelled) { result.status := AtomicCounterStatus.cancelled.U; state := State.complete }
@@ -145,7 +152,8 @@ class CheckedAtomicCounter(config: GpuConfig = GpuConfig(), cacheDescriptor: Boo
             result.faultAddressValid := descriptor.io.out.bits.faultAddressValid
             result.faultAddress := descriptor.io.out.bits.faultAddress
             state := State.complete
-          }.otherwise {
+          }
+          .otherwise {
             view := descriptor.io.out.bits.view; state := State.checkView
             if (cacheDescriptor) { descriptorFetched.get := true.B }
           }
@@ -170,11 +178,15 @@ class CheckedAtomicCounter(config: GpuConfig = GpuConfig(), cacheDescriptor: Boo
         when(io.cancel || cancelled) { result.status := AtomicCounterStatus.cancelled.U }
           .elsewhen(io.atomicResponse.bits.fault) {
             result.status := AtomicCounterStatus.memoryFault.U; result.faultAddressValid := true.B
-            result.faultAddress := address(31,0); result.pageFault := io.atomicResponse.bits.pageFault
-          }.otherwise {
+            result.faultAddress := address(31, 0); result.pageFault := io.atomicResponse.bits.pageFault
+          }
+          .otherwise {
             result.status := AtomicCounterStatus.ok.U
-            result.value := Mux(request.operation === AtomicCounterOperation.decrement.U,
-              io.atomicResponse.bits.oldValue - 1.U, io.atomicResponse.bits.oldValue)
+            result.value := Mux(
+              request.operation === AtomicCounterOperation.decrement.U,
+              io.atomicResponse.bits.oldValue - 1.U,
+              io.atomicResponse.bits.oldValue
+            )
           }
         state := State.complete
       }

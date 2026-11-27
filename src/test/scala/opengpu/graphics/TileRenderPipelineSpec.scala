@@ -9,12 +9,14 @@ class TileRenderPipelineSpec extends AnyFlatSpec {
 
   private def q(v: Double): Int = (v * (1 << 16)).toInt
 
-  private def render(tileSize: Int, attachments: Boolean = false,
-      draws: Int = 1, sampleMode: Int = 0):
-      (Seq[Int], Seq[Int], Int) = {
+  private def render(
+      tileSize: Int,
+      attachments: Boolean = false,
+      draws: Int = 1,
+      sampleMode: Int = 0
+  ): (Seq[Int], Seq[Int], Int) = {
     val samples = 1 << sampleMode
-    val cfg = GraphicsConfig(screenWidth = 32, screenHeight = 32,
-      tileSize = tileSize, tileAttachments = attachments)
+    val cfg = GraphicsConfig(screenWidth = 32, screenHeight = 32, tileSize = tileSize, tileAttachments = attachments)
     val colorBase = 0x1000
     val depthBase = 0x20000
     val words = 32 * 32 * samples
@@ -93,13 +95,14 @@ class TileRenderPipelineSpec extends AnyFlatSpec {
           if (responseConsumed) dut.io.mem.resp.valid.poke(false.B)
           cycles += 1
         }
-        assert(cycles < 80000,
-          s"render pipeline did not drain: requests=$requests pending=${pending.size} responses=${responses.size}")
+        assert(
+          cycles < 80000,
+          s"render pipeline did not drain: requests=$requests pending=${pending.size} responses=${responses.size}"
+        )
         assert(pending.isEmpty && responses.isEmpty, "draw completed with unretired memory responses")
       }
-      result = (
-        (0 until words).map(i => mem(colorBase / 4 + i)),
-        (0 until words).map(i => mem(depthBase / 4 + i)), requests)
+      result =
+        ((0 until words).map(i => mem(colorBase / 4 + i)), (0 until words).map(i => mem(depthBase / 4 + i)), requests)
     }
     result
   }

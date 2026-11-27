@@ -5,58 +5,57 @@ import chisel3.util._
 import opengpu.config.{CachePolicy, GpuConfig}
 
 class ComputeMemoryRequest(
-  config: GpuConfig,
-  val lineBytes: Int = 64,
-  val maxOutstanding: Int = 4
-)
-    extends Bundle {
+    config: GpuConfig,
+    val lineBytes: Int = 64,
+    val maxOutstanding: Int = 4
+) extends Bundle {
   val address = UInt(config.xLen.W)
   val writeData = UInt((lineBytes * 8).W)
   val byteMask = UInt(lineBytes.W)
   val isWrite = Bool()
+
   /** log2(bytes): 2 for a PTE word, 6 for a 64-byte cache line. */
   val sizeLog2 = UInt(3.W)
+
   /** True only for traffic backed by a private data-cache line. */
   val cacheClient = Bool()
+
   /** For a store, the requesting private cache currently holds the line. */
   val cacheResident = Bool()
+
   /** Per-page cache policy from the GPU MMU. */
   val cachePolicy = UInt(CachePolicy.width.W)
   val transactionId = UInt(math.max(1, log2Ceil(maxOutstanding)).W)
 }
 
 class ComputeMemoryResponse(
-  val lineBytes: Int = 64,
-  val maxOutstanding: Int = 4
+    val lineBytes: Int = 64,
+    val maxOutstanding: Int = 4
 ) extends Bundle {
   val readData = UInt((lineBytes * 8).W)
   val fault = Bool()
   val transactionId = UInt(math.max(1, log2Ceil(maxOutstanding)).W)
 }
 
-/** Serializes instruction refill, data-cache traffic, and both PTWs onto one
-  * physical memory port. The selected source is retained until its response
-  * is accepted, so arbitrary response latency cannot misroute data.
+/** Serializes instruction refill, data-cache traffic, and both PTWs onto one physical memory port. The selected source
+  * is retained until its response is accepted, so arbitrary response latency cannot misroute data.
   *
-  * Response-timing contract (a testbench backing `memoryRequest/memoryResponse`
-  * must obey these):
-  *  - A transaction slot (`transactionValid`) is allocated on `memoryRequest.fire`
-  *    and is released only when the matching `memoryResponse` is accepted. Writes
-  *    are *not* fire-and-forget: they hold a slot until acknowledged (write-through
-  *    cache dependency), so a harness that never answers a write exhausts the
-  *    `maxOutstanding` slots and stalls the interconnect.
-  *  - Response routing reads `transactionValid/transactionSource`, which are
-  *    registered on the request-fire edge. A response may therefore reference only
-  *    a transaction committed in a *prior* cycle (minimum one-cycle request-to-
-  *    response spacing); a same-cycle response would reference a not-yet-committed
-  *    slot and is a protocol violation rejected by the assert below.
-  *  - `memoryResponse.ready` is the ready of the downstream sink chosen by the
-  *    stored source, so response-side backpressure propagates naturally.
+  * Response-timing contract (a testbench backing `memoryRequest/memoryResponse` must obey these):
+  *   - A transaction slot (`transactionValid`) is allocated on `memoryRequest.fire` and is released only when the
+  *     matching `memoryResponse` is accepted. Writes are *not* fire-and-forget: they hold a slot until acknowledged
+  *     (write-through cache dependency), so a harness that never answers a write exhausts the `maxOutstanding` slots
+  *     and stalls the interconnect.
+  *   - Response routing reads `transactionValid/transactionSource`, which are registered on the request-fire edge. A
+  *     response may therefore reference only a transaction committed in a *prior* cycle (minimum one-cycle request-to-
+  *     response spacing); a same-cycle response would reference a not-yet-committed slot and is a protocol violation
+  *     rejected by the assert below.
+  *   - `memoryResponse.ready` is the ready of the downstream sink chosen by the stored source, so response-side
+  *     backpressure propagates naturally.
   */
 class ComputeUnitMemoryInterconnect(
-  config: GpuConfig = GpuConfig(),
-  lineBytes: Int = 64,
-  maxOutstanding: Int = 4
+    config: GpuConfig = GpuConfig(),
+    lineBytes: Int = 64,
+    maxOutstanding: Int = 4
 ) extends Module {
   require(lineBytes == 64, "current cache hierarchy uses 64-byte lines")
   require(maxOutstanding >= 1)
@@ -75,14 +74,11 @@ class ComputeUnitMemoryInterconnect(
     val dataPageTableRequest =
       Flipped(Decoupled(new PageTableMemoryRequest(config)))
     val dataPageTableResponse = Decoupled(new PageTableMemoryResponse)
-    val memoryRequest = Decoupled(
-      new ComputeMemoryRequest(config, lineBytes, maxOutstanding))
-    val memoryResponse = Flipped(Decoupled(
-      new ComputeMemoryResponse(lineBytes, maxOutstanding)))
+    val memoryRequest = Decoupled(new ComputeMemoryRequest(config, lineBytes, maxOutstanding))
+    val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(lineBytes, maxOutstanding)))
   })
 
-  private val arbiter = Module(new RRArbiter(
-    new ComputeMemoryRequest(config, lineBytes, maxOutstanding), 4))
+  private val arbiter = Module(new RRArbiter(new ComputeMemoryRequest(config, lineBytes, maxOutstanding), 4))
   private val transactionValid =
     RegInit(VecInit(Seq.fill(maxOutstanding)(false.B)))
   private val transactionSource = Reg(Vec(maxOutstanding, UInt(2.W)))
@@ -93,9 +89,12 @@ class ComputeUnitMemoryInterconnect(
   private val sourceBusy = Wire(Vec(4, Bool()))
   for (source <- 0 until 4) {
     if (source == 0) sourceBusy(source) := false.B
-    else sourceBusy(source) := (0 until maxOutstanding).map { id =>
-        transactionValid(id) && transactionSource(id) === source.U
-      }.reduce(_ || _)
+    else
+      sourceBusy(source) := (0 until maxOutstanding)
+        .map { id =>
+          transactionValid(id) && transactionSource(id) === source.U
+        }
+        .reduce(_ || _)
   }
 
   arbiter.io.in(0).valid := io.instructionRequest.valid && !sourceBusy(0)
@@ -151,8 +150,7 @@ class ComputeUnitMemoryInterconnect(
   private val responseId = io.memoryResponse.bits.transactionId
   private val responseIdInRange = responseId < maxOutstanding.U
   private val responseIdValid = responseIdInRange && transactionValid(responseId)
-  private val responseSource = Mux(
-    responseIdValid, transactionSource(responseId), 0.U)
+  private val responseSource = Mux(responseIdValid, transactionSource(responseId), 0.U)
   io.instructionResponse.valid := responseIdValid && responseSource === 0.U && io.memoryResponse.valid
   io.instructionResponse.bits.readData := io.memoryResponse.bits.readData
   io.instructionResponse.bits.fault := io.memoryResponse.bits.fault
@@ -169,12 +167,14 @@ class ComputeUnitMemoryInterconnect(
   io.dataPageTableResponse.bits.pte := io.memoryResponse.bits.readData(31, 0)
   io.dataPageTableResponse.bits.fault := io.memoryResponse.bits.fault
 
-  private val selectedReady = MuxLookup(responseSource, false.B)(Seq(
-    0.U -> io.instructionResponse.ready,
-    1.U -> io.dataResponse.ready,
-    2.U -> io.instructionPageTableResponse.ready,
-    3.U -> io.dataPageTableResponse.ready
-  ))
+  private val selectedReady = MuxLookup(responseSource, false.B)(
+    Seq(
+      0.U -> io.instructionResponse.ready,
+      1.U -> io.dataResponse.ready,
+      2.U -> io.instructionPageTableResponse.ready,
+      3.U -> io.dataPageTableResponse.ready
+    )
+  )
   io.memoryResponse.ready := responseIdValid && selectedReady
   when(io.memoryResponse.fire) { transactionValid(responseId) := false.B }
   when(io.memoryResponse.valid) {

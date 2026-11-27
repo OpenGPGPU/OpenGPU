@@ -8,8 +8,8 @@ class Fp32SqrtLaneSpec extends AnyFlatSpec {
   behavior of "Fp32SqrtLane"
 
   private def run(
-    a: BigInt,
-    roundingMode: Int = 0
+      a: BigInt,
+      roundingMode: Int = 0
   ): (BigInt, BigInt) = {
     var result = BigInt(0)
     var flags = BigInt(0)

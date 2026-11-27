@@ -9,8 +9,8 @@ class SimtBranchStackSequencerSpec extends AnyFlatSpec {
   behavior of "SimtBranchStackSequencer"
 
   private def driveDivergence(
-    dut: SimtBranchStackSequencer,
-    valid: Boolean = true
+      dut: SimtBranchStackSequencer,
+      valid: Boolean = true
   ): Unit = {
     dut.io.in.valid.poke(valid.B)
     dut.io.in.bits.warpId.poke(1.U)
@@ -80,17 +80,17 @@ class SimtBranchStackSequencerSpec extends AnyFlatSpec {
 
       dut.io.in.ready.expect(true.B)
       dut.io.overflow.ready.poke(false.B)
-      dut.clock.step();dut.io.in.valid.poke(false.B)
+      dut.clock.step(); dut.io.in.valid.poke(false.B)
       dut.io.overflow.valid.expect(true.B)
-      val held=dut.io.overflow.bits.peek().litValue
+      val held = dut.io.overflow.bits.peek().litValue
       dut.io.freeEntries.poke(4.U)
-      for(_<-0 until 5){
+      for (_ <- 0 until 5) {
         dut.io.overflow.valid.expect(true.B)
-        assert(dut.io.overflow.bits.peek().litValue==held)
-        dut.io.stackPush.valid.expect(false.B);dut.io.current.valid.expect(false.B)
+        assert(dut.io.overflow.bits.peek().litValue == held)
+        dut.io.stackPush.valid.expect(false.B); dut.io.current.valid.expect(false.B)
         dut.clock.step()
       }
-      dut.io.overflow.ready.poke(true.B);dut.clock.step()
+      dut.io.overflow.ready.poke(true.B); dut.clock.step()
       dut.io.in.ready.expect(true.B)
     }
   }

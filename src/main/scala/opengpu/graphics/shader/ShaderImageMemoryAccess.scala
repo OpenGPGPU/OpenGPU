@@ -5,9 +5,8 @@ import chisel3.util._
 import opengpu.config.{CachePolicy, GpuConfig}
 import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse}
 
-/** A texel resolved by the task's image descriptor/address owner. Invalid image
-  * accesses return zero or perform no store. The parent retains descriptor,
-  * translation and coherence ownership until the public result retires.
+/** A texel resolved by the task's image descriptor/address owner. Invalid image accesses return zero or perform no
+  * store. The parent retains descriptor, translation and coherence ownership until the public result retires.
   */
 class ShaderImageMemoryRequest extends Bundle {
   val identity = new GraphicsWorkIdentity
@@ -49,24 +48,25 @@ private[graphics] object ShaderImageLoadDecode {
     val offset = TextureImageFormat.componentOffset(format, c)
     val raw = (value >> offset)(31, 0) & ((1.U(33.W) << bits) - 1.U)(31, 0)
     val signed = ((raw << (32.U - bits))(31, 0).asSInt >> (32.U - bits)).asUInt
-    val decoded = MuxLookup(TextureImageFormat.encoding(format), raw)(Seq(
-      0.U -> TypedColorDecode.unorm(raw, bits),
-      2.U -> signed,
-      3.U -> TypedColorDecode.half(raw(15, 0)),
-      6.U -> VecInit(snorm.map(_.U(32.W)))(raw(7, 0))))
+    val decoded = MuxLookup(TextureImageFormat.encoding(format), raw)(
+      Seq(
+        0.U -> TypedColorDecode.unorm(raw, bits),
+        2.U -> signed,
+        3.U -> TypedColorDecode.half(raw(15, 0)),
+        6.U -> VecInit(snorm.map(_.U(32.W)))(raw(7, 0))
+      )
+    )
     val missing = Mux(c === 3.U, Mux(TextureImageFormat.kind(format) === 0.U, "h3f800000".U, 1.U), 0.U)
     Mux(bits === 0.U, missing, decoded)
   }
 }
 
-/** Serial image load/store ownership for all thirteen GLES 3.1 image formats.
-  * A texel may span two cache lines. Validate both complete backing lines before
-  * offering either, and retain every offered request through its acknowledgement.
-  * Stores are masked; reads use the complete checked backing line. Cancellation
-  * cannot retract an offered store or undo an acknowledged store. It drains the
-  * owned transaction and suppresses any subsequent line. A memory fault remains
-  * observable even if cancellation arrived while that transaction was pending.
-  * This component does not implement image atomics or descriptor/VM admission.
+/** Serial image load/store ownership for all thirteen GLES 3.1 image formats. A texel may span two cache lines.
+  * Validate both complete backing lines before offering either, and retain every offered request through its
+  * acknowledgement. Stores are masked; reads use the complete checked backing line. Cancellation cannot retract an
+  * offered store or undo an acknowledged store. It drains the owned transaction and suppresses any subsequent line. A
+  * memory fault remains observable even if cancellation arrived while that transaction was pending. This component does
+  * not implement image atomics or descriptor/VM admission.
   */
 class ShaderImageMemoryAccess(config: GpuConfig = GpuConfig()) extends Module {
   require(config.xLen == 32)
@@ -153,10 +153,13 @@ class ShaderImageMemoryAccess(config: GpuConfig = GpuConfig()) extends Module {
       bytes := size; crossesLine := crossing
       firstCount := Mux(crossing, 64.U - request.address(5, 0), size)
       when(stop || !request.validTexel) { phase := State.finish }
-        .elsewhen(!ShaderImageFormat.valid(request.format)) { status := ShaderImageMemoryStatus.invalid.U; phase := State.finish }
+        .elsewhen(!ShaderImageFormat.valid(request.format)) {
+          status := ShaderImageMemoryStatus.invalid.U; phase := State.finish
+        }
         .elsewhen(request.colorType =/= TextureImageFormat.kind(request.format)) {
           status := ShaderImageMemoryStatus.componentType.U; phase := State.finish
-        }.elsewhen(!backing) { status := ShaderImageMemoryStatus.bounds.U; phase := State.finish }
+        }
+        .elsewhen(!backing) { status := ShaderImageMemoryStatus.bounds.U; phase := State.finish }
         .otherwise { phase := Mux(request.isWrite, State.offerEncode, State.prepareLine) }
     }
     is(State.offerEncode) { when(encoder.io.in.fire) { phase := State.waitEncode } }

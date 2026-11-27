@@ -8,9 +8,11 @@ import org.scalatest.flatspec.AnyFlatSpec
 object EmitPreparedGeometryStage {
   def main(args: Array[String]): Unit = {
     require(args.length == 1)
-    ChiselStage.emitSystemVerilogFile(new PreparedGeometryStage(GraphicsConfig()),
+    ChiselStage.emitSystemVerilogFile(
+      new PreparedGeometryStage(GraphicsConfig()),
       Array("--target-dir", args(0)),
-      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays"))
+      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays")
+    )
   }
 }
 
@@ -21,10 +23,12 @@ class PreparedGeometryStageSpec extends AnyFlatSpec {
       val config = GraphicsConfig(subPixelBits = subpixel)
       type Vertex = (Long, Long, Long)
       val fast = Vector[Vertex]((-65536, 65536, 65536), (0, 0, 32768), (131072, -131072, 131072))
-      val boundary = Vector[Vertex]((Int.MaxValue, Int.MaxValue, 1), (-2, -2, 2),
-        (1L << 30, 1 - (1L << 30), 1L << 30))
-      val general = Vector[Vertex]((Int.MinValue, Int.MaxValue, 3),
-        (Int.MaxValue, Int.MinValue, Int.MinValue), (Int.MinValue, Int.MinValue, Int.MaxValue))
+      val boundary = Vector[Vertex]((Int.MaxValue, Int.MaxValue, 1), (-2, -2, 2), (1L << 30, 1 - (1L << 30), 1L << 30))
+      val general = Vector[Vertex](
+        (Int.MinValue, Int.MaxValue, 3),
+        (Int.MaxValue, Int.MinValue, Int.MinValue),
+        (Int.MinValue, Int.MinValue, Int.MaxValue)
+      )
       val random = new scala.util.Random(0x6e031L + subpixel)
       val cases = Vector(fast, boundary, general) ++ Vector.fill(32) {
         Vector.fill(3) {
@@ -40,8 +44,15 @@ class PreparedGeometryStageSpec extends AnyFlatSpec {
       simulate(new PreparedGeometryStage(config)) { dut =>
         dut.io.start.poke(false.B)
         dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
-        def launch(vertices: Vector[Vertex], width: Int, height: Int, index: Int,
-          originX: Int = 0, originY: Int = 0, flipY: Boolean = false): Unit = {
+        def launch(
+            vertices: Vector[Vertex],
+            width: Int,
+            height: Int,
+            index: Int,
+            originX: Int = 0,
+            originY: Int = 0,
+            flipY: Boolean = false
+        ): Unit = {
           for (((x, y, w), lane) <- vertices.zipWithIndex) {
             dut.io.clip(lane).x.poke(x.S(32.W)); dut.io.clip(lane).y.poke(y.S(32.W))
             dut.io.clip(lane).z.poke(0.S); dut.io.clip(lane).w.poke(w.S(32.W))
@@ -64,8 +75,15 @@ class PreparedGeometryStageSpec extends AnyFlatSpec {
             dut.io.color(lane).r.poke(0.U); dut.io.color(lane).g.poke(0.U); dut.io.color(lane).b.poke(0.U)
           }
         }
-        def finish(vertices: Vector[Vertex], width: Int, height: Int, index: Int,
-          originX: Int = 0, originY: Int = 0, flipY: Boolean = false): Int = {
+        def finish(
+            vertices: Vector[Vertex],
+            width: Int,
+            height: Int,
+            index: Int,
+            originX: Int = 0,
+            originY: Int = 0,
+            flipY: Boolean = false
+        ): Int = {
           var cycles = 0
           while (dut.io.busy.peek().litToBoolean && cycles < 100) {
             dut.io.start.poke((cycles % 7 == 0).B) // busy admissions are ignored
@@ -77,8 +95,11 @@ class PreparedGeometryStageSpec extends AnyFlatSpec {
           def check(): Unit = for (((x, y, w), lane) <- vertices.zipWithIndex) {
             def mapped(coord: Long, dim: Int, origin: Int, flip: Boolean): BigInt = {
               val sum = BigInt(w) + (if (flip) -BigInt(coord) else BigInt(coord))
-              signed(((sum * dim << subpixel) / (BigInt(w) * 2)) +
-                (BigInt(origin) << subpixel), config.edgeWidth)
+              signed(
+                ((sum * dim << subpixel) / (BigInt(w) * 2)) +
+                  (BigInt(origin) << subpixel),
+                config.edgeWidth
+              )
             }
             assert(dut.io.out(lane).sx.peek().litValue == mapped(x, width, originX, false), s"x=$x w=$w")
             assert(dut.io.out(lane).sy.peek().litValue == mapped(y, height, originY, flipY), s"y=$y w=$w")
@@ -99,8 +120,14 @@ class PreparedGeometryStageSpec extends AnyFlatSpec {
         }
         // Signed origins and a Y-flipped viewport must be sampled once at
         // admission, including the non-power-of-two divider path.
-        for (((ox, oy, flip), index) <- Vector((-13, 11, false), (3, -2, true),
-          (-32768, 32767, true), (32767, -32768, false)).zipWithIndex) {
+        for (
+          ((ox, oy, flip), index) <- Vector(
+            (-13, 11, false),
+            (3, -2, true),
+            (-32768, 32767, true),
+            (32767, -32768, false)
+          ).zipWithIndex
+        ) {
           val vertices = if (index % 2 == 0) fast else general
           launch(vertices, 17, 9, 80 + index, ox, oy, flip)
           finish(vertices, 17, 9, 80 + index, ox, oy, flip)
@@ -114,7 +141,9 @@ class PreparedGeometryStageSpec extends AnyFlatSpec {
           launch(fast, 17, 9, 101)
           assert(finish(fast, 17, 9, 101) == 3)
         }
-        info(s"jobs=${cases.size} vertexCases=${cases.size * 3} shortcutCycles=${latencies.head} maxCycles=${latencies.max} resetReuse=2")
+        info(
+          s"jobs=${cases.size} vertexCases=${cases.size * 3} shortcutCycles=${latencies.head} maxCycles=${latencies.max} resetReuse=2"
+        )
       }
     }
   }

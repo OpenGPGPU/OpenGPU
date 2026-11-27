@@ -1,63 +1,81 @@
 package opengpu.graphics
 
-/** Bit positions of the read-only capability word advertised through
-  * `RenderHostRegs.CAPABILITIES`.  These must stay in lock-step with the
-  * `GPU_CAP_*` definitions in `driver/gpu_abi.h`; `GpuAbiLayoutSpec` parses the
-  * header and fails the build if the two drift apart.
+/** Bit positions of the read-only capability word advertised through `RenderHostRegs.CAPABILITIES`. These must stay in
+  * lock-step with the `GPU_CAP_*` definitions in `driver/gpu_abi.h`; `GpuAbiLayoutSpec` parses the header and fails the
+  * build if the two drift apart.
   */
 object GpuCapabilities {
+
   /** Fragment-core executables are accepted (bit0). */
   val FragmentCore = 0
+
   /** Vertex-core draw records are accepted (bit2). */
   val VertexCore = 2
+
   /** Patterned hardware fill engine (bit3). */
   val ClearEngine = 3
+
   /** Aligned hardware colour blit engine (bit4). */
   val BlitEngine = 4
+
   /** Two-dimensional hardware strided copy engine (bit5). */
   val StridedEngine = 5
+
   /** The unified-command MMIO block is wired (bit6). */
   val UnifiedCommands = 6
-  /** A nonzero `sampleMode` is accepted by this build's render path (bit7).
-    * The backend is the fragment-core bit: `bit0 = 1, bit7 = 1` is
-    * programmable (fragment-shader) MSAA, `bit0 = 0, bit7 = 1` is
-    * fixed-function MSAA.  This is a functional claim only; physical timing
-    * closure of the programmable stage is a separate gate.
+
+  /** A nonzero `sampleMode` is accepted by this build's render path (bit7). The backend is the fragment-core bit:
+    * `bit0 = 1, bit7 = 1` is programmable (fragment-shader) MSAA, `bit0 = 0, bit7 = 1` is fixed-function MSAA. This is
+    * a functional claim only; physical timing closure of the programmable stage is a separate gate.
     */
   val Msaa = 7
+
   /** Shift of the fragment batch capacity in bits 15:8. */
   val FragmentBatchShift = 8
+
   /** Shift of the maximum sample mode (log2 count) in bits 17:16. */
   val MsaaMaxModeShift = 16
+
   /** Safe unified-command reset is supported (bit18). */
   val UnifiedReset = 18
-  /** A render submission may bind its own persistent depth/stencil attachment
-    * and keep it across submissions with an explicit depth load (bit19). The
-    * depth datapath already reads and writes whichever plane is bound; this
-    * bit advertises the userspace/driver contract. */
+
+  /** A render submission may bind its own persistent depth/stencil attachment and keep it across submissions with an
+    * explicit depth load (bit19). The depth datapath already reads and writes whichever plane is bound; this bit
+    * advertises the userspace/driver contract.
+    */
   val PersistentDepth = 19
-  /** A draw is accepted as a unified render command (`GPU_UCMD_OP_RENDER`):
-    * the descriptor and command buffer are fetched through the context VM
-    * (bit20). Depends on `UnifiedCommands`. */
+
+  /** A draw is accepted as a unified render command (`GPU_UCMD_OP_RENDER`): the descriptor and command buffer are
+    * fetched through the context VM (bit20). Depends on `UnifiedCommands`.
+    */
   val UnifiedRender = 20
+
   /** Scanout-gated period counter raises vblank on the shared IRQ (bit21). */
   val HwVblank = 21
-  /** Compute CUs execute scalar FP32 (`flw` and RVV `.vf` operands) (bit22).
-    * Fragment and vertex shader CUs never have the scalar FPU. */
+
+  /** Compute CUs execute scalar FP32 (`flw` and RVV `.vf` operands) (bit22). Fragment and vertex shader CUs never have
+    * the scalar FPU.
+    */
   val ComputeScalarFpu = 22
+
   /** Read-only shader lane/warp/bank/CU description is queryable (bit23). */
   val ShaderConfigInfo = 23
+
   /** Launch x9 supplies CU capacity; shaders may select VLMAX dynamically. */
   val RuntimeShaderAbi = 24
   val NativePixelFormats = 25
+
   /** Each unified render descriptor can select its own target dimensions. */
   val RenderExtents = 26
   val FragmentInputUsage = 27
   val FragmentOutputUsage = 28
+
   /** Unsafe SATP/flush writes fail with AXI SLVERR until every owner retires. */
   val ProtectedVmState = 29
+
   /** Explicit 256-byte bounded tile-job descriptors through opcode 7. */
   val PersistentTileJobs = 30
+
   /** Version-2 draw/clear command streams are supported by the tile profile. */
   val TypedTileCommands = 31
 }
@@ -71,8 +89,10 @@ object ShaderResourceConfig {
   val FieldMask = 0xff
 
   def encode(lanes: Int, warps: Int, banks: Int, computeUnits: Int): BigInt = {
-    require(Seq(lanes, warps, banks, computeUnits).forall(n => n > 0 && n <= FieldMask),
-      "shader resource counts must fit nonzero eight-bit fields")
+    require(
+      Seq(lanes, warps, banks, computeUnits).forall(n => n > 0 && n <= FieldMask),
+      "shader resource counts must fit nonzero eight-bit fields"
+    )
     BigInt(lanes) | (BigInt(warps) << WarpsShift) |
       (BigInt(banks) << BanksShift) | (BigInt(computeUnits) << ComputeUnitsShift)
   }

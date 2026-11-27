@@ -3,7 +3,14 @@ package opengpu.command
 import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
-import opengpu.dispatch.{DmaEventSource, DmaCompletionEvent, KernelCommand, KernelCommandResult, KernelCommandStatus, KernelLaunch}
+import opengpu.dispatch.{
+  DmaEventSource,
+  DmaCompletionEvent,
+  KernelCommand,
+  KernelCommandResult,
+  KernelCommandStatus,
+  KernelLaunch
+}
 import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse}
 import opengpu.dma._
 
@@ -24,6 +31,7 @@ object GpuCommandOpcode {
   val transformFeedback = 12.U(width.W)
   val primitiveQuery = 13.U(width.W)
   val kernelIndirect = 14.U(width.W)
+
   /** Internal, opt-in GNQ1 job; not advertised by the default host. */
   val tessellationJob = 15.U(width.W)
 
@@ -31,15 +39,23 @@ object GpuCommandOpcode {
 }
 
 /** One software queue format. Unused payload fields are ignored by opcode. */
-class GpuCommand(config: GpuConfig, val commandIdWidth: Int, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false) extends Bundle {
+class GpuCommand(
+    config: GpuConfig,
+    val commandIdWidth: Int,
+    imageAvailable: Boolean = false,
+    storageAvailable: Boolean = false,
+    computeUniformAvailable: Boolean = false,
+    computeTextureAvailable: Boolean = false,
+    atomicCounterAvailable: Boolean = false
+) extends Bundle {
   val commandId = UInt(commandIdWidth.W)
   val opcode = UInt(GpuCommandOpcode.width.W)
   val launch = new KernelLaunch(config)
-  val images = if(imageAvailable) Some(new opengpu.graphics.ShaderImageTask) else None
-  val storage = if(storageAvailable) Some(new opengpu.core.memory.StorageTask) else None
-  val computeUniform = if(computeUniformAvailable) Some(new opengpu.core.memory.ComputeUniformTask) else None
-  val computeTexture = if(computeTextureAvailable) Some(new opengpu.core.memory.ComputeTextureTask) else None
-  val atomicCounter = if(atomicCounterAvailable) Some(new opengpu.core.memory.AtomicCounterTask) else None
+  val images = if (imageAvailable) Some(new opengpu.graphics.ShaderImageTask) else None
+  val storage = if (storageAvailable) Some(new opengpu.core.memory.StorageTask) else None
+  val computeUniform = if (computeUniformAvailable) Some(new opengpu.core.memory.ComputeUniformTask) else None
+  val computeTexture = if (computeTextureAvailable) Some(new opengpu.core.memory.ComputeTextureTask) else None
+  val atomicCounter = if (atomicCounterAvailable) Some(new opengpu.core.memory.AtomicCounterTask) else None
   val rasterDiscard = Bool()
   val feedbackCapture = Bool()
   val waitForDma = Bool()
@@ -48,13 +64,16 @@ class GpuCommand(config: GpuConfig, val commandIdWidth: Int, imageAvailable: Boo
   val sourceAddress = UInt(config.xLen.W)
   val destinationAddress = UInt(config.xLen.W)
   val bytes = UInt(32.W)
-  /** Fill pattern. For resolve: physical invalidate base when non-zero;
-    * zero means invalidate `sourceAddress` (Bare / identity). */
+
+  /** Fill pattern. For resolve: physical invalidate base when non-zero; zero means invalidate `sourceAddress` (Bare /
+    * identity).
+    */
   val pattern = UInt(32.W)
   val widthBytes = UInt(32.W)
   val height = UInt(32.W)
   val sourceStride = UInt(32.W)
   val destinationStride = UInt(32.W)
+
   /** MSAA resolve sample mode (0 = 1x, 1 = 2x, 2 = 4x). */
   val sampleMode = UInt(2.W)
   val waitForEvent = Bool()
@@ -81,401 +100,513 @@ class GpuCommandResult(val commandIdWidth: Int) extends Bundle {
   val bytesProcessed = UInt(64.W)
 }
 
-/** Routes one ordered software command queue onto independent engines.
-  * Execution may complete out of order; command IDs remain reserved until the
-  * corresponding unified completion is consumed by software.
+/** Routes one ordered software command queue onto independent engines. Execution may complete out of order; command IDs
+  * remain reserved until the corresponding unified completion is consumed by software.
   */
 class GpuCommandRouter(
-  config: GpuConfig = GpuConfig(),
-  commandIdWidth: Int = 8,
-  commandQueueDepth: Int = 8,
-  completionQueueDepth: Int = 8,
-  enableIndirectCompute: Boolean = false,
-  imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false
+    config: GpuConfig = GpuConfig(),
+    commandIdWidth: Int = 8,
+    commandQueueDepth: Int = 8,
+    completionQueueDepth: Int = 8,
+    enableIndirectCompute: Boolean = false,
+    imageAvailable: Boolean = false,
+    storageAvailable: Boolean = false,
+    computeUniformAvailable: Boolean = false,
+    computeTextureAvailable: Boolean = false,
+    atomicCounterAvailable: Boolean = false
 ) extends Module {
   require(commandIdWidth > 0 && commandIdWidth <= 12)
   require(commandQueueDepth > 0 && completionQueueDepth > 0)
   val idCount = 1 << commandIdWidth
 
   val io = IO(new Bundle {
-    val command = Flipped(Decoupled(new GpuCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable, atomicCounterAvailable)))
+    val command = Flipped(
+      Decoupled(
+        new GpuCommand(
+          config,
+          commandIdWidth,
+          imageAvailable,
+          storageAvailable,
+          computeUniformAvailable,
+          computeTextureAvailable,
+          atomicCounterAvailable
+        )
+      )
+    )
     val completion = Decoupled(new GpuCommandResult(commandIdWidth))
-    val kernel = Decoupled(new KernelCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable, atomicCounterAvailable))
+    val kernel = Decoupled(
+      new KernelCommand(
+        config,
+        commandIdWidth,
+        imageAvailable,
+        storageAvailable,
+        computeUniformAvailable,
+        computeTextureAvailable,
+        atomicCounterAvailable
+      )
+    )
     val copy = Decoupled(new CopyDescriptor(config, commandIdWidth))
     val fill = Decoupled(new FillDescriptor(config, commandIdWidth))
-    val stridedCopy = Decoupled(
-      new StridedCopyDescriptor(config, commandIdWidth))
-    val resolve = Decoupled(
-      new ResolveDescriptor(config, commandIdWidth))
-    val invalidate = Decoupled(
-      new InvalidateDescriptor(config, commandIdWidth))
-    val kernelCompletion = Flipped(Decoupled(
-      new KernelCommandResult(commandIdWidth)))
+    val stridedCopy = Decoupled(new StridedCopyDescriptor(config, commandIdWidth))
+    val resolve = Decoupled(new ResolveDescriptor(config, commandIdWidth))
+    val invalidate = Decoupled(new InvalidateDescriptor(config, commandIdWidth))
+    val kernelCompletion = Flipped(Decoupled(new KernelCommandResult(commandIdWidth)))
     val copyCompletion = Flipped(Decoupled(new CopyCompletion(commandIdWidth)))
     val fillCompletion = Flipped(Decoupled(new FillCompletion(commandIdWidth)))
-    val stridedCopyCompletion = Flipped(Decoupled(
-      new StridedCopyCompletion(commandIdWidth)))
-    val resolveCompletion = Flipped(Decoupled(
-      new ResolveCompletion(commandIdWidth)))
-    val invalidateCompletion = Flipped(Decoupled(
-      new InvalidateCompletion(commandIdWidth)))
+    val stridedCopyCompletion = Flipped(Decoupled(new StridedCopyCompletion(commandIdWidth)))
+    val resolveCompletion = Flipped(Decoupled(new ResolveCompletion(commandIdWidth)))
+    val invalidateCompletion = Flipped(Decoupled(new InvalidateCompletion(commandIdWidth)))
     val duplicateCommandId = Output(Bool())
-    val imageLease = if(imageAvailable) Some(Output(Bool())) else None
-    val storageLease = if(storageAvailable) Some(Output(Bool())) else None
-    val computeUniformLease = if(computeUniformAvailable) Some(Output(Bool())) else None
-    val computeTextureLease = if(computeTextureAvailable) Some(Output(Bool())) else None
-    val atomicCounterLease = if(atomicCounterAvailable) Some(Output(Bool())) else None
+    val imageLease = if (imageAvailable) Some(Output(Bool())) else None
+    val storageLease = if (storageAvailable) Some(Output(Bool())) else None
+    val computeUniformLease = if (computeUniformAvailable) Some(Output(Bool())) else None
+    val computeTextureLease = if (computeTextureAvailable) Some(Output(Bool())) else None
+    val atomicCounterLease = if (atomicCounterAvailable) Some(Output(Bool())) else None
     val busy = Output(Bool())
+
     /** Queued/executing non-kernel commands retain memory-engine ownership. */
     val memoryEngineBusy = Output(Bool())
     val indirectBusy = Output(Bool())
-    val indirectMemoryRequest = if(enableIndirectCompute)
-      Some(Decoupled(new ComputeMemoryRequest(config,64,1))) else None
-    val indirectMemoryResponse = if(enableIndirectCompute)
-      Some(Flipped(Decoupled(new ComputeMemoryResponse(64,1)))) else None
-    val dmaCompletion = if(enableIndirectCompute)
-      Some(Input(Vec(DmaEventSource.count,Valid(new DmaCompletionEvent(commandIdWidth))))) else None
+    val indirectMemoryRequest =
+      if (enableIndirectCompute)
+        Some(Decoupled(new ComputeMemoryRequest(config, 64, 1)))
+      else None
+    val indirectMemoryResponse =
+      if (enableIndirectCompute)
+        Some(Flipped(Decoupled(new ComputeMemoryResponse(64, 1))))
+      else None
+    val dmaCompletion =
+      if (enableIndirectCompute)
+        Some(Input(Vec(DmaEventSource.count, Valid(new DmaCompletionEvent(commandIdWidth)))))
+      else None
+
     /** Cancel only during command reset; ordinary blockDispatch preserves work. */
-    val cancelIndirect = if(enableIndirectCompute) Some(Input(Bool())) else None
-    /** While high the router stops dispatching queued commands to the
-      * engines; completion drain continues so in-flight work can retire. */
+    val cancelIndirect = if (enableIndirectCompute) Some(Input(Bool())) else None
+
+    /** While high the router stops dispatching queued commands to the engines; completion drain continues so in-flight
+      * work can retire.
+      */
     val blockDispatch = Input(Bool())
-    /** Synchronous command-path reset pulse: flushes both queues and clears
-      * every reserved ID and event record.  Assert only once in-flight work
-      * has drained; executing engines are not affected. */
+
+    /** Synchronous command-path reset pulse: flushes both queues and clears every reserved ID and event record. Assert
+      * only once in-flight work has drained; executing engines are not affected.
+      */
     val pathReset = Input(Bool())
   })
 
   withReset(reset.asBool || io.pathReset) {
 
-  val commands = Module(new Queue(
-    new GpuCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable, atomicCounterAvailable), commandQueueDepth))
-  val completions = Module(new Queue(
-    new GpuCommandResult(commandIdWidth), completionQueueDepth))
-  val hold0Cmd = Reg(new GpuCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable, atomicCounterAvailable))
-  val hold0Valid = RegInit(false.B)
-  val hold1Cmd = Reg(new GpuCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable, atomicCounterAvailable))
-  val hold1Failed = RegInit(false.B)
-  val hold1Valid = RegInit(false.B)
-  val reservedIds = RegInit(0.U(idCount.W))
-  val memoryOwners = RegInit(0.U((commandIdWidth + 1).W))
-  val commandOpcode = Reg(Vec(idCount,
-    UInt(GpuCommandOpcode.width.W)))
-  val commandSignalsEvent = Reg(Vec(idCount, Bool()))
-  val commandSignalId = Reg(Vec(idCount, UInt(commandIdWidth.W)))
-  val commandSignalGeneration = Reg(Vec(idCount, UInt(8.W)))
-  val eventValid = RegInit(0.U(idCount.W))
-  val eventSuccess = RegInit(0.U(idCount.W))
-  val eventGeneration = Reg(Vec(idCount, UInt(8.W)))
-  val duplicate = reservedIds(io.command.bits.commandId)
-  commands.io.enq.valid := io.command.valid && !duplicate
-  commands.io.enq.bits := io.command.bits
-  io.command.ready := commands.io.enq.ready && !duplicate
-  io.duplicateCommandId := io.command.valid && duplicate
+    val commands = Module(
+      new Queue(
+        new GpuCommand(
+          config,
+          commandIdWidth,
+          imageAvailable,
+          storageAvailable,
+          computeUniformAvailable,
+          computeTextureAvailable,
+          atomicCounterAvailable
+        ),
+        commandQueueDepth
+      )
+    )
+    val completions = Module(new Queue(new GpuCommandResult(commandIdWidth), completionQueueDepth))
+    val hold0Cmd = Reg(
+      new GpuCommand(
+        config,
+        commandIdWidth,
+        imageAvailable,
+        storageAvailable,
+        computeUniformAvailable,
+        computeTextureAvailable,
+        atomicCounterAvailable
+      )
+    )
+    val hold0Valid = RegInit(false.B)
+    val hold1Cmd = Reg(
+      new GpuCommand(
+        config,
+        commandIdWidth,
+        imageAvailable,
+        storageAvailable,
+        computeUniformAvailable,
+        computeTextureAvailable,
+        atomicCounterAvailable
+      )
+    )
+    val hold1Failed = RegInit(false.B)
+    val hold1Valid = RegInit(false.B)
+    val reservedIds = RegInit(0.U(idCount.W))
+    val memoryOwners = RegInit(0.U((commandIdWidth + 1).W))
+    val commandOpcode = Reg(Vec(idCount, UInt(GpuCommandOpcode.width.W)))
+    val commandSignalsEvent = Reg(Vec(idCount, Bool()))
+    val commandSignalId = Reg(Vec(idCount, UInt(commandIdWidth.W)))
+    val commandSignalGeneration = Reg(Vec(idCount, UInt(8.W)))
+    val eventValid = RegInit(0.U(idCount.W))
+    val eventSuccess = RegInit(0.U(idCount.W))
+    val eventGeneration = Reg(Vec(idCount, UInt(8.W)))
+    val duplicate = reservedIds(io.command.bits.commandId)
+    commands.io.enq.valid := io.command.valid && !duplicate
+    commands.io.enq.bits := io.command.bits
+    io.command.ready := commands.io.enq.ready && !duplicate
+    io.duplicateCommandId := io.command.valid && duplicate
 
-  val head = hold1Cmd
-  val h0 = hold0Cmd
-  val h0Match = eventValid(h0.waitEventId) &&
-    eventGeneration(h0.waitEventId) === h0.waitEventGeneration
-  val h0Known = !h0.waitForEvent || h0Match
-  val h0Failed = h0.waitForEvent && h0Match && !eventSuccess(h0.waitEventId)
-  val isKernel = head.opcode === GpuCommandOpcode.kernel
-  val isIndirect = if(enableIndirectCompute) head.opcode === GpuCommandOpcode.kernelIndirect else false.B
-  val isCopy = head.opcode === GpuCommandOpcode.copy
-  val isFill = head.opcode === GpuCommandOpcode.fill
-  val isStrided = head.opcode === GpuCommandOpcode.stridedCopy
-  val isResolve = head.opcode === GpuCommandOpcode.resolve
-  val isInvalidate = head.opcode === GpuCommandOpcode.invalidate
-  val opcodeValid = isKernel || isCopy || isFill || isStrided || isResolve ||
-    isInvalidate || isIndirect
+    val head = hold1Cmd
+    val h0 = hold0Cmd
+    val h0Match = eventValid(h0.waitEventId) &&
+      eventGeneration(h0.waitEventId) === h0.waitEventGeneration
+    val h0Known = !h0.waitForEvent || h0Match
+    val h0Failed = h0.waitForEvent && h0Match && !eventSuccess(h0.waitEventId)
+    val isKernel = head.opcode === GpuCommandOpcode.kernel
+    val isIndirect = if (enableIndirectCompute) head.opcode === GpuCommandOpcode.kernelIndirect else false.B
+    val isCopy = head.opcode === GpuCommandOpcode.copy
+    val isFill = head.opcode === GpuCommandOpcode.fill
+    val isStrided = head.opcode === GpuCommandOpcode.stridedCopy
+    val isResolve = head.opcode === GpuCommandOpcode.resolve
+    val isInvalidate = head.opcode === GpuCommandOpcode.invalidate
+    val opcodeValid = isKernel || isCopy || isFill || isStrided || isResolve ||
+      isInvalidate || isIndirect
 
-  val indirectResultValid = WireDefault(false.B)
-  val indirectResult = WireDefault(0.U.asTypeOf(new IndirectDispatchResult))
-  val indirectResultReady = WireDefault(false.B)
-  val indirectDmaFailed = WireDefault(false.B)
-  val indirectStarted = RegInit(false.B)
-  val indirectDependencyConsumed = WireDefault(false.B)
-  val indirectHeadRetired = WireDefault(false.B)
-  val indirectArgumentsPending = WireDefault(false.B)
-  io.indirectBusy := false.B
-  if(enableIndirectCompute) {
-    val pending = RegInit(0.U((commandIdWidth + 1).W))
-    val accept = io.command.fire && io.command.bits.opcode === GpuCommandOpcode.kernelIndirect
-    when(accept =/= indirectHeadRetired) {
-      when(accept) { pending := pending + 1.U }
-        .otherwise { assert(pending =/= 0.U); pending := pending - 1.U }
-    }
-    indirectArgumentsPending := pending =/= 0.U ||
-      (io.command.valid && io.command.bits.opcode === GpuCommandOpcode.kernelIndirect)
-    val reader = Module(new IndirectDispatchReader(config))
-    io.indirectMemoryRequest.get <> reader.io.memoryRequest
-    reader.io.memoryResponse <> io.indirectMemoryResponse.get
-    reader.io.cancel := io.cancelIndirect.get
-    io.indirectBusy := reader.io.busy
-    val succeeded = RegInit(VecInit(Seq.fill(DmaEventSource.count)(0.U(idCount.W))))
-    val failed = RegInit(VecInit(Seq.fill(DmaEventSource.count)(0.U(idCount.W))))
-    val sourceValid = head.dmaSource < DmaEventSource.count.U
-    val dependencyKnown = !head.waitForDma || !sourceValid ||
-      succeeded(head.dmaSource)(head.dmaDescriptorId) || failed(head.dmaSource)(head.dmaDescriptorId)
-    indirectDmaFailed := head.waitForDma && (!sourceValid || failed(head.dmaSource)(head.dmaDescriptorId))
-    reader.io.in.valid := hold1Valid && isIndirect && !hold1Failed && !indirectStarted &&
-      dependencyKnown && !indirectDmaFailed && !io.blockDispatch
-    reader.io.in.bits.allocationBase := head.sourceAddress
-    reader.io.in.bits.allocationBytes := head.bytes
-    reader.io.in.bits.offset := head.widthBytes
-    when(reader.io.in.fire) { indirectStarted := true.B }
-    indirectResultValid := reader.io.out.valid
-    indirectResult := reader.io.out.bits
-    reader.io.out.ready := indirectResultReady
-    for(source <- 0 until DmaEventSource.count) {
-      val event = io.dmaCompletion.get(source)
-      val opcode = source match {
-        case 0 => GpuCommandOpcode.copy
-        case 1 => GpuCommandOpcode.fill
-        case _ => GpuCommandOpcode.stridedCopy
+    val indirectResultValid = WireDefault(false.B)
+    val indirectResult = WireDefault(0.U.asTypeOf(new IndirectDispatchResult))
+    val indirectResultReady = WireDefault(false.B)
+    val indirectDmaFailed = WireDefault(false.B)
+    val indirectStarted = RegInit(false.B)
+    val indirectDependencyConsumed = WireDefault(false.B)
+    val indirectHeadRetired = WireDefault(false.B)
+    val indirectArgumentsPending = WireDefault(false.B)
+    io.indirectBusy := false.B
+    if (enableIndirectCompute) {
+      val pending = RegInit(0.U((commandIdWidth + 1).W))
+      val accept = io.command.fire && io.command.bits.opcode === GpuCommandOpcode.kernelIndirect
+      when(accept =/= indirectHeadRetired) {
+        when(accept) { pending := pending + 1.U }
+          .otherwise { assert(pending =/= 0.U); pending := pending - 1.U }
       }
-      // A reused DMA command ID must discard its previous dependency token
-      // before a later indirect read can observe the new producer's arguments.
-      val replacement = io.command.fire && io.command.bits.opcode === opcode
-      val consume = head.waitForDma && head.dmaSource === source.U &&
-        (reader.io.in.fire || indirectDependencyConsumed)
-      val clear = Mux(replacement,UIntToOH(io.command.bits.commandId,idCount),0.U) |
-        Mux(consume,UIntToOH(head.dmaDescriptorId,idCount),0.U)
-      val good = Mux(event.valid && event.bits.success,UIntToOH(event.bits.descriptorId,idCount),0.U)
-      val bad = Mux(event.valid && !event.bits.success,UIntToOH(event.bits.descriptorId,idCount),0.U)
-      succeeded(source) := (succeeded(source) & ~(clear | bad)) | good
-      failed(source) := (failed(source) & ~(clear | good)) | bad
-      when(event.valid) { assert(event.bits.source === source.U) }
+      indirectArgumentsPending := pending =/= 0.U ||
+        (io.command.valid && io.command.bits.opcode === GpuCommandOpcode.kernelIndirect)
+      val reader = Module(new IndirectDispatchReader(config))
+      io.indirectMemoryRequest.get <> reader.io.memoryRequest
+      reader.io.memoryResponse <> io.indirectMemoryResponse.get
+      reader.io.cancel := io.cancelIndirect.get
+      io.indirectBusy := reader.io.busy
+      val succeeded = RegInit(VecInit(Seq.fill(DmaEventSource.count)(0.U(idCount.W))))
+      val failed = RegInit(VecInit(Seq.fill(DmaEventSource.count)(0.U(idCount.W))))
+      val sourceValid = head.dmaSource < DmaEventSource.count.U
+      val dependencyKnown = !head.waitForDma || !sourceValid ||
+        succeeded(head.dmaSource)(head.dmaDescriptorId) || failed(head.dmaSource)(head.dmaDescriptorId)
+      indirectDmaFailed := head.waitForDma && (!sourceValid || failed(head.dmaSource)(head.dmaDescriptorId))
+      reader.io.in.valid := hold1Valid && isIndirect && !hold1Failed && !indirectStarted &&
+        dependencyKnown && !indirectDmaFailed && !io.blockDispatch
+      reader.io.in.bits.allocationBase := head.sourceAddress
+      reader.io.in.bits.allocationBytes := head.bytes
+      reader.io.in.bits.offset := head.widthBytes
+      when(reader.io.in.fire) { indirectStarted := true.B }
+      indirectResultValid := reader.io.out.valid
+      indirectResult := reader.io.out.bits
+      reader.io.out.ready := indirectResultReady
+      for (source <- 0 until DmaEventSource.count) {
+        val event = io.dmaCompletion.get(source)
+        val opcode = source match {
+          case 0 => GpuCommandOpcode.copy
+          case 1 => GpuCommandOpcode.fill
+          case _ => GpuCommandOpcode.stridedCopy
+        }
+        // A reused DMA command ID must discard its previous dependency token
+        // before a later indirect read can observe the new producer's arguments.
+        val replacement = io.command.fire && io.command.bits.opcode === opcode
+        val consume = head.waitForDma && head.dmaSource === source.U &&
+          (reader.io.in.fire || indirectDependencyConsumed)
+        val clear = Mux(replacement, UIntToOH(io.command.bits.commandId, idCount), 0.U) |
+          Mux(consume, UIntToOH(head.dmaDescriptorId, idCount), 0.U)
+        val good = Mux(event.valid && event.bits.success, UIntToOH(event.bits.descriptorId, idCount), 0.U)
+        val bad = Mux(event.valid && !event.bits.success, UIntToOH(event.bits.descriptorId, idCount), 0.U)
+        succeeded(source) := (succeeded(source) & ~(clear | bad)) | good
+        failed(source) := (failed(source) & ~(clear | good)) | bad
+        when(event.valid) { assert(event.bits.source === source.U) }
+      }
     }
-  }
-  val indirectLocal = isIndirect && indirectResultValid && (!indirectResult.success || indirectResult.empty)
-  val indirectDependencyError = isIndirect && !indirectStarted && indirectDmaFailed
-  val indirectKernel = isIndirect && indirectResultValid && indirectResult.success && !indirectResult.empty
+    val indirectLocal = isIndirect && indirectResultValid && (!indirectResult.success || indirectResult.empty)
+    val indirectDependencyError = isIndirect && !indirectStarted && indirectDmaFailed
+    val indirectKernel = isIndirect && indirectResultValid && indirectResult.success && !indirectResult.empty
 
-  io.kernel.valid := hold1Valid && !hold1Failed && (isKernel || indirectKernel) && !io.blockDispatch
-  io.kernel.bits.commandId := head.commandId
-  io.kernel.bits.launch := head.launch
-  when(isIndirect) { io.kernel.bits.launch.gridSize := indirectResult.groups }
-  io.kernel.bits.waitForDma := head.waitForDma && !isIndirect
-  if(imageAvailable) { io.kernel.bits.images.get := head.images.get }
-  if(storageAvailable) { io.kernel.bits.storage.get := head.storage.get }
-  if(computeUniformAvailable) { io.kernel.bits.computeUniform.get := head.computeUniform.get }
-  if(computeTextureAvailable) { io.kernel.bits.computeTexture.get := head.computeTexture.get }
-  if(atomicCounterAvailable) { io.kernel.bits.atomicCounter.get := head.atomicCounter.get }
-  io.kernel.bits.dmaSource := head.dmaSource
-  io.kernel.bits.dmaDescriptorId := head.dmaDescriptorId
-  io.copy.valid := hold1Valid && !hold1Failed &&
-    isCopy && !io.blockDispatch
-  io.copy.bits.descriptorId := head.commandId
-  io.copy.bits.sourceAddress := head.sourceAddress
-  io.copy.bits.destinationAddress := head.destinationAddress
-  io.copy.bits.bytes := head.bytes
-  io.fill.valid := hold1Valid && !hold1Failed &&
-    isFill && !io.blockDispatch
-  io.fill.bits.descriptorId := head.commandId
-  io.fill.bits.destinationAddress := head.destinationAddress
-  io.fill.bits.bytes := head.bytes
-  io.fill.bits.pattern := head.pattern
-  io.stridedCopy.valid := hold1Valid && !hold1Failed &&
-    isStrided && !io.blockDispatch
-  io.stridedCopy.bits.descriptorId := head.commandId
-  io.stridedCopy.bits.sourceAddress := head.sourceAddress
-  io.stridedCopy.bits.destinationAddress := head.destinationAddress
-  io.stridedCopy.bits.widthBytes := head.widthBytes
-  io.stridedCopy.bits.height := head.height
-  io.stridedCopy.bits.sourceStride := head.sourceStride
-  io.stridedCopy.bits.destinationStride := head.destinationStride
-  io.resolve.valid := hold1Valid && !hold1Failed &&
-    isResolve && !io.blockDispatch
-  io.resolve.bits.descriptorId := head.commandId
-  io.resolve.bits.sourceAddress := head.sourceAddress
-  io.resolve.bits.destinationAddress := head.destinationAddress
-  // PATTERN carries the physical invalidate base for resolve when the engine
-  // uses a private VA; zero means invalidate the source address itself (Bare).
-  io.resolve.bits.invalidateAddress :=
-    Mux(head.pattern === 0.U, head.sourceAddress, head.pattern)
-  io.resolve.bits.imgWidth := head.widthBytes(15, 0)
-  io.resolve.bits.imgHeight := head.height(15, 0)
-  io.resolve.bits.sourceStride := head.sourceStride
-  io.resolve.bits.destinationStride := head.destinationStride
-  io.resolve.bits.sampleMode := head.sampleMode
-  io.invalidate.valid := hold1Valid && !hold1Failed &&
-    isInvalidate && !io.blockDispatch
-  io.invalidate.bits.descriptorId := head.commandId
-  io.invalidate.bits.address := head.sourceAddress
-  io.invalidate.bits.bytes := head.bytes
+    io.kernel.valid := hold1Valid && !hold1Failed && (isKernel || indirectKernel) && !io.blockDispatch
+    io.kernel.bits.commandId := head.commandId
+    io.kernel.bits.launch := head.launch
+    when(isIndirect) { io.kernel.bits.launch.gridSize := indirectResult.groups }
+    io.kernel.bits.waitForDma := head.waitForDma && !isIndirect
+    if (imageAvailable) { io.kernel.bits.images.get := head.images.get }
+    if (storageAvailable) { io.kernel.bits.storage.get := head.storage.get }
+    if (computeUniformAvailable) { io.kernel.bits.computeUniform.get := head.computeUniform.get }
+    if (computeTextureAvailable) { io.kernel.bits.computeTexture.get := head.computeTexture.get }
+    if (atomicCounterAvailable) { io.kernel.bits.atomicCounter.get := head.atomicCounter.get }
+    io.kernel.bits.dmaSource := head.dmaSource
+    io.kernel.bits.dmaDescriptorId := head.dmaDescriptorId
+    io.copy.valid := hold1Valid && !hold1Failed &&
+      isCopy && !io.blockDispatch
+    io.copy.bits.descriptorId := head.commandId
+    io.copy.bits.sourceAddress := head.sourceAddress
+    io.copy.bits.destinationAddress := head.destinationAddress
+    io.copy.bits.bytes := head.bytes
+    io.fill.valid := hold1Valid && !hold1Failed &&
+      isFill && !io.blockDispatch
+    io.fill.bits.descriptorId := head.commandId
+    io.fill.bits.destinationAddress := head.destinationAddress
+    io.fill.bits.bytes := head.bytes
+    io.fill.bits.pattern := head.pattern
+    io.stridedCopy.valid := hold1Valid && !hold1Failed &&
+      isStrided && !io.blockDispatch
+    io.stridedCopy.bits.descriptorId := head.commandId
+    io.stridedCopy.bits.sourceAddress := head.sourceAddress
+    io.stridedCopy.bits.destinationAddress := head.destinationAddress
+    io.stridedCopy.bits.widthBytes := head.widthBytes
+    io.stridedCopy.bits.height := head.height
+    io.stridedCopy.bits.sourceStride := head.sourceStride
+    io.stridedCopy.bits.destinationStride := head.destinationStride
+    io.resolve.valid := hold1Valid && !hold1Failed &&
+      isResolve && !io.blockDispatch
+    io.resolve.bits.descriptorId := head.commandId
+    io.resolve.bits.sourceAddress := head.sourceAddress
+    io.resolve.bits.destinationAddress := head.destinationAddress
+    // PATTERN carries the physical invalidate base for resolve when the engine
+    // uses a private VA; zero means invalidate the source address itself (Bare).
+    io.resolve.bits.invalidateAddress :=
+      Mux(head.pattern === 0.U, head.sourceAddress, head.pattern)
+    io.resolve.bits.imgWidth := head.widthBytes(15, 0)
+    io.resolve.bits.imgHeight := head.height(15, 0)
+    io.resolve.bits.sourceStride := head.sourceStride
+    io.resolve.bits.destinationStride := head.destinationStride
+    io.resolve.bits.sampleMode := head.sampleMode
+    io.invalidate.valid := hold1Valid && !hold1Failed &&
+      isInvalidate && !io.blockDispatch
+    io.invalidate.bits.descriptorId := head.commandId
+    io.invalidate.bits.address := head.sourceAddress
+    io.invalidate.bits.bytes := head.bytes
 
-  val completionEvents = Module(new RRArbiter(
-    new GpuCommandResult(commandIdWidth), 7))
-  def mapCompletion(index: Int, valid: Bool, commandId: UInt,
-                            status: UInt, success: Bool,
-                            bytes: UInt): Unit = {
-    completionEvents.io.in(index).valid := valid
-    completionEvents.io.in(index).bits.commandId := commandId
-    completionEvents.io.in(index).bits.opcode := commandOpcode(commandId)
-    completionEvents.io.in(index).bits.status := status
-    completionEvents.io.in(index).bits.success := success
-    completionEvents.io.in(index).bits.bytesProcessed := bytes
-  }
-  mapCompletion(0, io.kernelCompletion.valid,
-    io.kernelCompletion.bits.commandId, io.kernelCompletion.bits.status,
-    io.kernelCompletion.bits.success, 0.U)
-  io.kernelCompletion.ready := completionEvents.io.in(0).ready
-  mapCompletion(1, io.copyCompletion.valid,
-    io.copyCompletion.bits.descriptorId, io.copyCompletion.bits.status,
-    io.copyCompletion.bits.success, io.copyCompletion.bits.bytesCopied)
-  io.copyCompletion.ready := completionEvents.io.in(1).ready
-  mapCompletion(2, io.fillCompletion.valid,
-    io.fillCompletion.bits.descriptorId, io.fillCompletion.bits.status,
-    io.fillCompletion.bits.success, io.fillCompletion.bits.bytesFilled)
-  io.fillCompletion.ready := completionEvents.io.in(2).ready
-  mapCompletion(3, io.stridedCopyCompletion.valid,
-    io.stridedCopyCompletion.bits.descriptorId,
-    io.stridedCopyCompletion.bits.status,
-    io.stridedCopyCompletion.bits.success,
-    io.stridedCopyCompletion.bits.bytesCopied)
-  io.stridedCopyCompletion.ready := completionEvents.io.in(3).ready
-  mapCompletion(4, io.resolveCompletion.valid,
-    io.resolveCompletion.bits.descriptorId,
-    io.resolveCompletion.bits.status,
-    io.resolveCompletion.bits.success,
-    io.resolveCompletion.bits.bytesResolved)
-  io.resolveCompletion.ready := completionEvents.io.in(4).ready
-  mapCompletion(5, io.invalidateCompletion.valid,
-    io.invalidateCompletion.bits.descriptorId,
-    io.invalidateCompletion.bits.status,
-    io.invalidateCompletion.bits.success,
-    io.invalidateCompletion.bits.bytesInvalidated)
-  io.invalidateCompletion.ready := completionEvents.io.in(5).ready
-  mapCompletion(6, hold1Valid && (!opcodeValid || hold1Failed || indirectLocal || indirectDependencyError) && !io.blockDispatch, head.commandId,
-    Mux(hold1Failed, GpuCommandResultStatus.eventDependencyFailed,
-      Mux(indirectDependencyError,KernelCommandStatus.dmaDependencyFailed,
-        Mux(indirectLocal,indirectResult.status,GpuCommandResultStatus.invalidOpcode))),
-    indirectLocal && indirectResult.success && !hold1Failed, 0.U)
-  indirectResultReady := hold1Valid && isIndirect && !hold1Failed && !io.blockDispatch &&
-    Mux(indirectKernel,io.kernel.ready,completionEvents.io.in(6).ready)
-  indirectDependencyConsumed := completionEvents.io.in(6).fire && indirectDependencyError
+    val completionEvents = Module(new RRArbiter(new GpuCommandResult(commandIdWidth), 7))
+    def mapCompletion(index: Int, valid: Bool, commandId: UInt, status: UInt, success: Bool, bytes: UInt): Unit = {
+      completionEvents.io.in(index).valid := valid
+      completionEvents.io.in(index).bits.commandId := commandId
+      completionEvents.io.in(index).bits.opcode := commandOpcode(commandId)
+      completionEvents.io.in(index).bits.status := status
+      completionEvents.io.in(index).bits.success := success
+      completionEvents.io.in(index).bits.bytesProcessed := bytes
+    }
+    mapCompletion(
+      0,
+      io.kernelCompletion.valid,
+      io.kernelCompletion.bits.commandId,
+      io.kernelCompletion.bits.status,
+      io.kernelCompletion.bits.success,
+      0.U
+    )
+    io.kernelCompletion.ready := completionEvents.io.in(0).ready
+    mapCompletion(
+      1,
+      io.copyCompletion.valid,
+      io.copyCompletion.bits.descriptorId,
+      io.copyCompletion.bits.status,
+      io.copyCompletion.bits.success,
+      io.copyCompletion.bits.bytesCopied
+    )
+    io.copyCompletion.ready := completionEvents.io.in(1).ready
+    mapCompletion(
+      2,
+      io.fillCompletion.valid,
+      io.fillCompletion.bits.descriptorId,
+      io.fillCompletion.bits.status,
+      io.fillCompletion.bits.success,
+      io.fillCompletion.bits.bytesFilled
+    )
+    io.fillCompletion.ready := completionEvents.io.in(2).ready
+    mapCompletion(
+      3,
+      io.stridedCopyCompletion.valid,
+      io.stridedCopyCompletion.bits.descriptorId,
+      io.stridedCopyCompletion.bits.status,
+      io.stridedCopyCompletion.bits.success,
+      io.stridedCopyCompletion.bits.bytesCopied
+    )
+    io.stridedCopyCompletion.ready := completionEvents.io.in(3).ready
+    mapCompletion(
+      4,
+      io.resolveCompletion.valid,
+      io.resolveCompletion.bits.descriptorId,
+      io.resolveCompletion.bits.status,
+      io.resolveCompletion.bits.success,
+      io.resolveCompletion.bits.bytesResolved
+    )
+    io.resolveCompletion.ready := completionEvents.io.in(4).ready
+    mapCompletion(
+      5,
+      io.invalidateCompletion.valid,
+      io.invalidateCompletion.bits.descriptorId,
+      io.invalidateCompletion.bits.status,
+      io.invalidateCompletion.bits.success,
+      io.invalidateCompletion.bits.bytesInvalidated
+    )
+    io.invalidateCompletion.ready := completionEvents.io.in(5).ready
+    mapCompletion(
+      6,
+      hold1Valid && (!opcodeValid || hold1Failed || indirectLocal || indirectDependencyError) && !io.blockDispatch,
+      head.commandId,
+      Mux(
+        hold1Failed,
+        GpuCommandResultStatus.eventDependencyFailed,
+        Mux(
+          indirectDependencyError,
+          KernelCommandStatus.dmaDependencyFailed,
+          Mux(indirectLocal, indirectResult.status, GpuCommandResultStatus.invalidOpcode)
+        )
+      ),
+      indirectLocal && indirectResult.success && !hold1Failed,
+      0.U
+    )
+    indirectResultReady := hold1Valid && isIndirect && !hold1Failed && !io.blockDispatch &&
+      Mux(indirectKernel, io.kernel.ready, completionEvents.io.in(6).ready)
+    indirectDependencyConsumed := completionEvents.io.in(6).fire && indirectDependencyError
 
-  val engineReady = MuxCase(
-    completionEvents.io.in(6).ready, Seq(
-    isKernel -> io.kernel.ready,
-    isIndirect -> Mux(indirectDependencyError,completionEvents.io.in(6).ready,
-      indirectResultValid && Mux(indirectKernel,io.kernel.ready,completionEvents.io.in(6).ready)),
-    isCopy -> io.copy.ready,
-    isFill -> io.fill.ready,
-    isStrided -> io.stridedCopy.ready,
-    isResolve -> io.resolve.ready,
-    isInvalidate -> io.invalidate.ready))
-  val dispatchFire = hold1Valid && !io.blockDispatch &&
-    ((opcodeValid && !hold1Failed && engineReady) ||
-      ((!opcodeValid || hold1Failed) && completionEvents.io.in(6).ready))
-  indirectHeadRetired := dispatchFire && isIndirect
-  val popFire = commands.io.deq.fire
-  val shiftFire = hold0Valid && h0Known && (!hold1Valid || dispatchFire)
-  commands.io.deq.ready := !hold0Valid || shiftFire
-  hold0Valid := (hold0Valid && !shiftFire) || popFire
-  hold1Valid := (hold1Valid && !dispatchFire) || shiftFire
-  when(popFire) { hold0Cmd := commands.io.deq.bits }
-  when(shiftFire) {
-    hold1Cmd := hold0Cmd
-    hold1Failed := h0Failed
-    indirectStarted := false.B
-  }
-  completions.io.enq <> completionEvents.io.out
-  io.completion <> completions.io.deq
+    val engineReady = MuxCase(
+      completionEvents.io.in(6).ready,
+      Seq(
+        isKernel -> io.kernel.ready,
+        isIndirect -> Mux(
+          indirectDependencyError,
+          completionEvents.io.in(6).ready,
+          indirectResultValid && Mux(indirectKernel, io.kernel.ready, completionEvents.io.in(6).ready)
+        ),
+        isCopy -> io.copy.ready,
+        isFill -> io.fill.ready,
+        isStrided -> io.stridedCopy.ready,
+        isResolve -> io.resolve.ready,
+        isInvalidate -> io.invalidate.ready
+      )
+    )
+    val dispatchFire = hold1Valid && !io.blockDispatch &&
+      ((opcodeValid && !hold1Failed && engineReady) ||
+        ((!opcodeValid || hold1Failed) && completionEvents.io.in(6).ready))
+    indirectHeadRetired := dispatchFire && isIndirect
+    val popFire = commands.io.deq.fire
+    val shiftFire = hold0Valid && h0Known && (!hold1Valid || dispatchFire)
+    commands.io.deq.ready := !hold0Valid || shiftFire
+    hold0Valid := (hold0Valid && !shiftFire) || popFire
+    hold1Valid := (hold1Valid && !dispatchFire) || shiftFire
+    when(popFire) { hold0Cmd := commands.io.deq.bits }
+    when(shiftFire) {
+      hold1Cmd := hold0Cmd
+      hold1Failed := h0Failed
+      indirectStarted := false.B
+    }
+    completions.io.enq <> completionEvents.io.out
+    io.completion <> completions.io.deq
 
-  when(io.command.fire) {
-    reservedIds := reservedIds |
-      UIntToOH(io.command.bits.commandId, idCount)
-    commandOpcode(io.command.bits.commandId) := io.command.bits.opcode
-    commandSignalsEvent(io.command.bits.commandId) :=
-      io.command.bits.signalEvent
-    commandSignalId(io.command.bits.commandId) :=
-      io.command.bits.signalEventId
-    commandSignalGeneration(io.command.bits.commandId) :=
-      io.command.bits.signalEventGeneration
-  }
-  when(io.completion.fire) {
-    assert(reservedIds(io.completion.bits.commandId),
-      "unified completion must reference a reserved command ID")
-    reservedIds := reservedIds &
-      ~UIntToOH(io.completion.bits.commandId, idCount)
-  }
-  // Preserve a simultaneous new reservation when an old completion is read.
-  when(io.command.fire && io.completion.fire) {
-    reservedIds := (reservedIds |
-      UIntToOH(io.command.bits.commandId, idCount)) &
-      ~UIntToOH(io.completion.bits.commandId, idCount)
-  }
-  val completedId = completionEvents.io.out.bits.commandId
-  when(completionEvents.io.out.fire && commandSignalsEvent(completedId)) {
-    val eventId = commandSignalId(completedId)
-    eventValid := eventValid | UIntToOH(eventId, idCount)
-    eventSuccess := Mux(completionEvents.io.out.bits.success,
-      eventSuccess | UIntToOH(eventId, idCount),
-      eventSuccess & ~UIntToOH(eventId, idCount))
-    eventGeneration(eventId) := commandSignalGeneration(completedId)
-  }
-  if(imageAvailable) {
-    val imageOwners = RegInit(0.U(idCount.W))
-    val kernelOpcode = io.command.bits.opcode === GpuCommandOpcode.kernel ||
-      (enableIndirectCompute.B && io.command.bits.opcode === GpuCommandOpcode.kernelIndirect)
-    val reserveImage = Mux(io.command.fire && kernelOpcode && io.command.bits.images.get.enabled,
-      UIntToOH(io.command.bits.commandId, idCount), 0.U)
-    val releaseImage = Mux(io.completion.fire,
-      UIntToOH(io.completion.bits.commandId, idCount), 0.U)
-    imageOwners := (imageOwners | reserveImage) & ~releaseImage
-    io.imageLease.get := imageOwners.orR
-  }
-  if(storageAvailable) {
-    val storageOwners = RegInit(0.U(idCount.W))
-    val kernelOpcode = io.command.bits.opcode === GpuCommandOpcode.kernel ||
-      (enableIndirectCompute.B && io.command.bits.opcode === GpuCommandOpcode.kernelIndirect)
-    val reserveStorage = Mux(io.command.fire && kernelOpcode && io.command.bits.storage.get.enabled,
-      UIntToOH(io.command.bits.commandId, idCount), 0.U)
-    val releaseStorage = Mux(io.completion.fire, UIntToOH(io.completion.bits.commandId, idCount), 0.U)
-    storageOwners := (storageOwners | reserveStorage) & ~releaseStorage
-    io.storageLease.get := storageOwners.orR
-  }
-  if(computeUniformAvailable) {
-    val uniformOwners = RegInit(0.U(idCount.W))
-    val kernelOpcode = io.command.bits.opcode === GpuCommandOpcode.kernel ||
-      (enableIndirectCompute.B && io.command.bits.opcode === GpuCommandOpcode.kernelIndirect)
-    val reserveUniform = Mux(io.command.fire && kernelOpcode && io.command.bits.computeUniform.get.enabled,
-      UIntToOH(io.command.bits.commandId, idCount), 0.U)
-    val releaseUniform = Mux(io.completion.fire, UIntToOH(io.completion.bits.commandId, idCount), 0.U)
-    uniformOwners := (uniformOwners | reserveUniform) & ~releaseUniform
-    io.computeUniformLease.get := uniformOwners.orR
-  }
-  if(computeTextureAvailable) {
-    val textureOwners=RegInit(0.U(idCount.W))
-    val kernelOpcode=io.command.bits.opcode===GpuCommandOpcode.kernel ||
-      (enableIndirectCompute.B && io.command.bits.opcode===GpuCommandOpcode.kernelIndirect)
-    val reserveTexture=Mux(io.command.fire && kernelOpcode && io.command.bits.computeTexture.get.enabled,
-      UIntToOH(io.command.bits.commandId,idCount),0.U)
-    val releaseTexture=Mux(io.completion.fire,UIntToOH(io.completion.bits.commandId,idCount),0.U)
-    textureOwners:=(textureOwners | reserveTexture) & ~releaseTexture
-    io.computeTextureLease.get:=textureOwners.orR
-  }
-  if(atomicCounterAvailable) {
-    val counterOwners = RegInit(0.U(idCount.W))
-    val kernelOpcode = io.command.bits.opcode === GpuCommandOpcode.kernel ||
-      (enableIndirectCompute.B && io.command.bits.opcode === GpuCommandOpcode.kernelIndirect)
-    val reserveCounter = Mux(io.command.fire && kernelOpcode && io.command.bits.atomicCounter.get.enabled,
-      UIntToOH(io.command.bits.commandId, idCount), 0.U)
-    val releaseCounter = Mux(io.completion.fire, UIntToOH(io.completion.bits.commandId, idCount), 0.U)
-    counterOwners := (counterOwners | reserveCounter) & ~releaseCounter
-    io.atomicCounterLease.get := counterOwners.orR
-  }
-  io.busy := reservedIds.orR
-  def memoryOpcode(opcode: UInt): Bool = opcode =/= GpuCommandOpcode.kernel &&
-    (if(enableIndirectCompute) opcode =/= GpuCommandOpcode.kernelIndirect else true.B)
-  val addMemoryOwner = io.command.fire && memoryOpcode(io.command.bits.opcode)
-  val removeMemoryOwner = io.completion.fire && memoryOpcode(io.completion.bits.opcode)
-  when(addMemoryOwner =/= removeMemoryOwner) {
-    memoryOwners := Mux(addMemoryOwner, memoryOwners + 1.U, memoryOwners - 1.U)
-  }
-  io.memoryEngineBusy := memoryOwners =/= 0.U ||
-    (io.command.valid && memoryOpcode(io.command.bits.opcode)) || indirectArgumentsPending || io.indirectBusy
+    when(io.command.fire) {
+      reservedIds := reservedIds |
+        UIntToOH(io.command.bits.commandId, idCount)
+      commandOpcode(io.command.bits.commandId) := io.command.bits.opcode
+      commandSignalsEvent(io.command.bits.commandId) :=
+        io.command.bits.signalEvent
+      commandSignalId(io.command.bits.commandId) :=
+        io.command.bits.signalEventId
+      commandSignalGeneration(io.command.bits.commandId) :=
+        io.command.bits.signalEventGeneration
+    }
+    when(io.completion.fire) {
+      assert(reservedIds(io.completion.bits.commandId), "unified completion must reference a reserved command ID")
+      reservedIds := reservedIds &
+        ~UIntToOH(io.completion.bits.commandId, idCount)
+    }
+    // Preserve a simultaneous new reservation when an old completion is read.
+    when(io.command.fire && io.completion.fire) {
+      reservedIds := (reservedIds |
+        UIntToOH(io.command.bits.commandId, idCount)) &
+        ~UIntToOH(io.completion.bits.commandId, idCount)
+    }
+    val completedId = completionEvents.io.out.bits.commandId
+    when(completionEvents.io.out.fire && commandSignalsEvent(completedId)) {
+      val eventId = commandSignalId(completedId)
+      eventValid := eventValid | UIntToOH(eventId, idCount)
+      eventSuccess := Mux(
+        completionEvents.io.out.bits.success,
+        eventSuccess | UIntToOH(eventId, idCount),
+        eventSuccess & ~UIntToOH(eventId, idCount)
+      )
+      eventGeneration(eventId) := commandSignalGeneration(completedId)
+    }
+    if (imageAvailable) {
+      val imageOwners = RegInit(0.U(idCount.W))
+      val kernelOpcode = io.command.bits.opcode === GpuCommandOpcode.kernel ||
+        (enableIndirectCompute.B && io.command.bits.opcode === GpuCommandOpcode.kernelIndirect)
+      val reserveImage = Mux(
+        io.command.fire && kernelOpcode && io.command.bits.images.get.enabled,
+        UIntToOH(io.command.bits.commandId, idCount),
+        0.U
+      )
+      val releaseImage = Mux(io.completion.fire, UIntToOH(io.completion.bits.commandId, idCount), 0.U)
+      imageOwners := (imageOwners | reserveImage) & ~releaseImage
+      io.imageLease.get := imageOwners.orR
+    }
+    if (storageAvailable) {
+      val storageOwners = RegInit(0.U(idCount.W))
+      val kernelOpcode = io.command.bits.opcode === GpuCommandOpcode.kernel ||
+        (enableIndirectCompute.B && io.command.bits.opcode === GpuCommandOpcode.kernelIndirect)
+      val reserveStorage = Mux(
+        io.command.fire && kernelOpcode && io.command.bits.storage.get.enabled,
+        UIntToOH(io.command.bits.commandId, idCount),
+        0.U
+      )
+      val releaseStorage = Mux(io.completion.fire, UIntToOH(io.completion.bits.commandId, idCount), 0.U)
+      storageOwners := (storageOwners | reserveStorage) & ~releaseStorage
+      io.storageLease.get := storageOwners.orR
+    }
+    if (computeUniformAvailable) {
+      val uniformOwners = RegInit(0.U(idCount.W))
+      val kernelOpcode = io.command.bits.opcode === GpuCommandOpcode.kernel ||
+        (enableIndirectCompute.B && io.command.bits.opcode === GpuCommandOpcode.kernelIndirect)
+      val reserveUniform = Mux(
+        io.command.fire && kernelOpcode && io.command.bits.computeUniform.get.enabled,
+        UIntToOH(io.command.bits.commandId, idCount),
+        0.U
+      )
+      val releaseUniform = Mux(io.completion.fire, UIntToOH(io.completion.bits.commandId, idCount), 0.U)
+      uniformOwners := (uniformOwners | reserveUniform) & ~releaseUniform
+      io.computeUniformLease.get := uniformOwners.orR
+    }
+    if (computeTextureAvailable) {
+      val textureOwners = RegInit(0.U(idCount.W))
+      val kernelOpcode = io.command.bits.opcode === GpuCommandOpcode.kernel ||
+        (enableIndirectCompute.B && io.command.bits.opcode === GpuCommandOpcode.kernelIndirect)
+      val reserveTexture = Mux(
+        io.command.fire && kernelOpcode && io.command.bits.computeTexture.get.enabled,
+        UIntToOH(io.command.bits.commandId, idCount),
+        0.U
+      )
+      val releaseTexture = Mux(io.completion.fire, UIntToOH(io.completion.bits.commandId, idCount), 0.U)
+      textureOwners := (textureOwners | reserveTexture) & ~releaseTexture
+      io.computeTextureLease.get := textureOwners.orR
+    }
+    if (atomicCounterAvailable) {
+      val counterOwners = RegInit(0.U(idCount.W))
+      val kernelOpcode = io.command.bits.opcode === GpuCommandOpcode.kernel ||
+        (enableIndirectCompute.B && io.command.bits.opcode === GpuCommandOpcode.kernelIndirect)
+      val reserveCounter = Mux(
+        io.command.fire && kernelOpcode && io.command.bits.atomicCounter.get.enabled,
+        UIntToOH(io.command.bits.commandId, idCount),
+        0.U
+      )
+      val releaseCounter = Mux(io.completion.fire, UIntToOH(io.completion.bits.commandId, idCount), 0.U)
+      counterOwners := (counterOwners | reserveCounter) & ~releaseCounter
+      io.atomicCounterLease.get := counterOwners.orR
+    }
+    io.busy := reservedIds.orR
+    def memoryOpcode(opcode: UInt): Bool = opcode =/= GpuCommandOpcode.kernel &&
+      (if (enableIndirectCompute) opcode =/= GpuCommandOpcode.kernelIndirect else true.B)
+    val addMemoryOwner = io.command.fire && memoryOpcode(io.command.bits.opcode)
+    val removeMemoryOwner = io.completion.fire && memoryOpcode(io.completion.bits.opcode)
+    when(addMemoryOwner =/= removeMemoryOwner) {
+      memoryOwners := Mux(addMemoryOwner, memoryOwners + 1.U, memoryOwners - 1.U)
+    }
+    io.memoryEngineBusy := memoryOwners =/= 0.U ||
+      (io.command.valid && memoryOpcode(io.command.bits.opcode)) || indirectArgumentsPending || io.indirectBusy
   }
 }

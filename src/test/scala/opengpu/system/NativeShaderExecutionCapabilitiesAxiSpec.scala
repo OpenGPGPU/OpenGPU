@@ -9,17 +9,25 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 class NativeShaderExecutionCapabilitiesAxiSpec extends AnyFlatSpec {
   private def zero(data: Data): Unit = data match {
-    case r: Record => r.elements.values.foreach(zero)
-    case v: Vec[_] => v.foreach(zero)
+    case r: Record                                                     => r.elements.values.foreach(zero)
+    case v: Vec[_]                                                     => v.foreach(zero)
     case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b.poke(false.B)
     case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u.poke(0.U)
-    case _ => ()
+    case _                                                             => ()
   }
   for (enabled <- Seq(true, false)) {
     it should s"protect native quota programming and expose only implemented execution controls enabled=$enabled" in {
-      simulate(new GpuHostAxi(config = GraphicsConfig(), gpuConfig = GpuConfig(lanes = 4, warps = 2),
-        unifiedCommandMmio = true, protectVmState = true, externalBinnedRender = true,
-        nativeVertexInput = true, shaderExecutionLimits = enabled)) { d =>
+      simulate(
+        new GpuHostAxi(
+          config = GraphicsConfig(),
+          gpuConfig = GpuConfig(lanes = 4, warps = 2),
+          unifiedCommandMmio = true,
+          protectVmState = true,
+          externalBinnedRender = true,
+          nativeVertexInput = true,
+          shaderExecutionLimits = enabled
+        )
+      ) { d =>
         zero(d.io); d.io.s_axi_aresetn.poke(false.B); d.clock.step(3); d.io.s_axi_aresetn.poke(true.B)
         def until(p: => Boolean): Unit = {
           var n = 0; while (!p && n < 100) { d.clock.step(); n += 1 }; assert(p)
@@ -51,7 +59,8 @@ class NativeShaderExecutionCapabilitiesAxiSpec extends AnyFlatSpec {
           d.io.s_axi_bready.poke(true.B); d.clock.step(); d.io.s_axi_bready.poke(false.B)
         }
         val caps = Seq[BigInt](BigInt("47534c01", 16), 8, 31, 32, 1048576, BigInt("04051918", 16), 0x320, 0x138)
-        val expected = if (enabled) (caps :+ BigInt(1048576)).map(_ -> BigInt(0))
+        val expected =
+          if (enabled) (caps :+ BigInt(1048576)).map(_ -> BigInt(0))
           else Seq.fill(9)(BigInt(0) -> BigInt(2))
         assert(read(0x300, 10) == expected :+ (BigInt(0) -> BigInt(2)))
         for (i <- 0 until 8; strobe <- Seq(0, 1, 15)) write(0x300 + i * 4, 0xffffffffL, strobe)

@@ -22,8 +22,7 @@ class GpuComputeUnitSpec extends AnyFlatSpec {
       dut.io.invalidateInstructionCache.poke(false.B)
       dut.io.instructionSatp.poke(0.U)
       dut.io.instructionTlbFlush.valid.poke(false.B)
-      dut.io.instructionTlbFlush.bits.poke(
-        0.U.asTypeOf(dut.io.instructionTlbFlush.bits))
+      dut.io.instructionTlbFlush.bits.poke(0.U.asTypeOf(dut.io.instructionTlbFlush.bits))
       dut.io.vectorSatp.poke(0.U)
       dut.io.vectorTlbFlush.valid.poke(false.B)
       dut.io.vectorTlbFlush.bits.poke(0.U.asTypeOf(dut.io.vectorTlbFlush.bits))
@@ -38,8 +37,7 @@ class GpuComputeUnitSpec extends AnyFlatSpec {
       dut.io.l1InvalidateDone.ready.poke(true.B)
       dut.io.globalAtomicRequest.ready.poke(true.B)
       dut.io.globalAtomicResponse.valid.poke(false.B)
-      dut.io.globalAtomicResponse.bits.poke(
-        0.U.asTypeOf(dut.io.globalAtomicResponse.bits))
+      dut.io.globalAtomicResponse.bits.poke(0.U.asTypeOf(dut.io.globalAtomicResponse.bits))
 
       dut.io.kernel.valid.poke(true.B)
       dut.io.kernel.bits.kernelPc.poke(0x1000.U)
@@ -89,8 +87,7 @@ class GpuComputeUnitSpec extends AnyFlatSpec {
       dut.io.invalidateInstructionCache.poke(false.B)
       dut.io.instructionSatp.poke(0.U)
       dut.io.instructionTlbFlush.valid.poke(false.B)
-      dut.io.instructionTlbFlush.bits.poke(
-        0.U.asTypeOf(dut.io.instructionTlbFlush.bits))
+      dut.io.instructionTlbFlush.bits.poke(0.U.asTypeOf(dut.io.instructionTlbFlush.bits))
       dut.io.vectorSatp.poke(0.U)
       dut.io.vectorTlbFlush.valid.poke(false.B)
       dut.io.vectorTlbFlush.bits.poke(0.U.asTypeOf(dut.io.vectorTlbFlush.bits))
@@ -105,8 +102,7 @@ class GpuComputeUnitSpec extends AnyFlatSpec {
       dut.io.l1InvalidateDone.ready.poke(true.B)
       dut.io.globalAtomicRequest.ready.poke(true.B)
       dut.io.globalAtomicResponse.valid.poke(false.B)
-      dut.io.globalAtomicResponse.bits.poke(
-        0.U.asTypeOf(dut.io.globalAtomicResponse.bits))
+      dut.io.globalAtomicResponse.bits.poke(0.U.asTypeOf(dut.io.globalAtomicResponse.bits))
 
       dut.io.kernel.valid.poke(true.B)
       dut.io.kernel.bits.kernelPc.poke(0x1000.U)
@@ -129,8 +125,7 @@ class GpuComputeUnitSpec extends AnyFlatSpec {
         dut.io.memoryRequest.bits.transactionId.peek().litValue
       dut.clock.step()
       dut.io.memoryResponse.valid.poke(true.B)
-      dut.io.memoryResponse.bits.readData.poke(
-        (BigInt("30500073", 16) << 32 | BigInt("00500093", 16)).U)
+      dut.io.memoryResponse.bits.readData.poke((BigInt("30500073", 16) << 32 | BigInt("00500093", 16)).U)
       dut.io.memoryResponse.bits.transactionId.poke(fetchTransactionId.U)
       dut.clock.step(); dut.io.memoryResponse.valid.poke(false.B)
 
@@ -158,8 +153,7 @@ class GpuComputeUnitSpec extends AnyFlatSpec {
       dut.io.invalidateInstructionCache.poke(false.B)
       dut.io.instructionSatp.poke(0.U)
       dut.io.instructionTlbFlush.valid.poke(false.B)
-      dut.io.instructionTlbFlush.bits.poke(
-        0.U.asTypeOf(dut.io.instructionTlbFlush.bits))
+      dut.io.instructionTlbFlush.bits.poke(0.U.asTypeOf(dut.io.instructionTlbFlush.bits))
       dut.io.vectorSatp.poke(0.U)
       dut.io.vectorTlbFlush.valid.poke(false.B)
       dut.io.vectorTlbFlush.bits.poke(0.U.asTypeOf(dut.io.vectorTlbFlush.bits))
@@ -174,8 +168,7 @@ class GpuComputeUnitSpec extends AnyFlatSpec {
       dut.io.l1InvalidateDone.ready.poke(true.B)
       dut.io.globalAtomicRequest.ready.poke(true.B)
       dut.io.globalAtomicResponse.valid.poke(false.B)
-      dut.io.globalAtomicResponse.bits.poke(
-        0.U.asTypeOf(dut.io.globalAtomicResponse.bits))
+      dut.io.globalAtomicResponse.bits.poke(0.U.asTypeOf(dut.io.globalAtomicResponse.bits))
 
       // Kernel ABI (WarpContextInitializer): x1 = kernarg address.  The program
       // is one refill line: word0 = `lw x9, 0(x1)` (read a varying/uniform),
@@ -193,8 +186,8 @@ class GpuComputeUnitSpec extends AnyFlatSpec {
       dut.clock.step(); dut.io.kernel.valid.poke(false.B)
 
       // Little-endian word order within the refill line.
-      val lw = BigInt("0000a483", 16)   // lw x9, 0(x1)
-      val sw = BigInt("0090a223", 16)   // sw x9, 4(x1)
+      val lw = BigInt("0000a483", 16) // lw x9, 0(x1)
+      val sw = BigInt("0090a223", 16) // sw x9, 4(x1)
       val cease = BigInt("30500073", 16)
       def programLine: BigInt = (cease << 64) | (sw << 32) | lw
       def kernargLine: BigInt =
@@ -233,8 +226,7 @@ class GpuComputeUnitSpec extends AnyFlatSpec {
         guard += 1
       }
       assert(guard < 200, "did not complete within a bounded number of cycles")
-      assert(firstDataAddr == 0x8000L,
-        f"kernarg read must target x1=kernargAddress (0x8000), got 0x$firstDataAddr%x")
+      assert(firstDataAddr == 0x8000L, f"kernarg read must target x1=kernargAddress (0x8000), got 0x$firstDataAddr%x")
       assert(dataReads >= 1, "kernel must perform a kernarg read")
       assert(dataWrites >= 1, "kernel must perform an output write")
       dut.io.completion.valid.expect(true.B)
@@ -259,8 +251,7 @@ class GpuComputeUnitSpec extends AnyFlatSpec {
       dut.io.invalidateInstructionCache.poke(false.B)
       dut.io.instructionSatp.poke(0.U)
       dut.io.instructionTlbFlush.valid.poke(false.B)
-      dut.io.instructionTlbFlush.bits.poke(
-        0.U.asTypeOf(dut.io.instructionTlbFlush.bits))
+      dut.io.instructionTlbFlush.bits.poke(0.U.asTypeOf(dut.io.instructionTlbFlush.bits))
       dut.io.vectorSatp.poke(0.U)
       dut.io.vectorTlbFlush.valid.poke(false.B)
       dut.io.vectorTlbFlush.bits.poke(0.U.asTypeOf(dut.io.vectorTlbFlush.bits))
@@ -275,8 +266,7 @@ class GpuComputeUnitSpec extends AnyFlatSpec {
       dut.io.l1InvalidateDone.ready.poke(true.B)
       dut.io.globalAtomicRequest.ready.poke(true.B)
       dut.io.globalAtomicResponse.valid.poke(false.B)
-      dut.io.globalAtomicResponse.bits.poke(
-        0.U.asTypeOf(dut.io.globalAtomicResponse.bits))
+      dut.io.globalAtomicResponse.bits.poke(0.U.asTypeOf(dut.io.globalAtomicResponse.bits))
 
       dut.io.kernel.valid.poke(true.B)
       dut.io.kernel.bits.kernelPc.poke(0x1000.U)
@@ -300,8 +290,7 @@ class GpuComputeUnitSpec extends AnyFlatSpec {
         if (pendingCycles == 0) {
           dut.io.memoryResponse.valid.poke(true.B)
           dut.io.memoryResponse.bits.transactionId.poke(pendingId.U)
-          dut.io.memoryResponse.bits.readData.poke(
-            (BigInt("30500073", 16) << 32 | BigInt("00500093", 16)).U)
+          dut.io.memoryResponse.bits.readData.poke((BigInt("30500073", 16) << 32 | BigInt("00500093", 16)).U)
         } else dut.io.memoryResponse.valid.poke(false.B)
         val fired = dut.io.memoryRequest.valid.peek().litToBoolean &&
           dut.io.memoryRequest.ready.peek().litToBoolean
@@ -309,8 +298,10 @@ class GpuComputeUnitSpec extends AnyFlatSpec {
           pendingId = dut.io.memoryRequest.bits.transactionId.peek().litValue
           pendingCycles = responseDelay
         } else if (pendingCycles > 0) pendingCycles -= 1
-        else if (pendingCycles == 0 &&
-          dut.io.memoryResponse.ready.peek().litToBoolean) pendingCycles = -1
+        else if (
+          pendingCycles == 0 &&
+          dut.io.memoryResponse.ready.peek().litToBoolean
+        ) pendingCycles = -1
         dut.clock.step()
         guard += 1
       }
@@ -339,8 +330,7 @@ class GpuComputeUnitSpec extends AnyFlatSpec {
       dut.io.invalidateInstructionCache.poke(false.B)
       dut.io.instructionSatp.poke(0.U)
       dut.io.instructionTlbFlush.valid.poke(false.B)
-      dut.io.instructionTlbFlush.bits.poke(
-        0.U.asTypeOf(dut.io.instructionTlbFlush.bits))
+      dut.io.instructionTlbFlush.bits.poke(0.U.asTypeOf(dut.io.instructionTlbFlush.bits))
       dut.io.vectorSatp.poke(0.U)
       dut.io.vectorTlbFlush.valid.poke(false.B)
       dut.io.vectorTlbFlush.bits.poke(0.U.asTypeOf(dut.io.vectorTlbFlush.bits))
@@ -355,8 +345,7 @@ class GpuComputeUnitSpec extends AnyFlatSpec {
       dut.io.l1InvalidateDone.ready.poke(true.B)
       dut.io.globalAtomicRequest.ready.poke(true.B)
       dut.io.globalAtomicResponse.valid.poke(false.B)
-      dut.io.globalAtomicResponse.bits.poke(
-        0.U.asTypeOf(dut.io.globalAtomicResponse.bits))
+      dut.io.globalAtomicResponse.bits.poke(0.U.asTypeOf(dut.io.globalAtomicResponse.bits))
 
       dut.io.kernel.valid.poke(true.B)
       dut.io.kernel.bits.kernelPc.poke(0x1000.U)
@@ -378,8 +367,7 @@ class GpuComputeUnitSpec extends AnyFlatSpec {
         if (respond) {
           dut.io.memoryResponse.valid.poke(true.B)
           dut.io.memoryResponse.bits.transactionId.poke(pendingId.U)
-          dut.io.memoryResponse.bits.readData.poke(
-            (BigInt("30500073", 16) << 32 | BigInt("00500093", 16)).U)
+          dut.io.memoryResponse.bits.readData.poke((BigInt("30500073", 16) << 32 | BigInt("00500093", 16)).U)
         } else dut.io.memoryResponse.valid.poke(false.B)
         val fired = dut.io.memoryRequest.valid.peek().litToBoolean &&
           dut.io.memoryRequest.ready.peek().litToBoolean
@@ -413,8 +401,7 @@ class GpuComputeUnitSpec extends AnyFlatSpec {
       dut.io.invalidateInstructionCache.poke(false.B)
       dut.io.instructionSatp.poke(0.U)
       dut.io.instructionTlbFlush.valid.poke(false.B)
-      dut.io.instructionTlbFlush.bits.poke(
-        0.U.asTypeOf(dut.io.instructionTlbFlush.bits))
+      dut.io.instructionTlbFlush.bits.poke(0.U.asTypeOf(dut.io.instructionTlbFlush.bits))
       dut.io.vectorSatp.poke(0.U)
       dut.io.vectorTlbFlush.valid.poke(false.B)
       dut.io.vectorTlbFlush.bits.poke(0.U.asTypeOf(dut.io.vectorTlbFlush.bits))
@@ -429,8 +416,7 @@ class GpuComputeUnitSpec extends AnyFlatSpec {
       dut.io.l1InvalidateDone.ready.poke(true.B)
       dut.io.globalAtomicRequest.ready.poke(true.B)
       dut.io.globalAtomicResponse.valid.poke(false.B)
-      dut.io.globalAtomicResponse.bits.poke(
-        0.U.asTypeOf(dut.io.globalAtomicResponse.bits))
+      dut.io.globalAtomicResponse.bits.poke(0.U.asTypeOf(dut.io.globalAtomicResponse.bits))
 
       dut.io.kernel.valid.poke(true.B)
       dut.io.kernel.bits.kernelPc.poke(0x1000.U)
@@ -455,8 +441,7 @@ class GpuComputeUnitSpec extends AnyFlatSpec {
         dut.io.memoryRequest.bits.transactionId.peek().litValue
       dut.clock.step()
       dut.io.memoryResponse.valid.poke(true.B)
-      dut.io.memoryResponse.bits.readData.poke(
-        (BigInt("30500073", 16) << 32 | BigInt("00500093", 16)).U)
+      dut.io.memoryResponse.bits.readData.poke((BigInt("30500073", 16) << 32 | BigInt("00500093", 16)).U)
       dut.io.memoryResponse.bits.transactionId.poke(fetchTransactionId.U)
       dut.clock.step(); dut.io.memoryResponse.valid.poke(false.B)
 
@@ -482,12 +467,10 @@ class GpuComputeUnitSpec extends AnyFlatSpec {
       dut.io.invalidateInstructionCache.poke(false.B)
       dut.io.instructionSatp.poke(0.U)
       dut.io.instructionTlbFlush.valid.poke(false.B)
-      dut.io.instructionTlbFlush.bits.poke(
-        0.U.asTypeOf(dut.io.instructionTlbFlush.bits))
+      dut.io.instructionTlbFlush.bits.poke(0.U.asTypeOf(dut.io.instructionTlbFlush.bits))
       dut.io.vectorSatp.poke(0.U)
       dut.io.vectorTlbFlush.valid.poke(false.B)
-      dut.io.vectorTlbFlush.bits.poke(
-        0.U.asTypeOf(dut.io.vectorTlbFlush.bits))
+      dut.io.vectorTlbFlush.bits.poke(0.U.asTypeOf(dut.io.vectorTlbFlush.bits))
       dut.io.fpu.ready.poke(false.B)
       dut.io.vector.ready.poke(false.B)
       dut.io.memory.ready.poke(false.B)
@@ -499,8 +482,7 @@ class GpuComputeUnitSpec extends AnyFlatSpec {
       dut.io.l1InvalidateDone.ready.poke(true.B)
       dut.io.globalAtomicRequest.ready.poke(true.B)
       dut.io.globalAtomicResponse.valid.poke(false.B)
-      dut.io.globalAtomicResponse.bits.poke(
-        0.U.asTypeOf(dut.io.globalAtomicResponse.bits))
+      dut.io.globalAtomicResponse.bits.poke(0.U.asTypeOf(dut.io.globalAtomicResponse.bits))
 
       dut.io.kernel.valid.poke(true.B)
       dut.io.kernel.bits.kernelPc.poke(0x1000.U)
@@ -530,8 +512,7 @@ class GpuComputeUnitSpec extends AnyFlatSpec {
         dut.clock.step(); cycles += 1
       }
       dut.io.trap.valid.expect(true.B)
-      dut.io.trap.bits.cause.expect(
-        opengpu.core.trap.TrapCause.illegalInstruction.U)
+      dut.io.trap.bits.cause.expect(opengpu.core.trap.TrapCause.illegalInstruction.U)
       dut.io.trap.bits.pc.expect(0x1000.U)
       dut.io.trap.bits.tval.expect("h00100073".U)
       dut.io.trap.bits.laneFaultMask.expect(1.U)

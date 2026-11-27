@@ -2,41 +2,44 @@ package opengpu.system
 
 import chisel3._
 import chisel3.util._
-import opengpu.graphics.{NativeBinnedCompletionInfo,TileBinJobCompletion,TileJobDescriptorRequest}
+import opengpu.graphics.{NativeBinnedCompletionInfo, TileBinJobCompletion, TileJobDescriptorRequest}
 
-/** Convert the host's held reset into one request after the control owner has
-  * released any irrevocable command offer. The owner drains that request. */
+/** Convert the host's held reset into one request after the control owner has released any irrevocable command offer.
+  * The owner drains that request.
+  */
 class TessellationFeedbackResetGate extends Module {
-  val io=IO(new Bundle {val resetActive=Input(Bool());val coreRequest=Input(Bool());val pulse=Output(Bool())})
-  private val sent=RegInit(false.B)
-  io.pulse:=io.coreRequest && !sent
-  when(!io.resetActive){sent:=false.B}
-  when(io.pulse){sent:=true.B}
-}
-
-/** Preserve a job's query scope from host acceptance through ownership transfer
-  * and completion, including failures before either renderer is offered work. */
-class TessellationQueryAdmissionFence extends Module {
-  val io=IO(new Bundle {
-    val accepted=Input(Bool());val context=Input(UInt(32.W));val root=Input(UInt(32.W))
-    val renderIdle=Input(Bool());val admissionBusy=Input(Bool())
-    val legacyFault=Flipped(Valid(UInt(3.W)));val tessFault=Flipped(Valid(UInt(3.W)))
-    val queryIdle=Output(Bool());val scopeContext=Output(UInt(32.W));val scopeRoot=Output(UInt(32.W))
-    val fault=Valid(new opengpu.graphics.VisibilityQueryJobFault)
+  val io = IO(new Bundle {
+    val resetActive = Input(Bool()); val coreRequest = Input(Bool()); val pulse = Output(Bool())
   })
-  private val context=Reg(UInt(32.W));private val root=Reg(UInt(32.W))
-  when(io.accepted){context:=io.context;root:=io.root}
-  io.scopeContext:=context;io.scopeRoot:=root
-  io.queryIdle:=io.renderIdle && !io.admissionBusy && !io.accepted
-  assert(!(io.legacyFault.valid && io.tessFault.valid),"one host job may complete at a time")
-  io.fault.valid:=io.legacyFault.valid || io.tessFault.valid
-  io.fault.bits.context:=context;io.fault.bits.root:=root
-  io.fault.bits.status:=Mux(io.tessFault.valid,io.tessFault.bits,io.legacyFault.bits)
+  private val sent = RegInit(false.B)
+  io.pulse := io.coreRequest && !sent
+  when(!io.resetActive) { sent := false.B }
+  when(io.pulse) { sent := true.B }
 }
 
-/** Own one accepted native job while feedback object checkpoints move between
-  * drained renderer owners. A failed transfer produces an ordered completion;
-  * no renderer sees the job. The enclosing renderer's ready must be
+/** Preserve a job's query scope from host acceptance through ownership transfer and completion, including failures
+  * before either renderer is offered work.
+  */
+class TessellationQueryAdmissionFence extends Module {
+  val io = IO(new Bundle {
+    val accepted = Input(Bool()); val context = Input(UInt(32.W)); val root = Input(UInt(32.W))
+    val renderIdle = Input(Bool()); val admissionBusy = Input(Bool())
+    val legacyFault = Flipped(Valid(UInt(3.W))); val tessFault = Flipped(Valid(UInt(3.W)))
+    val queryIdle = Output(Bool()); val scopeContext = Output(UInt(32.W)); val scopeRoot = Output(UInt(32.W))
+    val fault = Valid(new opengpu.graphics.VisibilityQueryJobFault)
+  })
+  private val context = Reg(UInt(32.W)); private val root = Reg(UInt(32.W))
+  when(io.accepted) { context := io.context; root := io.root }
+  io.scopeContext := context; io.scopeRoot := root
+  io.queryIdle := io.renderIdle && !io.admissionBusy && !io.accepted
+  assert(!(io.legacyFault.valid && io.tessFault.valid), "one host job may complete at a time")
+  io.fault.valid := io.legacyFault.valid || io.tessFault.valid
+  io.fault.bits.context := context; io.fault.bits.root := root
+  io.fault.bits.status := Mux(io.tessFault.valid, io.tessFault.bits, io.legacyFault.bits)
+}
+
+/** Own one accepted native job while feedback object checkpoints move between drained renderer owners. A failed
+  * transfer produces an ordered completion; no renderer sees the job. The enclosing renderer's ready must be
   * independent of valid; an offer is presented only when it can be accepted.
   */
 class TessellationFeedbackAdmission(idWidth: Int, jointTessellation: Boolean = false) extends Module {
@@ -80,9 +83,10 @@ class TessellationFeedbackAdmission(idWidth: Int, jointTessellation: Boolean = f
     io.failure(index).bits.status := code
     io.failure(index).bits.frontendStatus := code
     val magic = if (index == 0) NativeBinnedCompletionInfo.magic else TessellationNativeCompletionInfo.magic
-    io.failureDetails(index) := VecInit(Seq(magic.U(32.W),
-      Cat(0.U(27.W), Mux(code === 4.U, 0.U(2.W), 3.U(2.W)), code(2, 0))) ++
-      Seq.fill(NativeBinnedCompletionInfo.wordCount - 2)(0.U(32.W)))
+    io.failureDetails(index) := VecInit(
+      Seq(magic.U(32.W), Cat(0.U(27.W), Mux(code === 4.U, 0.U(2.W), 3.U(2.W)), code(2, 0))) ++
+        Seq.fill(NativeBinnedCompletionInfo.wordCount - 2)(0.U(32.W))
+    )
   }
   io.jointSubmit.foreach { submit =>
     submit.ready := canAccept
@@ -107,8 +111,9 @@ class TessellationFeedbackAdmission(idWidth: Int, jointTessellation: Boolean = f
       request := Mux(io.submit(1).fire, io.submit(1).bits, io.submit(0).bits)
     }
     cancelled := false.B
-    val malformedJoint = io.jointSubmit.map(submit =>
-      submit.fire && !TessellationJointJobLayout.requestLegal(submit.bits)).getOrElse(false.B)
+    val malformedJoint = io.jointSubmit
+      .map(submit => submit.fire && !TessellationJointJobLayout.requestLegal(submit.bits))
+      .getOrElse(false.B)
     when(malformedJoint) {
       code := 1.U
       phase := Phase.failed

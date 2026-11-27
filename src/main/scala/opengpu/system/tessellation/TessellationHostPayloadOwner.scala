@@ -4,12 +4,12 @@ import chisel3._
 import chisel3.util._
 import opengpu.graphics.{ShaderPayloadConfig, ShaderPayloadControl, ShaderPayloadProducerPort}
 
-/** Exclusive handoff of the existing payload producer ports between two
-  * serialized render owners. A handoff cannot retire accepted replies or
-  * successful allocations belonging to the previous owner.
+/** Exclusive handoff of the existing payload producer ports between two serialized render owners. A handoff cannot
+  * retire accepted replies or successful allocations belonging to the previous owner.
   */
 class TessellationHostPayloadOwner(p: ShaderPayloadConfig) extends Module {
   val io = IO(new Bundle {
+
     /** False selects legacy; true selects tessellation. */
     val acquire = Flipped(Decoupled(Bool()))
     val end = Flipped(Decoupled(Bool()))
@@ -58,7 +58,9 @@ class TessellationHostPayloadOwner(p: ShaderPayloadConfig) extends Module {
 
     val controlIn = pool.control.fire; val controlOut = pool.controlResponse.fire
     when(controlIn) { assert(!controlLive(i) || controlOut, "payload control reply capacity exceeded") }
-    when(pool.controlResponse.valid) { assert(active && (controlLive(i) || controlIn), "payload control reply lacks owner") }
+    when(pool.controlResponse.valid) {
+      assert(active && (controlLive(i) || controlIn), "payload control reply lacks owner")
+    }
     when(controlIn =/= controlOut) { controlLive(i) := controlIn }
     val dataIn = pool.request.fire; val dataOut = pool.response.fire
     when(dataIn) { assert(dataLive(i) < p.responseDepth.U || dataOut, "payload data reply capacity exceeded") }

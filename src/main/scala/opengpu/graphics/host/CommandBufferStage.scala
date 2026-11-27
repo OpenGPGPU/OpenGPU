@@ -13,33 +13,30 @@ object TileCommandMemoryLayout {
 
 /** Versioned command-buffer reader (legacy draw interface by default).
   *
-  * Reads `count` sequential draw-call records from software-allocated host
-  * memory starting at `base` and emits each as a SceneTriangle on `draw`.
-  * A legacy draw record has this 40-word layout (little-endian word index):
+  * Reads `count` sequential draw-call records from software-allocated host memory starting at `base` and emits each as
+  * a SceneTriangle on `draw`. A legacy draw record has this 40-word layout (little-endian word index):
   *
-  *   [0..11]  v0/v1/v2 clip-space (x,y,z,w) as Q16.16   (12 words)
-  *   [12..20] v0/v1/v2 colour (r,g,b) as 8-bit          (9 words)
-  *   [21..23] v0/v1/v2 depth as signed 32-bit           (3 words)
-  *   [24]     shader entry PC (the draw's shader descriptor)
-  *   [25]     kernarg buffer address
-  *   [26..31] v0/v1/v2 texture u,v as unsigned Q16.16
-  *   [32]     optional depth/cull/texture/blend/stencil state override
-  *   [33]     signed LOD bias, nearest bit 5, pixel-center bit 6, V-wrap flip bit 7, minimum mip clamp
-  *   [34]     optional two-bank kernarg byte stride
-  *   [35]     optional GL-style blend config (bit0 present, factors, equation)
-  *   [36]     stencil config: func [2:0], fail [5:3], zfail [8:6], zpass [11:9]
-  *   [37]     stencil ref [7:0], read mask [15:8], write mask [23:16]
-  *   [38..39] packed scissor min/max XY (enabled by word 32 bit 18)
+  * [0..11] v0/v1/v2 clip-space (x,y,z,w) as Q16.16 (12 words) [12..20] v0/v1/v2 colour (r,g,b) as 8-bit (9 words)
+  * [21..23] v0/v1/v2 depth as signed 32-bit (3 words) [24] shader entry PC (the draw's shader descriptor) [25] kernarg
+  * buffer address [26..31] v0/v1/v2 texture u,v as unsigned Q16.16 [32] optional depth/cull/texture/blend/stencil state
+  * override [33] signed LOD bias, nearest bit 5, pixel-center bit 6, V-wrap flip bit 7, minimum mip clamp [34] optional
+  * two-bank kernarg byte stride [35] optional GL-style blend config (bit0 present, factors, equation) [36] stencil
+  * config: func [2:0], fail [5:3], zfail [8:6], zpass [11:9] [37] stencil ref [7:0], read mask [15:8], write mask
+  * [23:16] [38..39] packed scissor min/max XY (enabled by word 32 bit 18)
   *
-  * This is the hardware side of "the driver writes a command list, the GPU
-  * executes it", the prerequisite for a host-driven (M6) Linux device.  The
-  * phase-D shader descriptor lets a draw select a compiled RV32 shader program
-  * and point at it kernarg buffer.
+  * This is the hardware side of "the driver writes a command list, the GPU executes it", the prerequisite for a
+  * host-driven (M6) Linux device. The phase-D shader descriptor lets a draw select a compiled RV32 shader program and
+  * point at it kernarg buffer.
   */
-class CommandBufferStage(config: GraphicsConfig, vertCore: Boolean = false,
-  cancellable: Boolean = false, tileCommands: Boolean = false,
-  constantBlend: Boolean = false, biasedClamp: Boolean = false,
-  mirroredRepeat: Boolean = false) extends Module {
+class CommandBufferStage(
+    config: GraphicsConfig,
+    vertCore: Boolean = false,
+    cancellable: Boolean = false,
+    tileCommands: Boolean = false,
+    constantBlend: Boolean = false,
+    biasedClamp: Boolean = false,
+    mirroredRepeat: Boolean = false
+) extends Module {
   require(!tileCommands || (cancellable && !vertCore))
   require(!constantBlend || vertCore)
   require(!biasedClamp || vertCore)
@@ -50,11 +47,12 @@ class CommandBufferStage(config: GraphicsConfig, vertCore: Boolean = false,
     val base = Input(UInt(32.W))
     val count = Input(UInt(16.W))
     val start = Input(Bool())
-    /** Optional pass-owner cancellation. Unaccepted draws are discarded;
-      * an offered or accepted memory read retains ownership until drain.
-      * The next job may start only after done, including the discarded FIFO.
+
+    /** Optional pass-owner cancellation. Unaccepted draws are discarded; an offered or accepted memory read retains
+      * ownership until drain. The next job may start only after done, including the discarded FIFO.
       */
     val cancel = if (cancellable) Some(Input(Bool())) else None
+
     /** Version 2 adds a type word before the unchanged forty-word payload. */
     val typedCommands = if (tileCommands) Some(Input(Bool())) else None
     val clear = if (tileCommands) Some(Decoupled(new TileAttachmentClear)) else None
@@ -83,21 +81,24 @@ class CommandBufferStage(config: GraphicsConfig, vertCore: Boolean = false,
   private val offered = if (cancellable) RegInit(false.B) else false.B
   private val cancelRequested = io.cancel.getOrElse(false.B)
   private val discard = aborting || cancelRequested
-  /**
-    * Decouple command-buffer memory latency from rasterization.  The parser
-    * may fill these entries while the pipeline is still rendering the
-    * previous draw, but the FIFO remains the ordering point for draw records.
+
+  /** Decouple command-buffer memory latency from rasterization. The parser may fill these entries while the pipeline is
+    * still rendering the previous draw, but the FIFO remains the ordering point for draw records.
     */
-  private val drawFifo = if (!tileCommands) Some(Module(new Queue(
-    if (vertCore) new VertexDrawCommand(config) else new SceneTriangle(config),
-    config.drawFifoDepth))) else None
+  private val drawFifo =
+    if (!tileCommands)
+      Some(
+        Module(
+          new Queue(if (vertCore) new VertexDrawCommand(config) else new SceneTriangle(config), config.drawFifoDepth)
+        )
+      )
+    else None
   private val fifoValid = Wire(Bool())
   private val enqueueFire = Wire(Bool())
 
   // Pass-owned fetching is sequential. Increment the address only on accepted
   // reads instead of repeating a record multiply and two additions per word.
-  private val wordAddr = readAddress.getOrElse(
-    io.base + ((record * wordsPerRecord.U) + word) * 4.U)
+  private val wordAddr = readAddress.getOrElse(io.base + ((record * wordsPerRecord.U) + word) * 4.U)
 
   private val decodedDraw = if (vertCore) {
     val d = Wire(new VertexDrawCommand(config))
@@ -256,10 +257,15 @@ class CommandBufferStage(config: GraphicsConfig, vertCore: Boolean = false,
     // This signal must not depend on cancel: the controller uses it to
     // request cancellation on this same cycle.
     io.encodingFault.get := presenting && invalid && !aborting
-    val fifo = Module(new Queue(new Bundle {
-      val clear = Bool()
-      val payload = UInt(decodedDraw.getWidth.W)
-    }, config.drawFifoDepth))
+    val fifo = Module(
+      new Queue(
+        new Bundle {
+          val clear = Bool()
+          val payload = UInt(decodedDraw.getWidth.W)
+        },
+        config.drawFifoDepth
+      )
+    )
     require(decodedDraw.getWidth >= decodedClear.getWidth)
     fifo.io.enq.valid := presenting && !discard && !invalid
     fifo.io.enq.bits.clear := isClear
@@ -270,8 +276,7 @@ class CommandBufferStage(config: GraphicsConfig, vertCore: Boolean = false,
     io.draw.bits := fifo.io.deq.bits.payload.asTypeOf(io.draw.bits)
     io.clear.get.valid := fifo.io.deq.valid && fifo.io.deq.bits.clear && !clearPending && !discard
     io.clear.get.bits := fifo.io.deq.bits.payload.asTypeOf(new TileAttachmentClear)
-    fifo.io.deq.ready := discard || (!clearPending && Mux(fifo.io.deq.bits.clear,
-      io.clear.get.ready, io.draw.ready))
+    fifo.io.deq.ready := discard || (!clearPending && Mux(fifo.io.deq.bits.clear, io.clear.get.ready, io.draw.ready))
     when(io.clear.get.fire) { clearPending := true.B }
     when(io.clearComplete.get || discard) { clearPending := false.B }
     when(presenting && invalid && !aborting) {
@@ -284,8 +289,8 @@ class CommandBufferStage(config: GraphicsConfig, vertCore: Boolean = false,
     fifoValid := fifo.io.deq.valid
     enqueueFire := fifo.io.enq.fire
     if (cancellable) {
-    // Cancellation explicitly withdraws unaccepted draw records. It never
-    // withdraws a bus request that was already offered to memory.
+      // Cancellation explicitly withdraws unaccepted draw records. It never
+      // withdraws a bus request that was already offered to memory.
       io.draw.valid := fifo.io.deq.valid && !discard
       io.draw.bits := fifo.io.deq.bits
       fifo.io.deq.ready := discard || io.draw.ready
@@ -305,8 +310,10 @@ class CommandBufferStage(config: GraphicsConfig, vertCore: Boolean = false,
 
   private val lastRecord = record === jobCount - 1.U
 
-  when(!running && io.start && io.count.orR && !fifoValid && !clearPending &&
-      !waiting && !offered && !cancelRequested) {
+  when(
+    !running && io.start && io.count.orR && !fifoValid && !clearPending &&
+      !waiting && !offered && !cancelRequested
+  ) {
     if (cancellable) {
       readAddress.get := io.base
       jobCount := io.count

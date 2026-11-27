@@ -3,9 +3,8 @@ package opengpu.graphics
 import chisel3._
 import chisel3.util._
 
-/** Ordered rectangle clear through the resident attachment word service.
-  * Admission waits for older draws to drain. Full-word clears allocate with
-  * no old-data read; masked clears use the store's cache/clear tags first.
+/** Ordered rectangle clear through the resident attachment word service. Admission waits for older draws to drain.
+  * Full-word clears allocate with no old-data read; masked clears use the store's cache/clear tags first.
   */
 class TileAttachmentClearEngine extends Module {
   val io = IO(new Bundle {
@@ -23,8 +22,8 @@ class TileAttachmentClearEngine extends Module {
       val resp = Flipped(Decoupled(new OmMemoryResponse))
     }
   })
-  private val Seq(idle, prepareOffset, prepareRows, readRequest, readResponse,
-    writeRequest, writeResponse, complete) = Enum(8)
+  private val Seq(idle, prepareOffset, prepareRows, readRequest, readResponse, writeRequest, writeResponse, complete) =
+    Enum(8)
   private val state = RegInit(idle)
   private val command = Reg(new TileAttachmentClear)
   private val x = Reg(UInt(4.W))
@@ -82,13 +81,17 @@ class TileAttachmentClearEngine extends Module {
   when(io.cancel && io.busy) { cancelled := true.B }
   when(io.mem.req.fire) { state := Mux(state === readRequest, readResponse, writeResponse) }
   when(io.mem.resp.fire) {
-    assert(io.mem.resp.bits.addr === address(31, 0) &&
-      io.mem.resp.bits.write === (state === writeResponse), "clear response lost its sample ownership")
+    assert(
+      io.mem.resp.bits.addr === address(31, 0) &&
+        io.mem.resp.bits.write === (state === writeResponse),
+      "clear response lost its sample ownership"
+    )
     when(cancelled || io.cancel) { state := complete }
       .elsewhen(state === readResponse) {
         merged := (io.mem.resp.bits.data & ~mask) | (value & mask)
         state := writeRequest
-      }.otherwise {
+      }
+      .otherwise {
         val nextState = Mux(mask.andR, writeRequest, readRequest)
         state := nextState
         when(sample +& 1.U < (1.U(3.W) << io.descriptor.sampleMode)) {

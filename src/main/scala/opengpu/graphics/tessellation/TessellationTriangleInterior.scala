@@ -11,8 +11,9 @@ class TessellationTriangleInteriorTask extends Bundle {
 }
 class TessellationTriangleInteriorVertex extends Bundle {
   val taskId = UInt(32.W); val sequence = UInt(12.W)
-  /** Ring starts at zero; each nondegenerate ring owns three directed sides.
-    * Side 3 denotes the center. Indices preserve coincident vertices.
+
+  /** Ring starts at zero; each nondegenerate ring owns three directed sides. Side 3 denotes the center. Indices
+    * preserve coincident vertices.
     */
   val ring = UInt(6.W); val side = UInt(2.W); val index = UInt(7.W); val segments = UInt(7.W)
   val u = UInt(25.W); val v = UInt(25.W); val w = UInt(25.W)
@@ -21,10 +22,9 @@ class TessellationTriangleInteriorCompletion extends Bundle {
   val taskId = UInt(32.W); val emitted = UInt(12.W); val status = UInt(3.W); val discarded = Bool()
 }
 
-/** Stream concentric triangle-ring vertices; the caller joins adjacent rings
-  * and the separately subdivided outer boundary. Values use Q0.24. Each
-  * perpendicular projection rounds locally; the center is the nearest common
-  * Q0.24 value to one third and can sum to one minus one LSB.
+/** Stream concentric triangle-ring vertices; the caller joins adjacent rings and the separately subdivided outer
+  * boundary. Values use Q0.24. Each perpendicular projection rounds locally; the center is the nearest common Q0.24
+  * value to one third and can sum to one minus one LSB.
   */
 class TessellationTriangleInterior extends Module {
   val io = IO(new Bundle {
@@ -33,8 +33,9 @@ class TessellationTriangleInterior extends Module {
     val completion = Decoupled(new TessellationTriangleInteriorCompletion)
     val cancel = Input(Bool()); val busy = Output(Bool())
   })
-  private object State extends ChiselEnum { val idle, prepareOffer, prepareWait, edgeOffer, edgeWait,
-    ringStart, build, emit, center, complete = Value }
+  private object State extends ChiselEnum {
+    val idle, prepareOffer, prepareWait, edgeOffer, edgeWait, ringStart, build, emit, center, complete = Value
+  }
   private val state = RegInit(State.idle)
   private val task = Reg(new TessellationTriangleInteriorTask)
   private val prepared = Reg(new TessellationLevelResult)
@@ -51,14 +52,16 @@ class TessellationTriangleInterior extends Module {
   levels.io.in.bits.outer := task.outer; levels.io.in.bits.inner := task.inner
   levels.io.out.ready := state === State.prepareWait
   edge.io.in.valid := state === State.edgeOffer; edge.io.in.bits.level := prepared.inner(0).clamped
-  edge.io.in.bits.spacing := task.spacing; edge.io.in.bits.index := edgeIndex; edge.io.in.bits.promoted := prepared.inner(0).promoted
+  edge.io.in.bits.spacing := task.spacing; edge.io.in.bits.index := edgeIndex;
+  edge.io.in.bits.promoted := prepared.inner(0).promoted
   edge.io.out.ready := state === State.edgeWait; edge.io.cancel := state === State.edgeWait && stop
   io.begin.ready := state === State.idle && !io.cancel; io.busy := state =/= State.idle
   io.completion.valid := state === State.complete; io.completion.bits := result
   private val v = values(index); private val u = one - low - v
   io.out.valid := state === State.emit || state === State.center
   io.out.bits.taskId := task.taskId; io.out.bits.sequence := result.emitted; io.out.bits.ring := ring
-  io.out.bits.side := Mux(state === State.center, 3.U, side); io.out.bits.index := Mux(state === State.center, 0.U, index)
+  io.out.bits.side := Mux(state === State.center, 3.U, side);
+  io.out.bits.index := Mux(state === State.center, 0.U, index)
   io.out.bits.segments := Mux(state === State.center, 0.U, segments)
   io.out.bits.u := Mux(state === State.center, third, MuxLookup(side, u)(Seq(1.U -> low, 2.U -> v)))
   io.out.bits.v := Mux(state === State.center, third, MuxLookup(side, v)(Seq(1.U -> u, 2.U -> low)))
@@ -104,7 +107,9 @@ class TessellationTriangleInterior extends Module {
     when(stop) { result.status := 4.U; state := State.complete }
       .otherwise {
         values(buildIndex - 1.U) := Mux(buildIndex === 1.U, nextLow, Mux(buildIndex +& 1.U === segments, high, bounded))
-        when(buildIndex +& 1.U === segments) { low := nextLow; segments := segments - 2.U; side := 0.U; index := 0.U; state := State.emit }
+        when(buildIndex +& 1.U === segments) {
+          low := nextLow; segments := segments - 2.U; side := 0.U; index := 0.U; state := State.emit
+        }
           .otherwise { buildIndex := buildIndex + 1.U }
       }
   }
@@ -118,7 +123,8 @@ class TessellationTriangleInterior extends Module {
           ring := ring + 1.U
           when(segments === 1.U) { state := State.complete }.otherwise { state := State.ringStart }
         }.otherwise { side := side + 1.U }
-      }.otherwise { index := index + 1.U }
+      }
+      .otherwise { index := index + 1.U }
   }
   when(io.completion.fire) { state := State.idle }
 }

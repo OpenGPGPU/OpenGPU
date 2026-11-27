@@ -7,19 +7,15 @@ import opengpu.core.execute.fpu.{Fp32FmaLane, Fp32Operation}
 
 /** RVV OPFRED FP32 sum reductions for the fixed SEW=32 profile.
   *
-  * `vfredusum.vs` and `vfredosum.vs` fold `vs1[0]` and the participating `vs2`
-  * elements into element 0 of `vd`; every other element keeps the old
-  * destination. The fold runs one element at a time through a single elastic
-  * `Fp32FmaLane`, which is why both forms share one datapath: FP addition is
-  * not associative, so a `lanes`-1 adder tree would silently break the ordered
-  * `vfredosum.vs` while looking correct for the unordered one. A sequential
-  * fold satisfies both and costs one lane of area instead of `lanes`-1. The
-  * price is latency: one add per element, five pipeline stages each.
+  * `vfredusum.vs` and `vfredosum.vs` fold `vs1[0]` and the participating `vs2` elements into element 0 of `vd`; every
+  * other element keeps the old destination. The fold runs one element at a time through a single elastic `Fp32FmaLane`,
+  * which is why both forms share one datapath: FP addition is not associative, so a `lanes`-1 adder tree would silently
+  * break the ordered `vfredosum.vs` while looking correct for the unordered one. A sequential fold satisfies both and
+  * costs one lane of area instead of `lanes`-1. The price is latency: one add per element, five pipeline stages each.
   *
-  * A masked-off or inactive element issues no operation instead of adding an
-  * identity, so a -0.0 accumulator cannot be turned into +0.0 the way an
-  * added +0.0 identity would. Each add reports through the normal FP flag
-  * path, so `frm` and the accumulated NV/NX flags match `vfadd.vv`.
+  * A masked-off or inactive element issues no operation instead of adding an identity, so a -0.0 accumulator cannot be
+  * turned into +0.0 the way an added +0.0 identity would. Each add reports through the normal FP flag path, so `frm`
+  * and the accumulated NV/NX flags match `vfadd.vv`.
   */
 class VectorFReduceAlu(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {

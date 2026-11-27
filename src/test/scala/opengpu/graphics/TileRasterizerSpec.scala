@@ -7,12 +7,10 @@ import org.scalatest.flatspec.AnyFlatSpec
 class TileRasterizerSpec extends AnyFlatSpec {
   behavior of "tile-ordered triangle rasterization"
 
-  private case class Sample(x: Int, y: Int, e0: BigInt, e1: BigInt,
-                            e2: BigInt, mask: BigInt)
+  private case class Sample(x: Int, y: Int, e0: BigInt, e1: BigInt, e2: BigInt, mask: BigInt)
 
   private def drain(tileSize: Int, quadMode: Boolean): Seq[Sample] = {
-    val cfg = GraphicsConfig(screenWidth = 40, screenHeight = 40,
-      subPixelBits = 8, tileSize = tileSize)
+    val cfg = GraphicsConfig(screenWidth = 40, screenHeight = 40, subPixelBits = 8, tileSize = tileSize)
     var seen = Vector.empty[Sample]
     simulate(new TriangleRasterizer(cfg, quadMode)) { dut =>
       dut.reset.poke(true.B)
@@ -45,16 +43,25 @@ class TileRasterizerSpec extends AnyFlatSpec {
         dut.io.quad.ready.poke(ready.B)
         if (quadMode && ready && dut.io.quad.valid.peek().litToBoolean) {
           for (lane <- dut.io.quad.bits.lanes) {
-            seen :+= Sample(lane.x.peek().litValue.toInt,
+            seen :+= Sample(
+              lane.x.peek().litValue.toInt,
               lane.y.peek().litValue.toInt,
-              lane.e0.peek().litValue, lane.e1.peek().litValue,
-              lane.e2.peek().litValue, lane.coverageMask.peek().litValue)
+              lane.e0.peek().litValue,
+              lane.e1.peek().litValue,
+              lane.e2.peek().litValue,
+              lane.coverageMask.peek().litValue
+            )
           }
         } else if (!quadMode && ready && dut.io.pixel.valid.peek().litToBoolean) {
           val p = dut.io.pixel.bits
-          seen :+= Sample(p.x.peek().litValue.toInt, p.y.peek().litValue.toInt,
-            p.e0.peek().litValue, p.e1.peek().litValue,
-            p.e2.peek().litValue, p.coverageMask.peek().litValue)
+          seen :+= Sample(
+            p.x.peek().litValue.toInt,
+            p.y.peek().litValue.toInt,
+            p.e0.peek().litValue,
+            p.e1.peek().litValue,
+            p.e2.peek().litValue,
+            p.coverageMask.peek().litValue
+          )
         }
         dut.clock.step()
         cycles += 1
@@ -69,14 +76,15 @@ class TileRasterizerSpec extends AnyFlatSpec {
       val scanline = drain(tileSize = 0, quadMode)
       val tiled = drain(tileSize = 16, quadMode)
       assert(tiled.nonEmpty)
-      assert(tiled.size == tiled.map(p => (p.x, p.y)).distinct.size,
-        "tile traversal emitted a position twice")
+      assert(tiled.size == tiled.map(p => (p.x, p.y)).distinct.size, "tile traversal emitted a position twice")
       val a = tiled.sortBy(p => (p.y, p.x))
       val b = scanline.sortBy(p => (p.y, p.x))
       val mismatch = a.zip(b).indexWhere { case (x, y) => x != y }
-      assert(a.size == b.size && mismatch < 0,
+      assert(
+        a.size == b.size && mismatch < 0,
         s"tiled=${a.size} scanline=${b.size} first mismatch $mismatch: " +
-          s"${a.lift(mismatch)} != ${b.lift(mismatch)}")
+          s"${a.lift(mismatch)} != ${b.lift(mismatch)}"
+      )
       val tileOrder = tiled.map(p => (p.y / 16, p.x / 16))
       assert(tileOrder == tileOrder.sorted, "tile traversal revisited a tile")
       assert(tileOrder.distinct.size >= 4, "test must cross tile boundaries")

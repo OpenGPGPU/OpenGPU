@@ -12,16 +12,31 @@ class TexUVInterpolatorSpec extends AnyFlatSpec {
     val limit = (BigInt(1) << 32) - 1
     type Input = (Vector[BigInt], Vector[BigInt], Vector[BigInt], Vector[BigInt])
     val boundaries: Vector[Input] = Vector(
-      (Vector.fill(3)(BigInt(1)), Vector.fill(3)(BigInt(65536)),
+      (
+        Vector.fill(3)(BigInt(1)),
+        Vector.fill(3)(BigInt(65536)),
         Vector(BigInt("80000000", 16), BigInt(0), BigInt(0)),
-        Vector(limit, BigInt(0), BigInt(0))),
-      (Vector(BigInt(1), BigInt(2), BigInt(3)), Vector(BigInt(7), BigInt(11), BigInt(13)),
+        Vector(limit, BigInt(0), BigInt(0))
+      ),
+      (
+        Vector(BigInt(1), BigInt(2), BigInt(3)),
+        Vector(BigInt(7), BigInt(11), BigInt(13)),
         Vector(limit, BigInt("7fffffff", 16), BigInt("80000000", 16)),
-        Vector(BigInt(65536), BigInt(0), limit)),
-      (Vector(BigInt(-1), BigInt(2), BigInt(1)), Vector.fill(3)(BigInt(65536)),
-        Vector(limit, BigInt(0), BigInt(1)), Vector(BigInt(0), limit, BigInt(1))),
-      (Vector.fill(3)((BigInt(1) << 48) - 1), Vector.fill(3)(BigInt(1) << 26),
-        Vector(limit, limit, BigInt(0)), Vector(BigInt(0), BigInt("80000000", 16), limit)))
+        Vector(BigInt(65536), BigInt(0), limit)
+      ),
+      (
+        Vector(BigInt(-1), BigInt(2), BigInt(1)),
+        Vector.fill(3)(BigInt(65536)),
+        Vector(limit, BigInt(0), BigInt(1)),
+        Vector(BigInt(0), limit, BigInt(1))
+      ),
+      (
+        Vector.fill(3)((BigInt(1) << 48) - 1),
+        Vector.fill(3)(BigInt(1) << 26),
+        Vector(limit, limit, BigInt(0)),
+        Vector(BigInt(0), BigInt("80000000", 16), limit)
+      )
+    )
     val cases = boundaries ++ Vector.tabulate(256) { index =>
       val edges = Vector.tabulate(3) { lane =>
         val value = BigInt(1 + random.nextInt(1000000))
@@ -54,8 +69,10 @@ class TexUVInterpolatorSpec extends AnyFlatSpec {
         for ((port, values, channel) <- Seq((dut.io.uvPx.u, u, "u"), (dut.io.uvPx.v, v, "v"))) {
           val actual = port.peek().litValue
           val expected = reference(values)
-          assert(actual == expected,
-            s"$channel mismatch case=$index got=0x${actual.toString(16)} expected=0x${expected.toString(16)}")
+          assert(
+            actual == expected,
+            s"$channel mismatch case=$index got=0x${actual.toString(16)} expected=0x${expected.toString(16)}"
+          )
           checked += 1
         }
       }

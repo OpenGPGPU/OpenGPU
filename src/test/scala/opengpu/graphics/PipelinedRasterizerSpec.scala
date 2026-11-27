@@ -19,15 +19,17 @@ class PipelinedRasterizerSpec extends AnyFlatSpec {
       def submit(vertices: Seq[(Int, Int)], cull: Int): Unit = {
         dut.io.draw.ready.expect(true.B); dut.io.cullMode.poke(cull.U)
         Seq(dut.io.draw.bits.v0, dut.io.draw.bits.v1, dut.io.draw.bits.v2)
-          .zip(vertices).foreach { case (v, (x, y)) =>
+          .zip(vertices)
+          .foreach { case (v, (x, y)) =>
             v.x.poke((x * 256).S); v.y.poke((y * 256).S)
           }
         dut.io.draw.valid.poke(true.B); dut.clock.step(); dut.io.draw.valid.poke(false.B)
       }
-      val rejected = Seq((Seq((2, 2), (4, 4), (6, 6)), 0),
-        (triangle, 2), (triangle.reverse, 1))
-      val expected = (for (y <- 0 until 16; x <- 0 until 16
-        if x > 0 && y > 0 && x + y <= 16) yield (x, y)).toSet
+      val rejected = Seq((Seq((2, 2), (4, 4), (6, 6)), 0), (triangle, 2), (triangle.reverse, 1))
+      val expected = (for (
+        y <- 0 until 16; x <- 0 until 16
+        if x > 0 && y > 0 && x + y <= 16
+      ) yield (x, y)).toSet
       for ((vertices, cull) <- rejected) {
         dut.io.quad.ready.poke(false.B); submit(vertices, cull)
         var cycles = 0
@@ -64,7 +66,8 @@ class PipelinedRasterizerSpec extends AnyFlatSpec {
         dut.io.screenW.poke(64.U); dut.io.screenH.poke(64.U)
         val vertices = Seq((-64, -64), (256, -64), (-64, 256))
         Seq(dut.io.draw.bits.v0, dut.io.draw.bits.v1, dut.io.draw.bits.v2)
-          .zip(vertices).foreach { case (port, (x, y)) =>
+          .zip(vertices)
+          .foreach { case (port, (x, y)) =>
             port.x.poke((x * 256).S); port.y.poke((y * 256).S)
           }
         def submit(min: Int, max: Int): Unit = {
@@ -108,9 +111,12 @@ class PipelinedRasterizerSpec extends AnyFlatSpec {
           }
           dut.clock.step(); cycles += 1
         }
-        val expected = (for (ty <- 0 until 64 by 16; tx <- 0 until 64 by 16;
-          y <- (ty max 8) until ((ty + 16) min 56) by 2;
-          x <- (tx max 8) until ((tx + 16) min 56) by 2) yield (x, y))
+        val expected =
+          (for (
+            ty <- 0 until 64 by 16; tx <- 0 until 64 by 16;
+            y <- (ty max 8) until ((ty + 16) min 56) by 2;
+            x <- (tx max 8) until ((tx + 16) min 56) by 2
+          ) yield (x, y))
         assert(seen.toSeq == expected && seen.size == 576)
         dut.io.quad.ready.poke(false.B)
         submit(0, 2)

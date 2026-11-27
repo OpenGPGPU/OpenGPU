@@ -6,11 +6,10 @@ private class LegacyQueuedFragmentTextureRead(slotWidth: Int) extends Bundle {
   val slot = UInt(slotWidth.W)
 }
 
-/** Multiplex independent samplers onto the existing translated texture port.
-  * Responses carry an address rather than a worker ID. Reserve one owner per
-  * distinct outstanding address, delaying duplicates until their earlier
-  * response is consumed. Different addresses may complete out of order.
-  * This port uses the renderer's shared VECTOR_SATP/context contract.
+/** Multiplex independent samplers onto the existing translated texture port. Responses carry an address rather than a
+  * worker ID. Reserve one owner per distinct outstanding address, delaying duplicates until their earlier response is
+  * consumed. Different addresses may complete out of order. This port uses the renderer's shared VECTOR_SATP/context
+  * contract.
   */
 class LegacyFragmentTextureArbiter(numWorkers: Int, maxOutstanding: Int = 16) extends Module {
   require(numWorkers > 0 && maxOutstanding > 0)
@@ -31,13 +30,14 @@ class LegacyFragmentTextureArbiter(numWorkers: Int, maxOutstanding: Int = 16) ex
   private val arbiter = Module(new RRArbiter(new OmMemoryRequest, numWorkers))
   // The queue still holds requests stable while stalled, but a consumed
   // request must not force an empty cycle before the next worker can issue.
-  private val request = Module(new Queue(new LegacyQueuedFragmentTextureRead(slotWidth), 1,
-    pipe = true))
+  private val request = Module(new Queue(new LegacyQueuedFragmentTextureRead(slotWidth), 1, pipe = true))
   for (worker <- 0 until numWorkers) {
     val client = io.clients(worker)
-    val duplicate = (0 until maxOutstanding).map { slot =>
-      valid(slot) && addresses(slot) === client.request.bits.addr
-    }.reduce(_ || _)
+    val duplicate = (0 until maxOutstanding)
+      .map { slot =>
+        valid(slot) && addresses(slot) === client.request.bits.addr
+      }
+      .reduce(_ || _)
     arbiter.io.in(worker).valid := client.request.valid && !duplicate
     arbiter.io.in(worker).bits := client.request.bits
     client.request.ready := arbiter.io.in(worker).ready && !duplicate
@@ -79,7 +79,8 @@ class LegacyFragmentTextureArbiter(numWorkers: Int, maxOutstanding: Int = 16) ex
     io.clients(worker).response.bits := io.memoryResponse.bits
   }
   io.memoryResponse.ready := responding.asUInt.orR && MuxLookup(responseOwner, false.B)(
-    (0 until numWorkers).map(i => i.U -> io.clients(i).response.ready))
+    (0 until numWorkers).map(i => i.U -> io.clients(i).response.ready)
+  )
   for (slot <- 0 until maxOutstanding) {
     when(io.memoryResponse.fire && responding(slot)) { valid(slot) := false.B; sent(slot) := false.B }
   }

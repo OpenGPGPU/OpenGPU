@@ -5,9 +5,8 @@ import chisel3.util._
 import opengpu.config.GpuConfig
 import opengpu.core.backend.{VectorCommitRequest, VectorTextureRequest}
 
-/** Native CUSTOM-1 storage word operations; these are not GLES bytecode.
-  * Parameters capture per-lane store data; load/store use vs1 as binding index
-  * and vs2 as byte offset. The parent must not advertise them before command,
+/** Native CUSTOM-1 storage word operations; these are not GLES bytecode. Parameters capture per-lane store data;
+  * load/store use vs1 as binding index and vs2 as byte offset. The parent must not advertise them before command,
   * descriptor, translation, fault and publication ownership are connected.
   */
 object StorageVectorOpcode {
@@ -22,9 +21,8 @@ class StorageVectorRequest(config: GpuConfig) extends VectorTextureRequest(confi
   val sideEffectMask = UInt(config.lanes.W)
 }
 
-/** Executes lanes through one checked storage request at a time. Successful
-  * prior lanes may have committed stores if a later lane faults; no vector-wide
-  * atomicity is implied. Loads publish their vector result only on success.
+/** Executes lanes through one checked storage request at a time. Successful prior lanes may have committed stores if a
+  * later lane faults; no vector-wide atomicity is implied. Loads publish their vector result only on success.
   */
 class StorageVectorExecuteUnit(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {
@@ -97,8 +95,7 @@ class StorageVectorExecuteUnit(config: GpuConfig = GpuConfig()) extends Module {
     valid.foreach(_ := 0.U)
   }
   when(io.warpStart.valid) {
-    assert(state === State.idle || warp =/= io.warpStart.bits,
-      "storage warp slot reused before instruction drain")
+    assert(state === State.idle || warp =/= io.warpStart.bits, "storage warp slot reused before instruction drain")
     valid(io.warpStart.bits) := 0.U
   }
   when(state =/= State.idle && state =/= State.commit && io.cancel && status === 0.U) {
@@ -115,22 +112,25 @@ class StorageVectorExecuteUnit(config: GpuConfig = GpuConfig()) extends Module {
         val selected = Mux(StorageVectorOpcode.store(d.instruction), execution & q.sideEffectMask, execution)
         mask := selected; remaining := selected
         indices := q.issued.vs1Data; offsets := q.issued.vs2Data; data := q.issued.oldVdData
-        status := Mux(!io.enabled, StorageWordStatus.invalidView.U,
-          Mux(io.cancel, StorageWordStatus.cancelled.U, 0.U))
+        status := Mux(!io.enabled, StorageWordStatus.invalidView.U, Mux(io.cancel, StorageWordStatus.cancelled.U, 0.U))
         faultValid := false.B; faultAddress := 0.U; pageFault := false.B; owned := false.B
         state := State.check
       }
     }
     is(State.check) {
       when(stopped) { state := State.commit }
-        .elsewhen(!StorageVectorOpcode.legal(instruction)) { status := StorageWordStatus.invalidView.U; state := State.commit }
+        .elsewhen(!StorageVectorOpcode.legal(instruction)) {
+          status := StorageWordStatus.invalidView.U; state := State.commit
+        }
         .elsewhen(isParams) {
           for (l <- 0 until config.lanes) { when(mask(l)) { values(warp)(l) := indices(l) } }
           valid(warp) := valid(warp) | mask
           state := State.commit
-        }.elsewhen(isStore && (mask & ~valid(warp)).orR) {
+        }
+        .elsewhen(isStore && (mask & ~valid(warp)).orR) {
           status := StorageWordStatus.invalidView.U; state := State.commit
-        }.otherwise { state := State.next }
+        }
+        .otherwise { state := State.next }
     }
     is(State.next) {
       when(stopped || !remaining.orR) { state := State.commit }

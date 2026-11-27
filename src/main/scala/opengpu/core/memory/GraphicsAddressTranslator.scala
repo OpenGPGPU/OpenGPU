@@ -6,42 +6,36 @@ import opengpu.config.{CachePolicy, GpuConfig}
 
 /** A graphics-client translation stage: a small TLB plus the shared Sv32 walker.
   *
-  * The attached graphics client (texture sampling, and graphics command or
-  * framebuffer traffic when wired through it) issues cache-line requests at
-  * virtual addresses; this block translates them through the same page tables
-  * as the CU MMU and attaches the page's cache policy, so a driver can map a
-  * texture or vertex buffer uncached.  Page-table words are fetched as narrow
-  * uncached reads on `pageWalk`; the caller routes their responses back on
-  * `pageWalkResp` and keeps them clear of client traffic by using the reserved
-  * transaction IDs.
+  * The attached graphics client (texture sampling, and graphics command or framebuffer traffic when wired through it)
+  * issues cache-line requests at virtual addresses; this block translates them through the same page tables as the CU
+  * MMU and attaches the page's cache policy, so a driver can map a texture or vertex buffer uncached. Page-table words
+  * are fetched as narrow uncached reads on `pageWalk`; the caller routes their responses back on `pageWalkResp` and
+  * keeps them clear of client traffic by using the reserved transaction IDs.
   *
-  * TLB entries are ASID-tagged: a global (G) page hits any address space, and a
-  * private page only hits under the ASID that filled it, so a coarse VM switch
-  * needs no flush here and contexts cannot resolve one another's mappings.
-  * `flush` honours the same full/ASID/VPN scope as `VectorTlb`, leaving the
-  * other entries warm across a scoped shootdown.
+  * TLB entries are ASID-tagged: a global (G) page hits any address space, and a private page only hits under the ASID
+  * that filled it, so a coarse VM switch needs no flush here and contexts cannot resolve one another's mappings.
+  * `flush` honours the same full/ASID/VPN scope as `VectorTlb`, leaving the other entries warm across a scoped
+  * shootdown.
   *
-  * Hit and translation-disabled results land in a registered, non-flowing
-  * pending queue of depth `maxOutstanding`.  That keeps `in.ready` free of
-  * `out.ready` (no combo through the shared mem-request arbiter) while still
-  * accepting further TLB hits when the downstream port backs up.  Misses still
-  * serialize through the single page-table walker; a walk result pushes the
-  * same queue once the PTE returns.
+  * Hit and translation-disabled results land in a registered, non-flowing pending queue of depth `maxOutstanding`. That
+  * keeps `in.ready` free of `out.ready` (no combo through the shared mem-request arbiter) while still accepting further
+  * TLB hits when the downstream port backs up. Misses still serialize through the single page-table walker; a walk
+  * result pushes the same queue once the PTE returns.
   */
 class GraphicsAddressTranslator(
-  config: GpuConfig = GpuConfig(),
-  entries: Int = 16,
-  val lineBytes: Int = 64,
-  val maxOutstanding: Int = 8,
-  /** Soft cap on the registered hit/disabled pending queue.  The effective
-    * depth is `min(pendingDepth, maxOutstanding)` so unit tests with a
-    * narrow ID space still elaborate.  Keep this at least `omInflight` so
-    * a deeper output merger does not refill-starve behind translation. */
-  pendingDepth: Int = 16,
-  /** When true, keep the client's requested cache policy instead of the
-    * translated page's policy.  The command port sets an uncached policy for
-    * coherence and must not have it replaced by the page tables. */
-  preserveCachePolicy: Boolean = false
+    config: GpuConfig = GpuConfig(),
+    entries: Int = 16,
+    val lineBytes: Int = 64,
+    val maxOutstanding: Int = 8,
+    /** Soft cap on the registered hit/disabled pending queue. The effective depth is
+      * `min(pendingDepth, maxOutstanding)` so unit tests with a narrow ID space still elaborate. Keep this at least
+      * `omInflight` so a deeper output merger does not refill-starve behind translation.
+      */
+    pendingDepth: Int = 16,
+    /** When true, keep the client's requested cache policy instead of the translated page's policy. The command port
+      * sets an uncached policy for coherence and must not have it replaced by the page tables.
+      */
+    preserveCachePolicy: Boolean = false
 ) extends Module {
   require(entries > 0 && isPow2(entries))
   require(isPow2(lineBytes))
@@ -52,31 +46,33 @@ class GraphicsAddressTranslator(
   private val entryWidth = math.max(1, log2Ceil(entries))
 
   val io = IO(new Bundle {
-    val in = Flipped(Decoupled(
-      new ComputeMemoryRequest(config, lineBytes, maxOutstanding)))
-    val out = Decoupled(
-      new ComputeMemoryRequest(config, lineBytes, maxOutstanding))
+    val in = Flipped(Decoupled(new ComputeMemoryRequest(config, lineBytes, maxOutstanding)))
+    val out = Decoupled(new ComputeMemoryRequest(config, lineBytes, maxOutstanding))
+
     /** Translation failures complete locally; never issue a physical access. */
-    val faultResponse = Decoupled(
-      new ComputeMemoryResponse(lineBytes, maxOutstanding))
+    val faultResponse = Decoupled(new ComputeMemoryResponse(lineBytes, maxOutstanding))
+
     /** Valid with faultResponse; false denotes a page-table memory access fault. */
     val faultPage = Output(Bool())
-    /** Narrow uncached PTE read; the caller returns the word on `pageWalkResp`
-      * and must reserve the transaction IDs used here. */
-    val pageWalk = Decoupled(
-      new ComputeMemoryRequest(config, lineBytes, maxOutstanding))
-    val pageWalkResp = Flipped(Decoupled(
-      new ComputeMemoryResponse(lineBytes, maxOutstanding)))
+
+    /** Narrow uncached PTE read; the caller returns the word on `pageWalkResp` and must reserve the transaction IDs
+      * used here.
+      */
+    val pageWalk = Decoupled(new ComputeMemoryRequest(config, lineBytes, maxOutstanding))
+    val pageWalkResp = Flipped(Decoupled(new ComputeMemoryResponse(lineBytes, maxOutstanding)))
+
     /** Sv32 satp: bit 31 enables translation, bits 19:0 are the root PPN. */
     val satp = Input(UInt(32.W))
-    /** Scoped shootdown: clear a full range, one ASID or one VPN. Both scope
-      * bits clear is a full flush, matching the CU TLB contract. */
+
+    /** Scoped shootdown: clear a full range, one ASID or one VPN. Both scope bits clear is a full flush, matching the
+      * CU TLB contract.
+      */
     val flush = Flipped(Valid(new VectorTlbFlush(config)))
     val miss = Output(Bool())
     val walkActive = Output(Bool())
+
     /** Addresses presented to `pageWalk`/`pageWalkResp`. */
-    val pageWalkTransactionId = Input(
-      UInt(math.max(1, log2Ceil(maxOutstanding)).W))
+    val pageWalkTransactionId = Input(UInt(math.max(1, log2Ceil(maxOutstanding)).W))
   })
 
   private object State extends ChiselEnum {
@@ -84,9 +80,14 @@ class GraphicsAddressTranslator(
   }
 
   private val walker = Module(new Sv32PageTableWalker(config))
-  private val pending = Module(new Queue(
-    new ComputeMemoryRequest(config, lineBytes, maxOutstanding),
-    entries = queueDepth, pipe = false, flow = false))
+  private val pending = Module(
+    new Queue(
+      new ComputeMemoryRequest(config, lineBytes, maxOutstanding),
+      entries = queueDepth,
+      pipe = false,
+      flow = false
+    )
+  )
   private val valid = RegInit(VecInit(Seq.fill(entries)(false.B)))
   private val vpn = Reg(Vec(entries, UInt(vpnWidth.W)))
   private val ppn = Reg(Vec(entries, UInt(vpnWidth.W)))
@@ -99,8 +100,7 @@ class GraphicsAddressTranslator(
   private val state = RegInit(State.idle)
   private val faultPage = RegInit(false.B)
   io.faultPage := faultPage
-  private val request = Reg(new ComputeMemoryRequest(config, lineBytes,
-                                                     maxOutstanding))
+  private val request = Reg(new ComputeMemoryRequest(config, lineBytes, maxOutstanding))
 
   // Tag each entry with the ASID under which it was filled (Sv32 satp bits
   // [30:22]).  An entry filled from a global (G) PTE hits any address space;
@@ -109,9 +109,9 @@ class GraphicsAddressTranslator(
   private val currentAsid = io.satp(30, 22)
   private val translationEnabled = io.satp(31)
 
-  private def hitVec(probeVpn: UInt): Vec[Bool] = VecInit((0 until entries).map {
-    entry => valid(entry) && (global(entry) || asid(entry) === currentAsid) &&
-      vpn(entry) === probeVpn
+  private def hitVec(probeVpn: UInt): Vec[Bool] = VecInit((0 until entries).map { entry =>
+    valid(entry) && (global(entry) || asid(entry) === currentAsid) &&
+    vpn(entry) === probeVpn
   })
 
   private val acceptVpn = io.in.bits.address(config.xLen - 1, 12)
@@ -119,8 +119,8 @@ class GraphicsAddressTranslator(
   private val acceptHit = acceptHitByEntry.asUInt.orR
   private val acceptHitPpn = Mux1H(acceptHitByEntry, ppn)
   private val acceptHitPolicy = Mux1H(acceptHitByEntry, policy)
-  private val acceptHitPermission = Mux(io.in.bits.isWrite,
-    Mux1H(acceptHitByEntry, writable), Mux1H(acceptHitByEntry, readable))
+  private val acceptHitPermission =
+    Mux(io.in.bits.isWrite, Mux1H(acceptHitByEntry, writable), Mux1H(acceptHitByEntry, readable))
 
   private val requestVpn = request.address(config.xLen - 1, 12)
 
@@ -132,9 +132,9 @@ class GraphicsAddressTranslator(
   io.in.ready := state === State.idle && pending.io.enq.ready
 
   private def fillTranslated(
-    src: ComputeMemoryRequest,
-    physical: UInt,
-    cachePolicy: UInt
+      src: ComputeMemoryRequest,
+      physical: UInt,
+      cachePolicy: UInt
   ): ComputeMemoryRequest = {
     val next = Wire(new ComputeMemoryRequest(config, lineBytes, maxOutstanding))
     next := src
@@ -179,11 +179,9 @@ class GraphicsAddressTranslator(
   io.faultResponse.bits.transactionId := request.transactionId
 
   private val acceptPush = Wire(Bool())
-  private val acceptBits = Wire(new ComputeMemoryRequest(config, lineBytes,
-                                                         maxOutstanding))
+  private val acceptBits = Wire(new ComputeMemoryRequest(config, lineBytes, maxOutstanding))
   private val walkPush = Wire(Bool())
-  private val walkBits = Wire(new ComputeMemoryRequest(config, lineBytes,
-                                                       maxOutstanding))
+  private val walkBits = Wire(new ComputeMemoryRequest(config, lineBytes, maxOutstanding))
   acceptPush := false.B
   acceptBits := 0.U.asTypeOf(acceptBits)
   walkPush := false.B
@@ -203,8 +201,7 @@ class GraphicsAddressTranslator(
     }.elsewhen(acceptHit) {
       when(acceptHitPermission) {
         acceptPush := true.B
-        acceptBits := fillTranslated(io.in.bits,
-          Cat(acceptHitPpn, io.in.bits.address(11, 0)), hitPolicyOut)
+        acceptBits := fillTranslated(io.in.bits, Cat(acceptHitPpn, io.in.bits.address(11, 0)), hitPolicyOut)
       }.otherwise {
         faultPage := true.B
         state := State.fault
@@ -231,15 +228,16 @@ class GraphicsAddressTranslator(
       writable(replacement) := walker.io.response.bits.writable
       global(replacement) := walker.io.response.bits.global
       asid(replacement) := currentAsid
-      replacement := Mux(replacement === (entries - 1).U, 0.U,
-                         replacement + 1.U)
+      replacement := Mux(replacement === (entries - 1).U, 0.U, replacement + 1.U)
       val walkPolicy =
         if (preserveCachePolicy) request.cachePolicy
         else walker.io.response.bits.cachePolicy
       walkPush := true.B
-      walkBits := fillTranslated(request,
+      walkBits := fillTranslated(
+        request,
         Cat(walker.io.response.bits.physicalPageNumber, request.address(11, 0)),
-        walkPolicy)
+        walkPolicy
+      )
       state := State.idle
     }
   }
@@ -250,8 +248,10 @@ class GraphicsAddressTranslator(
   // globals warm; a VPN-scoped flush drops only the one mapping. Both scope
   // bits clear is a full flush.
   when(io.flush.valid) {
-    assert(state === State.idle && !pending.io.deq.valid,
-      "graphics TLB flush requires an idle port and empty pending queue")
+    assert(
+      state === State.idle && !pending.io.deq.valid,
+      "graphics TLB flush requires an idle port and empty pending queue"
+    )
     for (entry <- 0 until entries) {
       val vpnMatches =
         !io.flush.bits.virtualPageNumberValid ||

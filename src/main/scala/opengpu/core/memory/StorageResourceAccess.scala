@@ -19,6 +19,7 @@ class StorageResourceResult extends Bundle {
   val tag = UInt(32.W)
   val data = UInt(32.W)
   val status = UInt(3.W)
+
   /** 1 for descriptor, 2 for checked word access. */
   val source = UInt(2.W)
   val faultAddressValid = Bool()
@@ -26,10 +27,9 @@ class StorageResourceResult extends Bundle {
   val pageFault = Bool()
 }
 
-/** Resolves one immutable GPU-backed binding before issuing a checked word
-  * operation. Ownership remains with the selected child through every held
-  * offer and accepted response. The command owner must pin the table, views
-  * and translation context through public result consumption.
+/** Resolves one immutable GPU-backed binding before issuing a checked word operation. Ownership remains with the
+  * selected child through every held offer and accepted response. The command owner must pin the table, views and
+  * translation context through public result consumption.
   */
 class StorageResourceAccess(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {
@@ -40,7 +40,9 @@ class StorageResourceAccess(config: GpuConfig = GpuConfig()) extends Module {
     val cancel = Input(Bool())
     val busy = Output(Bool())
   })
-  private object State extends ChiselEnum { val idle, offerDescriptor, waitDescriptor, offerWord, waitWord, complete = Value }
+  private object State extends ChiselEnum {
+    val idle, offerDescriptor, waitDescriptor, offerWord, waitWord, complete = Value
+  }
   private val state = RegInit(State.idle)
   private val request = Reg(new StorageResourceRequest)
   private val view = Reg(new StorageWordView)

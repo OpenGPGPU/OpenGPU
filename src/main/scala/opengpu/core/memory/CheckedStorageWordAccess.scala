@@ -4,8 +4,8 @@ import chisel3._
 import chisel3.util._
 import opengpu.config.{CachePolicy, GpuConfig}
 
-/** A task-owned view; its publisher must keep the descriptor and backing
-  * allocation immutable until the task and all accepted memory traffic drain.
+/** A task-owned view; its publisher must keep the descriptor and backing allocation immutable until the task and all
+  * accepted memory traffic drain.
   */
 class StorageWordView extends Bundle {
   val bound = Bool()
@@ -42,11 +42,10 @@ object StorageWordStatus {
   val cancelled = 4
 }
 
-/** One checked 32-bit load or store, backed by an acknowledged 64-byte line
-  * request. A held memory offer is never withdrawn, even on cancellation.
-  * Accepted traffic drains before a stable public result can be retired.
-  * Descriptor publication, translation and CU instruction routing are owned
-  * by the integrating system; this component does not implement them.
+/** One checked 32-bit load or store, backed by an acknowledged 64-byte line request. A held memory offer is never
+  * withdrawn, even on cancellation. Accepted traffic drains before a stable public result can be retired. Descriptor
+  * publication, translation and CU instruction routing are owned by the integrating system; this component does not
+  * implement them.
   */
 class CheckedStorageWordAccess(config: GpuConfig = GpuConfig()) extends Module {
   require(config.xLen == 32)
@@ -129,7 +128,8 @@ class CheckedStorageWordAccess(config: GpuConfig = GpuConfig()) extends Module {
             result.status := StorageWordStatus.memoryFault.U
             result.faultAddressValid := true.B
             result.faultAddress := address(31, 0)
-          }.otherwise {
+          }
+          .otherwise {
             result.status := StorageWordStatus.ok.U
             when(!request.write) { result.data := (io.memoryResponse.bits.readData >> shift)(31, 0) }
           }

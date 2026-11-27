@@ -9,9 +9,16 @@ import scala.collection.mutable
 class CoalescedTranslatedWordClientSpec extends AnyFlatSpec {
   for (scenario <- Seq("write bus fault", "invalid PTE", "page-table bus fault", "translated write")) {
     it should s"acknowledge every combined word and recover after $scenario" in {
-      simulate(new TranslatedWordClient(GpuConfig(lanes = 4, warps = 2),
-        wordTransactions = 16, outstanding = 32, uncached = true,
-        preserveCachePolicy = true, coalesceWrites = true)) { dut =>
+      simulate(
+        new TranslatedWordClient(
+          GpuConfig(lanes = 4, warps = 2),
+          wordTransactions = 16,
+          outstanding = 32,
+          uncached = true,
+          preserveCachePolicy = true,
+          coalesceWrites = true
+        )
+      ) { dut =>
         dut.io.in.valid.poke(false.B)
         dut.io.out.ready.poke(true.B)
         dut.io.memReq.ready.poke(false.B)

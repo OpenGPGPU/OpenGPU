@@ -19,7 +19,8 @@ class TessellationIsolineEvaluationSpec extends AnyFlatSpec {
         d.io.in.bits.vertices(1).u.poke((1 << 24).U); d.io.in.bits.vertices(1).v.poke(0.U)
         d.io.in.valid.poke(true.B); d.io.in.ready.expect(true.B); d.clock.step(); d.io.in.valid.poke(false.B)
       }
-      def floatBits(q: Int): BigInt = BigInt(java.lang.Float.floatToRawIntBits(q.toFloat / (1 << 24).toFloat).toLong & 0xffffffffL)
+      def floatBits(q: Int): BigInt =
+        BigInt(java.lang.Float.floatToRawIntBits(q.toFloat / (1 << 24).toFloat).toLong & 0xffffffffL)
       def request(vertex: Int, u: Int, v: Int): Unit = {
         d.io.request.valid.expect(true.B); d.io.request.bits.taskId.expect(91.U); d.io.request.bits.sequence.expect(7.U)
         d.io.request.bits.vertex.expect(vertex.U); d.io.request.bits.tessCoord(0).expect(floatBits(u).U)
@@ -32,7 +33,8 @@ class TessellationIsolineEvaluationSpec extends AnyFlatSpec {
         d.io.response.bits.taskId.poke((if (badTag) 92 else 91).U); d.io.response.bits.sequence.poke(7.U)
         d.io.response.bits.vertex.poke(vertex.U); d.io.response.bits.failed.poke(failed.B)
         for (i <- 0 until 64) d.io.response.bits.components(i).poke((vertex * 1000 + i).U)
-        d.io.response.valid.poke(true.B); d.io.response.ready.expect(true.B); d.clock.step(); d.io.response.valid.poke(false.B)
+        d.io.response.valid.poke(true.B); d.io.response.ready.expect(true.B); d.clock.step();
+        d.io.response.valid.poke(false.B)
       }
       begin(0x555555, 0x800000, false); request(0, 0x555555, 0x800000); response(0)
       request(1, 1 << 24, 0); response(1)

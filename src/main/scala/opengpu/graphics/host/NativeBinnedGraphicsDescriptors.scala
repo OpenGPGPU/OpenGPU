@@ -4,69 +4,98 @@ import chisel3._
 import chisel3.util._
 
 class NativeBinnedGraphicsHeader extends Bundle {
-  val attributes=UInt(32.W);val bindings=UInt(32.W);val varyings=UInt(32.W)
-  val colors=UInt(32.W);val engineViews=UInt(32.W)
+  val attributes = UInt(32.W); val bindings = UInt(32.W); val varyings = UInt(32.W)
+  val colors = UInt(32.W); val engineViews = UInt(32.W)
 }
 class NativeBinnedGraphicsJob extends Bundle {
-  val identity=new GraphicsWorkIdentity
-  val frameBase=UInt(32.W);val frameLimit=UInt(33.W)
-  val drawBase=UInt(32.W);val drawLimit=UInt(33.W);val drawCount=UInt(32.W);val drawStride=UInt(32.W)
+  val identity = new GraphicsWorkIdentity
+  val frameBase = UInt(32.W); val frameLimit = UInt(33.W)
+  val drawBase = UInt(32.W); val drawLimit = UInt(33.W); val drawCount = UInt(32.W); val drawStride = UInt(32.W)
 }
 class NativeBinnedGraphicsJobRecord extends Bundle {
-  val header=new NativeBinnedGraphicsHeader;val job=new NativeBinnedGraphicsJob
+  val header = new NativeBinnedGraphicsHeader; val job = new NativeBinnedGraphicsJob
 }
 class NativeBinnedGraphicsFrameRecord extends Bundle {
-  val header=new NativeBinnedGraphicsHeader;val frame=new TypedVertexBinImageDescriptor
+  val header = new NativeBinnedGraphicsHeader; val frame = new TypedVertexBinImageDescriptor
 }
 class NativeBinnedGraphicsDrawRecord extends Bundle {
-  val header=new NativeBinnedGraphicsHeader;val draw=new VertexBinDraw(VertexShaderStageConfig())
+  val header = new NativeBinnedGraphicsHeader; val draw = new VertexBinDraw(VertexShaderStageConfig())
 }
 
-/** GNJ1/GNF1/GND1 are separate from both legacy bin jobs (GBJ1) and
-  * the existing GTJ1/GTI1/GTD1 ABI.
-  * Fields use explicit little-endian 32-bit words, fixed 16-slot capacities,
-  * canonical padding and line-contained multiword values. No Bundle packing
-  * or reduced runtime capacity changes the published word offsets.
+/** GNJ1/GNF1/GND1 are separate from both legacy bin jobs (GBJ1) and the existing GTJ1/GTI1/GTD1 ABI. Fields use
+  * explicit little-endian 32-bit words, fixed 16-slot capacities, canonical padding and line-contained multiword
+  * values. No Bundle packing or reduced runtime capacity changes the published word offsets.
   */
 object NativeBinnedGraphicsLayout {
-  val version=1
-  val jobMagic=BigInt("474e4a01",16);val frameMagic=BigInt("474e4601",16);val drawMagic=BigInt("474e4401",16)
-  val jobWords=128;val frameWords=512;val drawWords=512
-  val jobBytes=jobWords*4;val frameBytes=frameWords*4;val drawBytes=drawWords*4
-  private def headerFields(h: NativeBinnedGraphicsHeader): Seq[NativeTypedGraphicsLayout.Field]=
-    Seq("attributes"->h.attributes,"bindings"->h.bindings,"varyings"->h.varyings,"colors"->h.colors,"engineViews"->h.engineViews)
-      .zipWithIndex.map{case((name,value),i)=>NativeTypedGraphicsLayout.Field("header."+name,3+i,value)}
-  private def payloadFields(prefix: String,d: Data): Seq[NativeTypedGraphicsLayout.Field]={
-    var word=16
-    val policyWords=Map("policyVersion"->480,"wrapU"->481,"wrapV"->482,"signedCoordinates"->483)
-    val (uniforms,withoutUniforms)=WindowPrimitiveRecordLayout.leaves(d).partition{case(name,_)=>name.contains(".uniforms.")}
-    val (resources,original)=withoutUniforms.partition{case(name,_)=>name.contains(".resources.")}
-    val (policy,remaining)=original.partition{case(name,_)=>
-      name.contains(".sampler.") && policyWords.contains(name.split('.').last)}
-    require(policy.isEmpty || policy.size==4,"native binned sampler extensions need explicit non-overlapping slots")
-    val (indirect,withoutIndirect)=remaining.partition{case(name,_)=>name.contains(".indirect.")}
-    val indirectWords=Map("mode"->499,"view.base"->500,"view.limit"->501,"view.allocationBase"->503,"view.allocationLimit"->504)
-    val (reuse,withoutReuse)=withoutIndirect.partition{case(name,_)=>name.endsWith(".reuseOutputs")}
-    val (polygon,legacy)=withoutReuse.partition{case(name,_)=>name.startsWith("raster.polygonOffset")}
-    val fields=(legacy++polygon).map{case(name,value)=>
-      val count=(value.getWidth+31)/32
-      if(word%16+count>16)word=(word+15)/16*16
-      val f=NativeTypedGraphicsLayout.Field(prefix+name,word,value);word+=count;f}
-    require(policy.isEmpty || word<=480,"legacy fields must not overlap sampler extension words")
-    fields++indirect.map{case(name,value)=>NativeTypedGraphicsLayout.Field(prefix+name,indirectWords(name.split("\\.indirect\\.").last),value)}++
-      reuse.map{case(name,value)=>NativeTypedGraphicsLayout.Field(prefix+name,498,value)}++policy.map{case(name,value)=>NativeTypedGraphicsLayout.Field(prefix+name,policyWords(name.split('.').last),value)}++
-      resources.map{case(name,value)=>NativeTypedGraphicsLayout.Field(prefix+name,if(name.endsWith(".version"))496 else 497,value)}++
-      uniforms.map{case(name,value)=>NativeTypedGraphicsLayout.Field(prefix+name,if(name.endsWith(".version"))506 else 507,value)}
+  val version = 1
+  val jobMagic = BigInt("474e4a01", 16); val frameMagic = BigInt("474e4601", 16); val drawMagic = BigInt("474e4401", 16)
+  val jobWords = 128; val frameWords = 512; val drawWords = 512
+  val jobBytes = jobWords * 4; val frameBytes = frameWords * 4; val drawBytes = drawWords * 4
+  private def headerFields(h: NativeBinnedGraphicsHeader): Seq[NativeTypedGraphicsLayout.Field] =
+    Seq(
+      "attributes" -> h.attributes,
+      "bindings" -> h.bindings,
+      "varyings" -> h.varyings,
+      "colors" -> h.colors,
+      "engineViews" -> h.engineViews
+    ).zipWithIndex.map { case ((name, value), i) => NativeTypedGraphicsLayout.Field("header." + name, 3 + i, value) }
+  private def payloadFields(prefix: String, d: Data): Seq[NativeTypedGraphicsLayout.Field] = {
+    var word = 16
+    val policyWords = Map("policyVersion" -> 480, "wrapU" -> 481, "wrapV" -> 482, "signedCoordinates" -> 483)
+    val (uniforms, withoutUniforms) =
+      WindowPrimitiveRecordLayout.leaves(d).partition { case (name, _) => name.contains(".uniforms.") }
+    val (resources, original) = withoutUniforms.partition { case (name, _) => name.contains(".resources.") }
+    val (policy, remaining) = original.partition { case (name, _) =>
+      name.contains(".sampler.") && policyWords.contains(name.split('.').last)
+    }
+    require(policy.isEmpty || policy.size == 4, "native binned sampler extensions need explicit non-overlapping slots")
+    val (indirect, withoutIndirect) = remaining.partition { case (name, _) => name.contains(".indirect.") }
+    val indirectWords = Map(
+      "mode" -> 499,
+      "view.base" -> 500,
+      "view.limit" -> 501,
+      "view.allocationBase" -> 503,
+      "view.allocationLimit" -> 504
+    )
+    val (reuse, withoutReuse) = withoutIndirect.partition { case (name, _) => name.endsWith(".reuseOutputs") }
+    val (polygon, legacy) = withoutReuse.partition { case (name, _) => name.startsWith("raster.polygonOffset") }
+    val fields = (legacy ++ polygon).map { case (name, value) =>
+      val count = (value.getWidth + 31) / 32
+      if (word % 16 + count > 16) word = (word + 15) / 16 * 16
+      val f = NativeTypedGraphicsLayout.Field(prefix + name, word, value); word += count; f
+    }
+    require(policy.isEmpty || word <= 480, "legacy fields must not overlap sampler extension words")
+    fields ++ indirect.map { case (name, value) =>
+      NativeTypedGraphicsLayout.Field(prefix + name, indirectWords(name.split("\\.indirect\\.").last), value)
+    } ++
+      reuse.map { case (name, value) => NativeTypedGraphicsLayout.Field(prefix + name, 498, value) } ++ policy.map {
+        case (name, value) => NativeTypedGraphicsLayout.Field(prefix + name, policyWords(name.split('.').last), value)
+      } ++
+      resources.map { case (name, value) =>
+        NativeTypedGraphicsLayout.Field(prefix + name, if (name.endsWith(".version")) 496 else 497, value)
+      } ++
+      uniforms.map { case (name, value) =>
+        NativeTypedGraphicsLayout.Field(prefix + name, if (name.endsWith(".version")) 506 else 507, value)
+      }
   }
-  def jobFields(d: NativeBinnedGraphicsJobRecord): Seq[NativeTypedGraphicsLayout.Field]=headerFields(d.header)++payloadFields("job.",d.job)
-  def frameFields(d: NativeBinnedGraphicsFrameRecord): Seq[NativeTypedGraphicsLayout.Field]=headerFields(d.header)++payloadFields("frame.",d.frame)
-  def drawFields(d: NativeBinnedGraphicsDrawRecord): Seq[NativeTypedGraphicsLayout.Field]=headerFields(d.header)++payloadFields("draw.",d.draw)
-  def headerLegal(h: NativeBinnedGraphicsHeader): Bool=
-    h.attributes===16.U && h.bindings===16.U && h.varyings===16.U && h.colors===4.U && h.engineViews===4.U
-  def fit(d: VertexBinDraw,p: VertexShaderStageConfig): Bool={
-    val v=d.vertex.geometry.vertex;val i=v.input
-    val active=i.attributes.zipWithIndex.map{case(a,n)=> !a.enabled || (n<p.input.attributes).B && a.bindingIndex<p.input.bindings.U}.reduce(_ && _)
-    IndirectDrawControl.legal(d.vertex.geometry.indirect,i.indexFormat) && ShaderTextureResources.legal(v.resources) && ShaderUniformResources.legal(v.uniforms) && VertexShaderSampler.legal(v.sampler) && (!v.reuseOutputs || (p.postTransformEntries>0).B) && active && v.attributeSlots<=p.input.attributes.U && v.varyingSlots<=p.varyings.U &&
-      !(v.varyingMask>>(v.varyingSlots<<2)).orR && !(d.vertex.geometry.flatMask>>(v.varyingSlots<<2)).orR
+  def jobFields(d: NativeBinnedGraphicsJobRecord): Seq[NativeTypedGraphicsLayout.Field] =
+    headerFields(d.header) ++ payloadFields("job.", d.job)
+  def frameFields(d: NativeBinnedGraphicsFrameRecord): Seq[NativeTypedGraphicsLayout.Field] =
+    headerFields(d.header) ++ payloadFields("frame.", d.frame)
+  def drawFields(d: NativeBinnedGraphicsDrawRecord): Seq[NativeTypedGraphicsLayout.Field] =
+    headerFields(d.header) ++ payloadFields("draw.", d.draw)
+  def headerLegal(h: NativeBinnedGraphicsHeader): Bool =
+    h.attributes === 16.U && h.bindings === 16.U && h.varyings === 16.U && h.colors === 4.U && h.engineViews === 4.U
+  def fit(d: VertexBinDraw, p: VertexShaderStageConfig): Bool = {
+    val v = d.vertex.geometry.vertex; val i = v.input
+    val active = i.attributes.zipWithIndex
+      .map { case (a, n) => !a.enabled || (n < p.input.attributes).B && a.bindingIndex < p.input.bindings.U }
+      .reduce(_ && _)
+    IndirectDrawControl.legal(d.vertex.geometry.indirect, i.indexFormat) && ShaderTextureResources.legal(
+      v.resources
+    ) && ShaderUniformResources.legal(v.uniforms) && VertexShaderSampler.legal(
+      v.sampler
+    ) && (!v.reuseOutputs || (p.postTransformEntries > 0).B) && active && v.attributeSlots <= p.input.attributes.U && v.varyingSlots <= p.varyings.U &&
+    !(v.varyingMask >> (v.varyingSlots << 2)).orR && !(d.vertex.geometry.flatMask >> (v.varyingSlots << 2)).orR
   }
 }

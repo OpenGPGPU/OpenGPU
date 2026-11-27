@@ -6,14 +6,12 @@ import opengpu.config.GpuConfig
 
 /** Serial single-CU grid dispatcher.
   *
-  * It keeps at most one workgroup outstanding. This deliberately simple
-  * contract makes completion accounting exact and is the base for a future
-  * multi-CU dispatcher with tags.
+  * It keeps at most one workgroup outstanding. This deliberately simple contract makes completion accounting exact and
+  * is the base for a future multi-CU dispatcher with tags.
   *
-  * `atLast*` flags are maintained alongside `groupId` so the completion
-  * advance path is a mux on registered one-bit lasts, not a 32-bit
-  * `groupId === gridSize - 1` compare (resolveaddr binding cone was
-  * `command_gridSize_1` → `workgroup_bits_groupId_2`).
+  * `atLast*` flags are maintained alongside `groupId` so the completion advance path is a mux on registered one-bit
+  * lasts, not a 32-bit `groupId === gridSize - 1` compare (resolveaddr binding cone was `command_gridSize_1` →
+  * `workgroup_bits_groupId_2`).
   */
 class JobDispatcher(config: GpuConfig = GpuConfig(), gridSlices: Boolean = false) extends Module {
   val io = IO(new Bundle {
@@ -50,7 +48,9 @@ class JobDispatcher(config: GpuConfig = GpuConfig(), gridSlices: Boolean = false
 
   private val lastGroup = singleGroup || (atLastX && atLastY && atLastZ)
   private val incomingSingle = io.gridSlice.map(_.singleGroup).getOrElse(false.B)
-  private val sliceInRange = io.gridSlice.map(s => (0 until 3).map(i => s.groupId(i) < io.launch.bits.gridSize(i)).reduce(_ && _)).getOrElse(true.B)
+  private val sliceInRange = io.gridSlice
+    .map(s => (0 until 3).map(i => s.groupId(i) < io.launch.bits.gridSize(i)).reduce(_ && _))
+    .getOrElse(true.B)
   private val validLaunch = nonEmptyGrid && (!incomingSingle || sliceInRange)
 
   when(io.launch.fire) {

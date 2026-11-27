@@ -15,10 +15,9 @@ private class VectorDivideMetadata(config: GpuConfig) extends Bundle {
 
 /** Lane-parallel RVV integer divide/remainder for the fixed SEW=32 profile.
   *
-  * Implements vdivu/vdiv/vremu/vrem in vv and vx forms. All lanes share one
-  * 32-cycle radix-2 iteration plus a finalize cycle for sign correction,
-  * mirroring the scalar DivideExecuteStage. Keeping negate/select off the
-  * iteration path avoids stacking a second CPA onto the compare/subtract.
+  * Implements vdivu/vdiv/vremu/vrem in vv and vx forms. All lanes share one 32-cycle radix-2 iteration plus a finalize
+  * cycle for sign correction, mirroring the scalar DivideExecuteStage. Keeping negate/select off the iteration path
+  * avoids stacking a second CPA onto the compare/subtract.
   */
 class VectorDivideAlu(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {

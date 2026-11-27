@@ -6,478 +6,663 @@ import org.scalatest.flatspec.AnyFlatSpec
 import scala.util.Random
 
 private class ClipFloatCodecHarness extends Module {
-  val io=IO(new Bundle {
-    val word=Input(UInt(32.W));val value=Output(new ClipFloat)
-    val packed=Output(new ClipFloatPacked);val legal=Output(Bool())
+  val io = IO(new Bundle {
+    val word = Input(UInt(32.W)); val value = Output(new ClipFloat)
+    val packed = Output(new ClipFloatPacked); val legal = Output(Bool())
   })
-  io.value:=ClipFloat.fromFp32(io.word);io.packed:=ClipFloat.toFp32(io.value);io.legal:=ClipFloat.legal(io.value)
+  io.value := ClipFloat.fromFp32(io.word); io.packed := ClipFloat.toFp32(io.value);
+  io.legal := ClipFloat.legal(io.value)
 }
 
 class ClipFloatArithmeticSpec extends AnyFlatSpec {
-  private case class E(sign: Boolean=false,exponent: Int=0,sig: BigInt=0,special: Int=0)
-  private def decode(bits: BigInt): E={
-    val sign=bits.testBit(31);val exponent=((bits>>23)&255).toInt;val frac=bits&0x7fffff
-    if(exponent==255)E(sign,0,frac,if(frac==0)1 else 2)
-    else if(exponent==0) {
-      if(frac==0)E(sign)else {val shift=24-frac.bitLength;E(sign,-126-shift,frac<<shift)}
-    }else E(sign,exponent-127,frac|(BigInt(1)<<23))
+  private case class E(sign: Boolean = false, exponent: Int = 0, sig: BigInt = 0, special: Int = 0)
+  private def decode(bits: BigInt): E = {
+    val sign = bits.testBit(31); val exponent = ((bits >> 23) & 255).toInt; val frac = bits & 0x7fffff
+    if (exponent == 255) E(sign, 0, frac, if (frac == 0) 1 else 2)
+    else if (exponent == 0) {
+      if (frac == 0) E(sign) else { val shift = 24 - frac.bitLength; E(sign, -126 - shift, frac << shift) }
+    } else E(sign, exponent - 127, frac | (BigInt(1) << 23))
   }
-  private def rounded(n: BigInt,d: BigInt): (BigInt,Boolean)={
-    val (q,r)=n /% d;val up=r*2>d || (r*2==d && q.testBit(0))
-    (q+(if(up)1 else 0),r!=0)
+  private def rounded(n: BigInt, d: BigInt): (BigInt, Boolean) = {
+    val (q, r) = n /% d; val up = r * 2 > d || (r * 2 == d && q.testBit(0))
+    (q + (if (up) 1 else 0), r != 0)
   }
-  private def ratio(v: E): (BigInt,BigInt)={
-    val exponent=v.exponent-23;val sign=if(v.sign)-1 else 1
-    if(exponent>=0)((v.sig<<exponent)*sign,BigInt(1))else(v.sig*sign,BigInt(1)<<(-exponent))
+  private def ratio(v: E): (BigInt, BigInt) = {
+    val exponent = v.exponent - 23; val sign = if (v.sign) -1 else 1
+    if (exponent >= 0) ((v.sig << exponent) * sign, BigInt(1)) else (v.sig * sign, BigInt(1) << (-exponent))
   }
-  private def normalize(numerator: BigInt,denominator: BigInt,negativeZero: Boolean=false,towardZero: Boolean=false): (E,Int)={
-    if(numerator==0)return(E(negativeZero),0)
-    val negative=numerator.signum!=denominator.signum;val n=numerator.abs;val d=denominator.abs
-    var exponent=n.bitLength-d.bitLength
-    def atLeastPower(e: Int): Boolean=if(e>=0)n>=(d<<e)else(n<<(-e))>=d
-    if(!atLeastPower(exponent))exponent-=1
-    val scale=23-exponent
-    val scaledN=if(scale>=0)n<<scale else n;val scaledD=if(scale>=0)d else d<<(-scale)
-    val (initial,inexact)=if(towardZero)(scaledN/scaledD,scaledN%scaledD!=0)else rounded(scaledN,scaledD)
-    val carry=initial.bitLength>24
-    (E(negative,exponent+(if(carry)1 else 0),if(carry)initial>>1 else initial),if(inexact)1 else 0)
+  private def normalize(
+      numerator: BigInt,
+      denominator: BigInt,
+      negativeZero: Boolean = false,
+      towardZero: Boolean = false
+  ): (E, Int) = {
+    if (numerator == 0) return (E(negativeZero), 0)
+    val negative = numerator.signum != denominator.signum; val n = numerator.abs; val d = denominator.abs
+    var exponent = n.bitLength - d.bitLength
+    def atLeastPower(e: Int): Boolean = if (e >= 0) n >= (d << e) else (n << (-e)) >= d
+    if (!atLeastPower(exponent)) exponent -= 1
+    val scale = 23 - exponent
+    val scaledN = if (scale >= 0) n << scale else n; val scaledD = if (scale >= 0) d else d << (-scale)
+    val (initial, inexact) = if (towardZero) (scaledN / scaledD, scaledN % scaledD != 0) else rounded(scaledN, scaledD)
+    val carry = initial.bitLength > 24
+    (E(negative, exponent + (if (carry) 1 else 0), if (carry) initial >> 1 else initial), if (inexact) 1 else 0)
   }
-  private def reference(a: E,b: E,operation: Int): (E,Int)={
-    require(a.special==0 && b.special==0)
-    val (an,ad)=ratio(a);val (bn,bd)=ratio(b)
+  private def reference(a: E, b: E, operation: Int): (E, Int) = {
+    require(a.special == 0 && b.special == 0)
+    val (an, ad) = ratio(a); val (bn, bd) = ratio(b)
     operation match {
-      case 0=>normalize(an*bd+bn*ad,ad*bd,a.sig==0 && b.sig==0 && a.sign && b.sign)
-      case 1=>normalize(an*bd-bn*ad,ad*bd,a.sig==0 && b.sig==0 && a.sign && !b.sign)
-      case 2=>normalize(an*bn,ad*bd,a.sign^b.sign)
-      case 3=>normalize(an*bd,ad*bn,a.sign^b.sign)
-      case 4=>normalize(an*bd+bn*ad,ad*bd,a.sig==0 && b.sig==0 && a.sign && b.sign,towardZero=true)
+      case 0 => normalize(an * bd + bn * ad, ad * bd, a.sig == 0 && b.sig == 0 && a.sign && b.sign)
+      case 1 => normalize(an * bd - bn * ad, ad * bd, a.sig == 0 && b.sig == 0 && a.sign && !b.sign)
+      case 2 => normalize(an * bn, ad * bd, a.sign ^ b.sign)
+      case 3 => normalize(an * bd, ad * bn, a.sign ^ b.sign)
+      case 4 => normalize(an * bd + bn * ad, ad * bd, a.sig == 0 && b.sig == 0 && a.sign && b.sign, towardZero = true)
     }
   }
-  private def packed(v: E,towardZero: Boolean=false): (BigInt,Int)={
-    val sign=if(v.sign)BigInt(1)<<31 else BigInt(0)
-    if(v.special!=0)return(sign|(BigInt(255)<<23)|(v.sig&0x7fffff),0)
-    if(v.sig==0)return(sign,0)
-    if(v.exponent>127)return(sign|BigInt(if(towardZero)"7f7fffff"else"7f800000",16),5)
-    if(v.exponent>= -126)return(sign|(BigInt(v.exponent+127)<<23)|(v.sig&0x7fffff),0)
-    val denominator=BigInt(1)<<(-126-v.exponent)
-    val (q,inexact)=if(towardZero)(v.sig/denominator,v.sig%denominator!=0)else rounded(v.sig,denominator)
-    (sign|q,(if(inexact)1 else 0)|(if(inexact && q<0x800000)2 else 0))
+  private def packed(v: E, towardZero: Boolean = false): (BigInt, Int) = {
+    val sign = if (v.sign) BigInt(1) << 31 else BigInt(0)
+    if (v.special != 0) return (sign | (BigInt(255) << 23) | (v.sig & 0x7fffff), 0)
+    if (v.sig == 0) return (sign, 0)
+    if (v.exponent > 127) return (sign | BigInt(if (towardZero) "7f7fffff" else "7f800000", 16), 5)
+    if (v.exponent >= -126) return (sign | (BigInt(v.exponent + 127) << 23) | (v.sig & 0x7fffff), 0)
+    val denominator = BigInt(1) << (-126 - v.exponent)
+    val (q, inexact) = if (towardZero) (v.sig / denominator, v.sig % denominator != 0) else rounded(v.sig, denominator)
+    (sign | q, (if (inexact) 1 else 0) | (if (inexact && q < 0x800000) 2 else 0))
   }
-  private def poke(v: ClipFloat,e: E): Unit={
-    v.negative.poke(e.sign.B);v.exponent.poke(e.exponent.S);v.significand.poke(e.sig.U);v.special.poke(e.special.U)
+  private def poke(v: ClipFloat, e: E): Unit = {
+    v.negative.poke(e.sign.B); v.exponent.poke(e.exponent.S); v.significand.poke(e.sig.U); v.special.poke(e.special.U)
   }
-  private def read(v: ClipFloat): E=E(v.negative.peek().litToBoolean,v.exponent.peek().litValue.toInt,v.significand.peek().litValue,v.special.peek().litValue.toInt)
+  private def read(v: ClipFloat): E = E(
+    v.negative.peek().litToBoolean,
+    v.exponent.peek().litValue.toInt,
+    v.significand.peek().litValue,
+    v.special.peek().litValue.toInt
+  )
   private class Driver(val d: ClipFloatArithmetic) {
-    d.io.in.valid.poke(false.B);d.io.out.ready.poke(false.B);d.io.cancel.poke(false.B)
-    d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
-    var cycle=0;var tag=0
-    def tick(): Unit={d.clock.step();cycle+=1}
-    def until(condition: => Boolean): Unit={var n=0;while(!condition && n<120){tick();n+=1};assert(condition,s"clip arithmetic stalled cycle=$cycle")}
-    def offer(a: E,b: E,operation: Int): Unit={
-      tag=(tag+1)&255;poke(d.io.in.bits.a,a);poke(d.io.in.bits.b,b)
-      d.io.in.bits.operation.poke(operation.U);d.io.in.bits.tag.poke(tag.U);d.io.in.valid.poke(true.B)
-      until(d.io.in.ready.peek().litToBoolean);tick();d.io.in.valid.poke(false.B)
+    d.io.in.valid.poke(false.B); d.io.out.ready.poke(false.B); d.io.cancel.poke(false.B)
+    d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
+    var cycle = 0; var tag = 0
+    def tick(): Unit = { d.clock.step(); cycle += 1 }
+    def until(condition: => Boolean): Unit = {
+      var n = 0; while (!condition && n < 120) { tick(); n += 1 };
+      assert(condition, s"clip arithmetic stalled cycle=$cycle")
+    }
+    def offer(a: E, b: E, operation: Int): Unit = {
+      tag = (tag + 1) & 255; poke(d.io.in.bits.a, a); poke(d.io.in.bits.b, b)
+      d.io.in.bits.operation.poke(operation.U); d.io.in.bits.tag.poke(tag.U); d.io.in.valid.poke(true.B)
+      until(d.io.in.ready.peek().litToBoolean); tick(); d.io.in.valid.poke(false.B)
       // A mutated inactive input cannot alter the accepted operation.
-      poke(d.io.in.bits.a,E());d.io.in.bits.operation.poke(7.U);d.io.in.bits.tag.poke(0.U)
+      poke(d.io.in.bits.a, E()); d.io.in.bits.operation.poke(7.U); d.io.in.bits.tag.poke(0.U)
     }
-    def response(expected: E,flags: Option[Int],error: Int=0,cancelled: Boolean=false,towardZero: Boolean=false): E={
-      until(d.io.out.valid.peek().litToBoolean);val r=d.io.out.bits
-      r.tag.expect(tag.U);r.error.expect(error.U);r.cancelled.expect(cancelled.B)
-      val actual=read(r.value);assert(actual==expected,s"extended value $actual != $expected")
-      flags.foreach(f=>r.arithmeticStatus.expect(f.U))
-      val (word,packing)=packed(expected,towardZero);r.fp32.expect(word.U);r.packingStatus.expect(packing.U)
-      val held=r.peek().litValue
-      for(_<-0 until (tag%4)){d.io.in.ready.expect(false.B);tick();assert(r.peek().litValue==held)}
-      d.io.out.ready.poke(true.B);tick();d.io.out.ready.poke(false.B);d.io.busy.expect(false.B);actual
+    def response(
+        expected: E,
+        flags: Option[Int],
+        error: Int = 0,
+        cancelled: Boolean = false,
+        towardZero: Boolean = false
+    ): E = {
+      until(d.io.out.valid.peek().litToBoolean); val r = d.io.out.bits
+      r.tag.expect(tag.U); r.error.expect(error.U); r.cancelled.expect(cancelled.B)
+      val actual = read(r.value); assert(actual == expected, s"extended value $actual != $expected")
+      flags.foreach(f => r.arithmeticStatus.expect(f.U))
+      val (word, packing) = packed(expected, towardZero); r.fp32.expect(word.U); r.packingStatus.expect(packing.U)
+      val held = r.peek().litValue
+      for (_ <- 0 until (tag % 4)) { d.io.in.ready.expect(false.B); tick(); assert(r.peek().litValue == held) }
+      d.io.out.ready.poke(true.B); tick(); d.io.out.ready.poke(false.B); d.io.busy.expect(false.B); actual
     }
-    def run(a: E,b: E,operation: Int): E={
-      val (expected,flags)=reference(a,b,operation)
-      offer(a,b,operation)
-      if(expected.sig!=0 && (expected.exponent< -512 || expected.exponent>511))response(E(),Some(flags),2,towardZero=operation==4)
-      else response(expected,Some(flags),towardZero=operation==4)
+    def run(a: E, b: E, operation: Int): E = {
+      val (expected, flags) = reference(a, b, operation)
+      offer(a, b, operation)
+      if (expected.sig != 0 && (expected.exponent < -512 || expected.exponent > 511))
+        response(E(), Some(flags), 2, towardZero = operation == 4)
+      else response(expected, Some(flags), towardZero = operation == 4)
     }
   }
 
   it should "round directed sums and gradual FP32 packing toward zero without changing legacy arithmetic" in {
-    simulate(new ClipFloatArithmetic()){d=>val t=new Driver(d);val random=new Random(0x52545a34);var checks=0
-      val words=Vector[BigInt](0,BigInt("80000000",16),1,0x7fffff,0x800000,0x3e800000,0x3f000001,0x3f800000,0x3f800001,0x7f7fffff,
-        BigInt("bf000001",16),BigInt("bf800000",16),BigInt("bf800001",16),BigInt("ff7fffff",16))
-      for(a<-words;b<-words){t.run(decode(a),decode(b),ClipFloatOperation.addTowardZero);checks+=1}
-      for(e<-Seq(-512,-150,-149,-127,-126,0,127,128,511);gap<-Seq(1,23,24,25,26,27,100,500);aSign<-Seq(false,true);bSign<-Seq(false,true) if e-gap>= -512){
-        t.run(E(aSign,e,0x800001),E(bSign,e-gap,0xffffff),ClipFloatOperation.addTowardZero);checks+=1}
-      for(_<-0 until 256){
-        val a=E(random.nextBoolean(),random.nextInt(941)-470,0x800000|random.nextInt(1<<23))
-        val b=E(random.nextBoolean(),random.nextInt(941)-470,0x800000|random.nextInt(1<<23))
-        t.run(a,b,ClipFloatOperation.addTowardZero);checks+=1}
-      for(e<-Seq(-150,-149,-127,128);sign<-Seq(false,true)){
-        t.run(E(sign,e,0x800001),E(),ClipFloatOperation.addTowardZero);checks+=1}
-      t.run(decode(BigInt("3f800001",16)),decode(BigInt("33800000",16)),ClipFloatOperation.add)
-      info(s"CLIP_FLOAT_RTZ directedChecks=$checks towardZero=true exactRational=true farOperandSticky=true gradualPacking=true finiteOverflow=true signZero=true legacyRNEReusable=true snapshots=true heldResponse=true")
+    simulate(new ClipFloatArithmetic()) { d =>
+      val t = new Driver(d); val random = new Random(0x52545a34); var checks = 0
+      val words = Vector[BigInt](
+        0,
+        BigInt("80000000", 16),
+        1,
+        0x7fffff,
+        0x800000,
+        0x3e800000,
+        0x3f000001,
+        0x3f800000,
+        0x3f800001,
+        0x7f7fffff,
+        BigInt("bf000001", 16),
+        BigInt("bf800000", 16),
+        BigInt("bf800001", 16),
+        BigInt("ff7fffff", 16)
+      )
+      for (a <- words; b <- words) { t.run(decode(a), decode(b), ClipFloatOperation.addTowardZero); checks += 1 }
+      for (
+        e <- Seq(-512, -150, -149, -127, -126, 0, 127, 128, 511); gap <- Seq(1, 23, 24, 25, 26, 27, 100, 500);
+        aSign <- Seq(false, true); bSign <- Seq(false, true) if e - gap >= -512
+      ) {
+        t.run(E(aSign, e, 0x800001), E(bSign, e - gap, 0xffffff), ClipFloatOperation.addTowardZero); checks += 1
+      }
+      for (_ <- 0 until 256) {
+        val a = E(random.nextBoolean(), random.nextInt(941) - 470, 0x800000 | random.nextInt(1 << 23))
+        val b = E(random.nextBoolean(), random.nextInt(941) - 470, 0x800000 | random.nextInt(1 << 23))
+        t.run(a, b, ClipFloatOperation.addTowardZero); checks += 1
+      }
+      for (e <- Seq(-150, -149, -127, 128); sign <- Seq(false, true)) {
+        t.run(E(sign, e, 0x800001), E(), ClipFloatOperation.addTowardZero); checks += 1
+      }
+      t.run(decode(BigInt("3f800001", 16)), decode(BigInt("33800000", 16)), ClipFloatOperation.add)
+      info(
+        s"CLIP_FLOAT_RTZ directedChecks=$checks towardZero=true exactRational=true farOperandSticky=true gradualPacking=true finiteOverflow=true signZero=true legacyRNEReusable=true snapshots=true heldResponse=true"
+      )
     }
   }
   it should "retain directed rounding through accepted cancellation held replies and healthy reuse" in {
-    simulate(new ClipFloatArithmetic()){d=>val t=new Driver(d)
-      val a=decode(BigInt("3f800001",16));val b=decode(BigInt("33800000",16));val(expected,flags)=reference(a,b,4)
-      t.offer(a,b,4);t.tick();t.tick();d.io.cancel.poke(true.B);t.until(d.io.out.valid.peek().litToBoolean)
-      d.io.cancel.poke(false.B);t.response(expected,Some(flags),cancelled=true,towardZero=true)
-      t.offer(a,b,4);t.until(d.io.out.valid.peek().litToBoolean);val held=d.io.out.bits.peek().litValue
-      d.io.cancel.poke(true.B);for(_<-0 until 7){t.tick();assert(d.io.out.bits.peek().litValue==held)}
-      d.io.cancel.poke(false.B);t.response(expected,Some(flags),towardZero=true);t.run(a,b,4);t.run(a,b,0)
-      info("CLIP_FLOAT_RTZ_DRAIN acceptedFmaNoFlush=true roundingSnapshot=true heldReplyImmutable=true legacyAndDirectedReuse=true")
+    simulate(new ClipFloatArithmetic()) { d =>
+      val t = new Driver(d)
+      val a = decode(BigInt("3f800001", 16)); val b = decode(BigInt("33800000", 16));
+      val (expected, flags) = reference(a, b, 4)
+      t.offer(a, b, 4); t.tick(); t.tick(); d.io.cancel.poke(true.B); t.until(d.io.out.valid.peek().litToBoolean)
+      d.io.cancel.poke(false.B); t.response(expected, Some(flags), cancelled = true, towardZero = true)
+      t.offer(a, b, 4); t.until(d.io.out.valid.peek().litToBoolean); val held = d.io.out.bits.peek().litValue
+      d.io.cancel.poke(true.B); for (_ <- 0 until 7) { t.tick(); assert(d.io.out.bits.peek().litValue == held) }
+      d.io.cancel.poke(false.B); t.response(expected, Some(flags), towardZero = true); t.run(a, b, 4); t.run(a, b, 0)
+      info(
+        "CLIP_FLOAT_RTZ_DRAIN acceptedFmaNoFlush=true roundingSnapshot=true heldReplyImmutable=true legacyAndDirectedReuse=true"
+      )
     }
   }
 
   it should "roundtrip every FP32 class and gradual boundary through the extended codec" in {
-    simulate(new ClipFloatCodecHarness) { d=>
-      val random=new Random(0x434c4950L)
-      val directed=Vector[BigInt](0,BigInt("80000000",16),1,2,3,0x3fffff,0x400000,0x7fffff,0x800000,0x800001,
-        0x3f800000,0x7f7fffff,0x7f800000,0xff800000L,0x7fc12345,0x7f800001,0xffbfffffL)
-      val words=directed++Vector.fill(2048)(BigInt(random.nextInt().toLong&0xffffffffL))
-      for(word<-words){d.io.word.poke(word.U);d.clock.step();d.io.legal.expect(true.B);assert(read(d.io.value)==decode(word));d.io.packed.bits.expect(word.U);d.io.packed.status.expect(0.U)}
-      info(s"CLIP_FLOAT codecWords=${words.size} allFP32Classes=true subnormals=true signedZero=true rawNaNPayload=true")
+    simulate(new ClipFloatCodecHarness) { d =>
+      val random = new Random(0x434c4950L)
+      val directed = Vector[BigInt](
+        0,
+        BigInt("80000000", 16),
+        1,
+        2,
+        3,
+        0x3fffff,
+        0x400000,
+        0x7fffff,
+        0x800000,
+        0x800001,
+        0x3f800000,
+        0x7f7fffff,
+        0x7f800000,
+        0xff800000L,
+        0x7fc12345,
+        0x7f800001,
+        0xffbfffffL
+      )
+      val words = directed ++ Vector.fill(2048)(BigInt(random.nextInt().toLong & 0xffffffffL))
+      for (word <- words) {
+        d.io.word.poke(word.U); d.clock.step(); d.io.legal.expect(true.B); assert(read(d.io.value) == decode(word));
+        d.io.packed.bits.expect(word.U); d.io.packed.status.expect(0.U)
+      }
+      info(
+        s"CLIP_FLOAT codecWords=${words.size} allFP32Classes=true subnormals=true signedZero=true rawNaNPayload=true"
+      )
     }
   }
 
   it should "match exact rational RNE arithmetic across the complete clip exponent envelope" in {
-    simulate(new ClipFloatArithmetic()) { d=>
-      val t=new Driver(d);val random=new Random(0x524e4524L)
-      val source=Vector(0,1,2,0x7fffff,0x800000,0x00800001,0x3f000000,0x3f800000,0x3f800001,0x3fffffff,0x40000000,0x7f7fffff).map(v=>decode(BigInt(v)))
-      var checks=0
-      for(a<-source;b<-source;op<-0 to 3 if op!=3 || b.sig!=0){t.run(a,b,op);checks+=1}
-      for(_<-0 until 320) {
-        val a=E(random.nextBoolean(),random.nextInt(941)-470,(BigInt(1)<<23)|BigInt(random.nextInt(1<<23)))
-        val b=E(random.nextBoolean(),random.nextInt(941)-470,(BigInt(1)<<23)|BigInt(random.nextInt(1<<23)))
-        t.run(a,b,random.nextInt(4));checks+=1
+    simulate(new ClipFloatArithmetic()) { d =>
+      val t = new Driver(d); val random = new Random(0x524e4524L)
+      val source = Vector(0, 1, 2, 0x7fffff, 0x800000, 0x00800001, 0x3f000000, 0x3f800000, 0x3f800001, 0x3fffffff,
+        0x40000000, 0x7f7fffff).map(v => decode(BigInt(v)))
+      var checks = 0
+      for (a <- source; b <- source; op <- 0 to 3 if op != 3 || b.sig != 0) { t.run(a, b, op); checks += 1 }
+      for (_ <- 0 until 320) {
+        val a = E(random.nextBoolean(), random.nextInt(941) - 470, (BigInt(1) << 23) | BigInt(random.nextInt(1 << 23)))
+        val b = E(random.nextBoolean(), random.nextInt(941) - 470, (BigInt(1) << 23) | BigInt(random.nextInt(1 << 23)))
+        t.run(a, b, random.nextInt(4)); checks += 1
       }
       // Cancellation and rounding on the two sides of a power-of-two boundary.
-      for(e<-Seq(-512,-278,-150,-149,-127,-126,0,127,128,511);sign<-Seq(false,true)) {
-        t.run(E(sign,e,0x800000),E(!sign,e-26 max -512,0xffffff),0);checks+=1
+      for (e <- Seq(-512, -278, -150, -149, -127, -126, 0, 127, 128, 511); sign <- Seq(false, true)) {
+        t.run(E(sign, e, 0x800000), E(!sign, e - 26 max -512, 0xffffff), 0); checks += 1
       }
-      info(s"CLIP_FLOAT rationalChecks=$checks operations=4 significandBits=24 exponentMin=-512 exponentMax=511 RNE=true controlledRangeFailure=true snapshots=true heldResponse=true")
+      info(
+        s"CLIP_FLOAT rationalChecks=$checks operations=4 significandBits=24 exponentMin=-512 exponentMax=511 RNE=true controlledRangeFailure=true snapshots=true heldResponse=true"
+      )
     }
   }
 
   it should "scale exact signed power-of-two divisions without iterative latency or ownership changes" in {
-    simulate(new ClipFloatArithmetic()){d=>val t=new Driver(d);var checks=0;var maxLatency=0
-      for((ae,be)<-Seq((-512,511),(-149,0),(-126,1),(0,0),(127,-1),(511,-512));
-          sig<-Seq(0x800000,0x800001,0xabcdef,0xffffff);as<-Seq(false,true);bs<-Seq(false,true)){
-        val a=E(as,ae,sig);val b=E(bs,be,0x800000);val (expected,flags)=reference(a,b,3)
-        val start=t.cycle;t.offer(a,b,3);t.until(d.io.out.valid.peek().litToBoolean)
-        val latency=t.cycle-start;maxLatency=maxLatency.max(latency)
-        assert(latency<=4,s"exact scaling took $latency cycles");assert(flags==0)
-        val range=expected.exponent< -512 || expected.exponent>511
-        t.response(if(range)E()else expected,Some(flags),if(range)2 else 0);checks+=1
+    simulate(new ClipFloatArithmetic()) { d =>
+      val t = new Driver(d); var checks = 0; var maxLatency = 0
+      for (
+        (ae, be) <- Seq((-512, 511), (-149, 0), (-126, 1), (0, 0), (127, -1), (511, -512));
+        sig <- Seq(0x800000, 0x800001, 0xabcdef, 0xffffff); as <- Seq(false, true); bs <- Seq(false, true)
+      ) {
+        val a = E(as, ae, sig); val b = E(bs, be, 0x800000); val (expected, flags) = reference(a, b, 3)
+        val start = t.cycle; t.offer(a, b, 3); t.until(d.io.out.valid.peek().litToBoolean)
+        val latency = t.cycle - start; maxLatency = maxLatency.max(latency)
+        assert(latency <= 4, s"exact scaling took $latency cycles"); assert(flags == 0)
+        val range = expected.exponent < -512 || expected.exponent > 511
+        t.response(if (range) E() else expected, Some(flags), if (range) 2 else 0); checks += 1
       }
-      for(bs<-Seq(false,true)){
-        t.offer(E(true),E(bs,2,0x800000),3);t.response(E(!bs),Some(0))
+      for (bs <- Seq(false, true)) {
+        t.offer(E(true), E(bs, 2, 0x800000), 3); t.response(E(!bs), Some(0))
       }
-      t.offer(E(false,0,0x400000,2),E(false,2,0x800000),3)
-      t.response(E(false,0,0x400000,2),Some(16))
-      for((a,b)<-Seq((E(false,512,0x800000),E(false,2,0x800000)),
-          (E(false,-513,0x800000),E(false,2,0x800000)),(E(false,0,0x800000),E(false,512,0x800000)))){
-        t.offer(a,b,3);t.response(E(),Some(0),1)
+      t.offer(E(false, 0, 0x400000, 2), E(false, 2, 0x800000), 3)
+      t.response(E(false, 0, 0x400000, 2), Some(16))
+      for (
+        (a, b) <- Seq(
+          (E(false, 512, 0x800000), E(false, 2, 0x800000)),
+          (E(false, -513, 0x800000), E(false, 2, 0x800000)),
+          (E(false, 0, 0x800000), E(false, 512, 0x800000))
+        )
+      ) {
+        t.offer(a, b, 3); t.response(E(), Some(0), 1)
       }
-      val a=E(true,7,0xabcdef);val b=E(true,2,0x800000);val (value,flags)=reference(a,b,3)
-      t.offer(a,b,3);d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
-      t.response(E(),Some(0),cancelled=true)
-      t.offer(a,b,3);t.tick();d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
-      t.response(value,Some(flags),cancelled=true)
-      t.offer(a,b,3);t.until(d.io.out.valid.peek().litToBoolean);val held=d.io.out.bits.peek().litValue
-      d.io.cancel.poke(true.B);for(_<-0 until 7){t.tick();assert(d.io.out.bits.peek().litValue==held)}
-      d.io.cancel.poke(false.B);t.response(value,Some(flags))
-      t.run(decode(BigInt("3f800000",16)),decode(BigInt("40400000",16)),3);t.run(a,b,3)
-      info(s"CLIP_POWER_TWO rationalChecks=$checks maxRequestToOutputCycles=$maxLatency signedDivisor=true extendedRangeErrors=true gradualPacking=true zeroAndNaNExact=true invalidOperandsRejected=true snapshots=true cancelBeforeAndAfterScale=true heldResponse=true healthyGeneralDivide=true")
+      val a = E(true, 7, 0xabcdef); val b = E(true, 2, 0x800000); val (value, flags) = reference(a, b, 3)
+      t.offer(a, b, 3); d.io.cancel.poke(true.B); t.tick(); d.io.cancel.poke(false.B)
+      t.response(E(), Some(0), cancelled = true)
+      t.offer(a, b, 3); t.tick(); d.io.cancel.poke(true.B); t.tick(); d.io.cancel.poke(false.B)
+      t.response(value, Some(flags), cancelled = true)
+      t.offer(a, b, 3); t.until(d.io.out.valid.peek().litToBoolean); val held = d.io.out.bits.peek().litValue
+      d.io.cancel.poke(true.B); for (_ <- 0 until 7) { t.tick(); assert(d.io.out.bits.peek().litValue == held) }
+      d.io.cancel.poke(false.B); t.response(value, Some(flags))
+      t.run(decode(BigInt("3f800000", 16)), decode(BigInt("40400000", 16)), 3); t.run(a, b, 3)
+      info(
+        s"CLIP_POWER_TWO rationalChecks=$checks maxRequestToOutputCycles=$maxLatency signedDivisor=true extendedRangeErrors=true gradualPacking=true zeroAndNaNExact=true invalidOperandsRejected=true snapshots=true cancelBeforeAndAfterScale=true heldResponse=true healthyGeneralDivide=true"
+      )
     }
   }
 
   it should "match exact rational power-of-two products and every complete fallback response" in {
-    case class Sample(bits: BigInt,clocks: Int,eligible: Boolean)
-    var control=Vector.empty[Sample];var shortcut=Vector.empty[Sample]
-    for(fast<-Seq(false,true))simulate(new ClipFloatArithmetic(powerTwoMultiplyShortcut=fast)){d=>
-      val t=new Driver(d);val rows=Vector.newBuilder[Sample]
-      def check(a: E,b: E,op: Int,expected: E,flags: Int,error: Int=0,eligible: Boolean=false): Unit={
-        val start=t.cycle;t.offer(a,b,op)
+    case class Sample(bits: BigInt, clocks: Int, eligible: Boolean)
+    var control = Vector.empty[Sample]; var shortcut = Vector.empty[Sample]
+    for (fast <- Seq(false, true)) simulate(new ClipFloatArithmetic(powerTwoMultiplyShortcut = fast)) { d =>
+      val t = new Driver(d); val rows = Vector.newBuilder[Sample]
+      def check(a: E, b: E, op: Int, expected: E, flags: Int, error: Int = 0, eligible: Boolean = false): Unit = {
+        val start = t.cycle; t.offer(a, b, op)
         // Driver.offer mutates operand A, operation and tag after acceptance;
         // mutate operand B too so neither side may leak through the snapshot.
-        poke(d.io.in.bits.b,E(true,511,0xffffff))
+        poke(d.io.in.bits.b, E(true, 511, 0xffffff))
         t.until(d.io.out.valid.peek().litToBoolean)
-        rows+=Sample(d.io.out.bits.peek().litValue,t.cycle-start,eligible)
-        withClue(s"powerTwo=$fast a=$a b=$b op=$op: "){t.response(expected,Some(flags),error,towardZero=op==4)}
+        rows += Sample(d.io.out.bits.peek().litValue, t.cycle - start, eligible)
+        withClue(s"powerTwo=$fast a=$a b=$b op=$op: ") {
+          t.response(expected, Some(flags), error, towardZero = op == 4)
+        }
       }
-      def finite(a: E,b: E,op: Int,eligible: Boolean=false): Unit={
+      def finite(a: E, b: E, op: Int, eligible: Boolean = false): Unit = {
         // The oracle multiplies arbitrary-precision rational values, normalizes
         // with independent RNE and packs independently; it does not copy the
         // hardware's exponent-add/significand-selection implementation.
-        val (expected,flags)=reference(a,b,op)
-        val range=expected.sig!=0 && (expected.exponent< -512 || expected.exponent>511)
-        check(a,b,op,if(range)E()else expected,flags,if(range)2 else 0,eligible)
+        val (expected, flags) = reference(a, b, op)
+        val range = expected.sig != 0 && (expected.exponent < -512 || expected.exponent > 511)
+        check(a, b, op, if (range) E() else expected, flags, if (range) 2 else 0, eligible)
       }
-      val exponents=Seq((-512,-512),(-512,-1),(-512,0),(-511,-1),(-150,0),(-149,0),
-        (-127,0),(-126,0),(-1,1),(0,0),(1,-1),(126,1),(127,0),(127,1),
-        (128,0),(510,1),(511,0),(511,1),(511,511),(-512,511))
-      for((ae,be)<-exponents;sig<-Seq(0x800000,0x800001,0xabcdef,0xfffffe,0xffffff);
-          as<-Seq(false,true);bs<-Seq(false,true)){
-        val a=E(as,ae,sig);val b=E(bs,be,0x800000)
-        finite(a,b,ClipFloatOperation.multiply,eligible=true)
-        finite(b,a,ClipFloatOperation.multiply,eligible=true)
+      val exponents = Seq(
+        (-512, -512),
+        (-512, -1),
+        (-512, 0),
+        (-511, -1),
+        (-150, 0),
+        (-149, 0),
+        (-127, 0),
+        (-126, 0),
+        (-1, 1),
+        (0, 0),
+        (1, -1),
+        (126, 1),
+        (127, 0),
+        (127, 1),
+        (128, 0),
+        (510, 1),
+        (511, 0),
+        (511, 1),
+        (511, 511),
+        (-512, 511)
+      )
+      for (
+        (ae, be) <- exponents; sig <- Seq(0x800000, 0x800001, 0xabcdef, 0xfffffe, 0xffffff);
+        as <- Seq(false, true); bs <- Seq(false, true)
+      ) {
+        val a = E(as, ae, sig); val b = E(bs, be, 0x800000)
+        finite(a, b, ClipFloatOperation.multiply, eligible = true)
+        finite(b, a, ClipFloatOperation.multiply, eligible = true)
       }
-      val random=new Random(0x504f57324d554cL)
-      for(_<-0 until 128){
-        val a=E(random.nextBoolean(),random.nextInt(1024)-512,0x800000|random.nextInt(1<<23))
-        val b=E(random.nextBoolean(),random.nextInt(1024)-512,0x800000)
-        finite(a,b,ClipFloatOperation.multiply,eligible=true)
-        finite(b,a,ClipFloatOperation.multiply,eligible=true)
+      val random = new Random(0x504f57324d554cL)
+      for (_ <- 0 until 128) {
+        val a = E(random.nextBoolean(), random.nextInt(1024) - 512, 0x800000 | random.nextInt(1 << 23))
+        val b = E(random.nextBoolean(), random.nextInt(1024) - 512, 0x800000)
+        finite(a, b, ClipFloatOperation.multiply, eligible = true)
+        finite(b, a, ClipFloatOperation.multiply, eligible = true)
       }
       // Adjacent significands do not qualify, even when both look almost like
       // one. Preserve inexact arithmetic flags and range/packing independently.
-      for((ae,be)<-exponents;as<-Seq(false,true);bs<-Seq(false,true))
-        finite(E(as,ae,0x800001),E(bs,be,0xffffff),ClipFloatOperation.multiply)
-      val one=E(false,0,0x800000);val three=decode(BigInt("40400000",16))
-      for(v<-Seq(E(true,-512,0x800001),E(false,-150,0xffffff),E(true,-127,0xffffff),
-          E(false,127,0xffffff),E(false,511,0x800001));op<-Seq(0,1,3,4)){
-        finite(v,one,op);finite(one,v,op)
+      for ((ae, be) <- exponents; as <- Seq(false, true); bs <- Seq(false, true))
+        finite(E(as, ae, 0x800001), E(bs, be, 0xffffff), ClipFloatOperation.multiply)
+      val one = E(false, 0, 0x800000); val three = decode(BigInt("40400000", 16))
+      for (
+        v <- Seq(
+          E(true, -512, 0x800001),
+          E(false, -150, 0xffffff),
+          E(true, -127, 0xffffff),
+          E(false, 127, 0xffffff),
+          E(false, 511, 0x800001)
+        );
+        op <- Seq(0, 1, 3, 4)
+      ) {
+        finite(v, one, op); finite(one, v, op)
       }
-      val nan=E(false,0,0x400000,2)
-      for(sign<-Seq(false,true);scaleSign<-Seq(false,true)){
-        val scale=E(scaleSign,511,0x800000);val zero=E(sign);val inf=E(sign,0,0,1)
-        finite(zero,scale,2);finite(scale,zero,2)
-        check(inf,scale,2,E(sign^scaleSign,0,0,1),0)
-        check(scale,inf,2,E(sign^scaleSign,0,0,1),0)
-        check(zero,inf,2,nan,16);check(inf,zero,2,nan,16)
-        for(payload<-Seq(0x400000,0x412345,1,0x12345)){
-          val inputNaN=E(sign,0,payload,2);val flags=if((payload&0x400000)==0)16 else 0
-          check(inputNaN,scale,2,nan,flags);check(scale,inputNaN,2,nan,flags)
+      val nan = E(false, 0, 0x400000, 2)
+      for (sign <- Seq(false, true); scaleSign <- Seq(false, true)) {
+        val scale = E(scaleSign, 511, 0x800000); val zero = E(sign); val inf = E(sign, 0, 0, 1)
+        finite(zero, scale, 2); finite(scale, zero, 2)
+        check(inf, scale, 2, E(sign ^ scaleSign, 0, 0, 1), 0)
+        check(scale, inf, 2, E(sign ^ scaleSign, 0, 0, 1), 0)
+        check(zero, inf, 2, nan, 16); check(inf, zero, 2, nan, 16)
+        for (payload <- Seq(0x400000, 0x412345, 1, 0x12345)) {
+          val inputNaN = E(sign, 0, payload, 2); val flags = if ((payload & 0x400000) == 0) 16 else 0
+          check(inputNaN, scale, 2, nan, flags); check(scale, inputNaN, 2, nan, flags)
         }
       }
-      val malformed=Seq(E(false,1,0),E(false,0,1),E(false,-513,0x800000),E(false,512,0x800000),
-        E(false,0,1,1),E(false,1,0,1),E(false,0,0,2),E(false,0,0x800001,2),E(false,0,0,3))
-      for(bad<-malformed){check(bad,one,2,E(),0,1);check(one,bad,2,E(),0,1)}
-      for(op<-5 to 7)check(one,one,op,E(),0,1)
-      finite(one,three,ClipFloatOperation.divide)
-      if(fast)shortcut=rows.result()else control=rows.result()
+      val malformed = Seq(
+        E(false, 1, 0),
+        E(false, 0, 1),
+        E(false, -513, 0x800000),
+        E(false, 512, 0x800000),
+        E(false, 0, 1, 1),
+        E(false, 1, 0, 1),
+        E(false, 0, 0, 2),
+        E(false, 0, 0x800001, 2),
+        E(false, 0, 0, 3)
+      )
+      for (bad <- malformed) { check(bad, one, 2, E(), 0, 1); check(one, bad, 2, E(), 0, 1) }
+      for (op <- 5 to 7) check(one, one, op, E(), 0, 1)
+      finite(one, three, ClipFloatOperation.divide)
+      if (fast) shortcut = rows.result() else control = rows.result()
     }
-    assert(control.nonEmpty && control.size==shortcut.size)
-    for((before,after)<-control.zip(shortcut)){
-      assert(after.bits==before.bits,"power-of-two multiply changed the complete arithmetic response")
-      if(after.eligible){
-        assert(after.clocks<=4,s"power-of-two product took ${after.clocks} clocks")
-        assert(after.clocks<before.clocks,s"power-of-two multiply did not improve ${before.clocks}->${after.clocks}")
-      }else assert(after.clocks==before.clocks,"fallback timing changed")
+    assert(control.nonEmpty && control.size == shortcut.size)
+    for ((before, after) <- control.zip(shortcut)) {
+      assert(after.bits == before.bits, "power-of-two multiply changed the complete arithmetic response")
+      if (after.eligible) {
+        assert(after.clocks <= 4, s"power-of-two product took ${after.clocks} clocks")
+        assert(after.clocks < before.clocks, s"power-of-two multiply did not improve ${before.clocks}->${after.clocks}")
+      } else assert(after.clocks == before.clocks, "fallback timing changed")
     }
-    val before=control.filter(_.eligible).map(_.clocks);val after=shortcut.filter(_.eligible).map(_.clocks)
-    info(s"CLIP_POWER_TWO_MULTIPLY cases=${shortcut.size} eligible=${after.size} controlMin=${before.min} controlMax=${before.max} candidateMin=${after.min} candidateMax=${after.max} exactFullResponse=true independentRationalRNE=true bothOrders=true signAndExponentEnvelope=true fallbackTiming=true")
+    val before = control.filter(_.eligible).map(_.clocks); val after = shortcut.filter(_.eligible).map(_.clocks)
+    info(
+      s"CLIP_POWER_TWO_MULTIPLY cases=${shortcut.size} eligible=${after.size} controlMin=${before.min} controlMax=${before.max} candidateMin=${after.min} candidateMax=${after.max} exactFullResponse=true independentRationalRNE=true bothOrders=true signAndExponentEnvelope=true fallbackTiming=true"
+    )
   }
 
   it should "keep exact scaled products owned through every cancellation and reset cut" in {
-    for(fast<-Seq(false,true))simulate(new ClipFloatArithmetic(powerTwoMultiplyShortcut=fast)){d=>
-      val t=new Driver(d);val one=E(false,0,0x800000);val three=decode(BigInt("40400000",16))
-      val operands=Seq((E(true,7,0xabcdef),E(false,2,0x800000)),
-        (E(false,-512,0x800001),E(true,-1,0x800000)),
-        (E(true,511,0xffffff),E(false,1,0x800000)))
-      for((left,right)<-operands;(a,b)<-Seq((left,right),(right,left))){
-        val (numeric,flags)=reference(a,b,2)
-        val range=numeric.exponent< -512 || numeric.exponent>511
-        val expected=if(range)E()else numeric;val error=if(range)2 else 0
-        val start=t.cycle;t.offer(a,b,2);t.until(d.io.out.valid.peek().litToBoolean)
-        val latency=t.cycle-start;t.response(expected,Some(flags),error)
-        for(cut<-0 to latency+1){
-          t.offer(a,b,2);for(_<-0 until cut)t.tick()
-          val offered=d.io.out.valid.peek().litToBoolean
-          val held=if(offered)Some(d.io.out.bits.peek().litValue)else None
-          d.io.cancel.poke(true.B);t.until(d.io.out.valid.peek().litToBoolean)
-          val stable=d.io.out.bits.peek().litValue
-          held.foreach(bits=>assert(bits==stable,"late cancellation changed an offered scale response"))
-          for(_<-0 until 5){t.tick();d.io.in.ready.expect(false.B);assert(d.io.out.bits.peek().litValue==stable)}
-          t.response(if(cut==0)E()else expected,Some(if(cut==0)0 else flags),
-            error=if(cut==0)0 else error,cancelled= !offered)
+    for (fast <- Seq(false, true)) simulate(new ClipFloatArithmetic(powerTwoMultiplyShortcut = fast)) { d =>
+      val t = new Driver(d); val one = E(false, 0, 0x800000); val three = decode(BigInt("40400000", 16))
+      val operands = Seq(
+        (E(true, 7, 0xabcdef), E(false, 2, 0x800000)),
+        (E(false, -512, 0x800001), E(true, -1, 0x800000)),
+        (E(true, 511, 0xffffff), E(false, 1, 0x800000))
+      )
+      for ((left, right) <- operands; (a, b) <- Seq((left, right), (right, left))) {
+        val (numeric, flags) = reference(a, b, 2)
+        val range = numeric.exponent < -512 || numeric.exponent > 511
+        val expected = if (range) E() else numeric; val error = if (range) 2 else 0
+        val start = t.cycle; t.offer(a, b, 2); t.until(d.io.out.valid.peek().litToBoolean)
+        val latency = t.cycle - start; t.response(expected, Some(flags), error)
+        for (cut <- 0 to latency + 1) {
+          t.offer(a, b, 2); for (_ <- 0 until cut) t.tick()
+          val offered = d.io.out.valid.peek().litToBoolean
+          val held = if (offered) Some(d.io.out.bits.peek().litValue) else None
+          d.io.cancel.poke(true.B); t.until(d.io.out.valid.peek().litToBoolean)
+          val stable = d.io.out.bits.peek().litValue
+          held.foreach(bits => assert(bits == stable, "late cancellation changed an offered scale response"))
+          for (_ <- 0 until 5) {
+            t.tick(); d.io.in.ready.expect(false.B); assert(d.io.out.bits.peek().litValue == stable)
+          }
+          t.response(
+            if (cut == 0) E() else expected,
+            Some(if (cut == 0) 0 else flags),
+            error = if (cut == 0) 0 else error,
+            cancelled = !offered
+          )
           d.io.cancel.poke(false.B)
-          t.run(one,three,ClipFloatOperation.divide);t.run(a,b,ClipFloatOperation.multiply)
+          t.run(one, three, ClipFloatOperation.divide); t.run(a, b, ClipFloatOperation.multiply)
         }
-        for(cut<-0 to latency+1){
-          t.offer(a,b,2);for(_<-0 until cut)t.tick()
-          d.reset.poke(true.B);t.tick();d.reset.poke(false.B)
-          for(_<-0 until latency+2){d.io.out.valid.expect(false.B);d.io.busy.expect(false.B);t.tick()}
-          t.run(one,three,ClipFloatOperation.divide);t.run(a,b,ClipFloatOperation.multiply)
+        for (cut <- 0 to latency + 1) {
+          t.offer(a, b, 2); for (_ <- 0 until cut) t.tick()
+          d.reset.poke(true.B); t.tick(); d.reset.poke(false.B)
+          for (_ <- 0 until latency + 2) { d.io.out.valid.expect(false.B); d.io.busy.expect(false.B); t.tick() }
+          t.run(one, three, ClipFloatOperation.divide); t.run(a, b, ClipFloatOperation.multiply)
         }
       }
-      for(bad<-Seq(E(false,1,0),E(false,512,0x800000));(a,b)<-Seq((bad,one),(one,bad))){
-        t.offer(a,b,2);d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
-        t.response(E(),Some(0),error=1,cancelled=true);t.run(one,three,ClipFloatOperation.divide)
+      for (bad <- Seq(E(false, 1, 0), E(false, 512, 0x800000)); (a, b) <- Seq((bad, one), (one, bad))) {
+        t.offer(a, b, 2); d.io.cancel.poke(true.B); t.tick(); d.io.cancel.poke(false.B)
+        t.response(E(), Some(0), error = 1, cancelled = true); t.run(one, three, ClipFloatOperation.divide)
       }
-      info(s"CLIP_POWER_TWO_MULTIPLY_DRAIN enabled=$fast bothOrders=true allClockCuts=true rangeFailureDrained=true resetNoGhost=true heldResponse=true malformedBeforeCancel=true noResetGeneralDivideReuse=true")
+      info(
+        s"CLIP_POWER_TWO_MULTIPLY_DRAIN enabled=$fast bothOrders=true allClockCuts=true rangeFailureDrained=true resetNoGhost=true heldResponse=true malformedBeforeCancel=true noResetGeneralDivideReuse=true"
+      )
     }
   }
 
   it should "match the unchanged arithmetic path for finite signed zero and retain every fallback" in {
-    case class Sample(bits: BigInt,clocks: Int,eligible: Boolean,operation: Int)
-    var control=Vector.empty[Sample]
-    var shortcut=Vector.empty[Sample]
-    for(fast<-Seq(false,true)) {
-      simulate(new ClipFloatArithmetic(finiteZeroShortcut=fast)){d=>
-        val t=new Driver(d);val samples=Vector.newBuilder[Sample]
-        def check(a: E,b: E,op: Int,expected: E,flags: Int,error: Int=0,eligible: Boolean=false): Unit={
-          val start=t.cycle;t.offer(a,b,op);t.until(d.io.out.valid.peek().litToBoolean)
-          samples+=Sample(d.io.out.bits.peek().litValue,t.cycle-start,eligible,op)
-          withClue(s"fast=$fast a=$a b=$b op=$op: "){
-            t.response(expected,Some(flags),error,towardZero=op==ClipFloatOperation.addTowardZero)
+    case class Sample(bits: BigInt, clocks: Int, eligible: Boolean, operation: Int)
+    var control = Vector.empty[Sample]
+    var shortcut = Vector.empty[Sample]
+    for (fast <- Seq(false, true)) {
+      simulate(new ClipFloatArithmetic(finiteZeroShortcut = fast)) { d =>
+        val t = new Driver(d); val samples = Vector.newBuilder[Sample]
+        def check(a: E, b: E, op: Int, expected: E, flags: Int, error: Int = 0, eligible: Boolean = false): Unit = {
+          val start = t.cycle; t.offer(a, b, op); t.until(d.io.out.valid.peek().litToBoolean)
+          samples += Sample(d.io.out.bits.peek().litValue, t.cycle - start, eligible, op)
+          withClue(s"fast=$fast a=$a b=$b op=$op: ") {
+            t.response(expected, Some(flags), error, towardZero = op == ClipFloatOperation.addTowardZero)
           }
         }
-        def finite(a: E,b: E,op: Int,eligible: Boolean=false): Unit={
-          val (expected,flags)=reference(a,b,op)
-          val range=expected.sig!=0 && (expected.exponent< -512 || expected.exponent>511)
-          check(a,b,op,if(range)E()else expected,flags,if(range)2 else 0,eligible)
+        def finite(a: E, b: E, op: Int, eligible: Boolean = false): Unit = {
+          val (expected, flags) = reference(a, b, op)
+          val range = expected.sig != 0 && (expected.exponent < -512 || expected.exponent > 511)
+          check(a, b, op, if (range) E() else expected, flags, if (range) 2 else 0, eligible)
         }
-        val zeros=Seq(E(),E(true))
-        val values=for(exponent<-Seq(-512,-150,-149,-127,-126,-1,0,1,127,128,511);
-          significand<-Seq(0x800000,0x800001,0xffffff);sign<-Seq(false,true))
-          yield E(sign,exponent,significand)
-        for(z<-zeros;v<-values){
-          finite(z,v,ClipFloatOperation.multiply,eligible=true)
-          finite(v,z,ClipFloatOperation.multiply,eligible=true)
-          finite(z,v,ClipFloatOperation.divide,eligible=true)
+        val zeros = Seq(E(), E(true))
+        val values =
+          for (
+            exponent <- Seq(-512, -150, -149, -127, -126, -1, 0, 1, 127, 128, 511);
+            significand <- Seq(0x800000, 0x800001, 0xffffff); sign <- Seq(false, true)
+          )
+            yield E(sign, exponent, significand)
+        for (z <- zeros; v <- values) {
+          finite(z, v, ClipFloatOperation.multiply, eligible = true)
+          finite(v, z, ClipFloatOperation.multiply, eligible = true)
+          finite(z, v, ClipFloatOperation.divide, eligible = true)
         }
-        for(a<-zeros;b<-zeros){
-          finite(a,b,ClipFloatOperation.multiply,eligible=true)
-          for(op<-Seq(ClipFloatOperation.add,ClipFloatOperation.subtract,ClipFloatOperation.addTowardZero))finite(a,b,op)
-          check(a,b,ClipFloatOperation.divide,E(false,0,0x400000,2),16)
+        for (a <- zeros; b <- zeros) {
+          finite(a, b, ClipFloatOperation.multiply, eligible = true)
+          for (op <- Seq(ClipFloatOperation.add, ClipFloatOperation.subtract, ClipFloatOperation.addTowardZero))
+            finite(a, b, op)
+          check(a, b, ClipFloatOperation.divide, E(false, 0, 0x400000, 2), 16)
         }
         // A tiny normalized significand is not zero. Keep rounding, packing,
         // range errors and the pre-existing exact scaling path unchanged.
-        val one=E(false,0,0x800000);val three=decode(BigInt("40400000",16))
-        for(v<-values){finite(v,one,ClipFloatOperation.multiply);finite(v,three,ClipFloatOperation.divide)}
-        for(a<-values.take(4);b<-zeros)
-          check(a,b,ClipFloatOperation.divide,E(a.sign^b.sign,0,0,1),8)
-        for(sign<-Seq(false,true);z<-zeros){
-          val inf=E(sign,0,0,1);val nan=E(false,0,0x400000,2)
-          check(z,inf,ClipFloatOperation.multiply,nan,16)
-          check(inf,z,ClipFloatOperation.multiply,nan,16)
-          check(z,inf,ClipFloatOperation.divide,E(z.sign^sign),0)
+        val one = E(false, 0, 0x800000); val three = decode(BigInt("40400000", 16))
+        for (v <- values) { finite(v, one, ClipFloatOperation.multiply); finite(v, three, ClipFloatOperation.divide) }
+        for (a <- values.take(4); b <- zeros)
+          check(a, b, ClipFloatOperation.divide, E(a.sign ^ b.sign, 0, 0, 1), 8)
+        for (sign <- Seq(false, true); z <- zeros) {
+          val inf = E(sign, 0, 0, 1); val nan = E(false, 0, 0x400000, 2)
+          check(z, inf, ClipFloatOperation.multiply, nan, 16)
+          check(inf, z, ClipFloatOperation.multiply, nan, 16)
+          check(z, inf, ClipFloatOperation.divide, E(z.sign ^ sign), 0)
           // FMA propagates quiet NaN without invalid; the existing divider
           // reports invalid for any NaN. Preserve each unit's current contract.
-          check(z,nan,ClipFloatOperation.multiply,nan,0)
-          check(z,nan,ClipFloatOperation.divide,nan,16)
+          check(z, nan, ClipFloatOperation.multiply, nan, 0)
+          check(z, nan, ClipFloatOperation.divide, nan, 16)
         }
-        val malformed=Seq(E(false,1,0),E(false,0,1),E(false,-513,0x800000),E(false,512,0x800000),
-          E(false,0,1,1),E(false,1,0,1),E(false,0,0,2),E(false,0,0x800001,2),E(false,0,0,3))
-        for(bad<-malformed;z<-zeros;op<-Seq(ClipFloatOperation.multiply,ClipFloatOperation.divide)){
-          check(z,bad,op,E(),0,1);check(bad,z,op,E(),0,1)
+        val malformed = Seq(
+          E(false, 1, 0),
+          E(false, 0, 1),
+          E(false, -513, 0x800000),
+          E(false, 512, 0x800000),
+          E(false, 0, 1, 1),
+          E(false, 1, 0, 1),
+          E(false, 0, 0, 2),
+          E(false, 0, 0x800001, 2),
+          E(false, 0, 0, 3)
+        )
+        for (bad <- malformed; z <- zeros; op <- Seq(ClipFloatOperation.multiply, ClipFloatOperation.divide)) {
+          check(z, bad, op, E(), 0, 1); check(bad, z, op, E(), 0, 1)
         }
-        for(z<-zeros;op<-5 to 7)check(z,z,op,E(),0,1)
-        finite(one,three,ClipFloatOperation.divide)
-        if(fast)shortcut=samples.result()else control=samples.result()
+        for (z <- zeros; op <- 5 to 7) check(z, z, op, E(), 0, 1)
+        finite(one, three, ClipFloatOperation.divide)
+        if (fast) shortcut = samples.result() else control = samples.result()
       }
     }
-    assert(control.size==shortcut.size && control.nonEmpty)
-    for((before,after)<-control.zip(shortcut)){
-      assert(after.bits==before.bits,"finite-zero shortcut changed the complete arithmetic response")
-      if(after.eligible){
-        assert(after.clocks<=4,s"finite zero took ${after.clocks} clocks")
-        assert(after.clocks<before.clocks,s"finite zero did not improve ${before.clocks}->${after.clocks}")
-      }else assert(after.clocks==before.clocks,"nonzero, invalid or special fallback timing changed")
+    assert(control.size == shortcut.size && control.nonEmpty)
+    for ((before, after) <- control.zip(shortcut)) {
+      assert(after.bits == before.bits, "finite-zero shortcut changed the complete arithmetic response")
+      if (after.eligible) {
+        assert(after.clocks <= 4, s"finite zero took ${after.clocks} clocks")
+        assert(after.clocks < before.clocks, s"finite zero did not improve ${before.clocks}->${after.clocks}")
+      } else assert(after.clocks == before.clocks, "nonzero, invalid or special fallback timing changed")
     }
-    for(op<-Seq(ClipFloatOperation.multiply,ClipFloatOperation.divide)){
-      val before=control.filter(s=>s.eligible && s.operation==op).map(_.clocks)
-      val after=shortcut.filter(s=>s.eligible && s.operation==op).map(_.clocks)
-      info(s"CLIP_FINITE_ZERO_CYCLES operation=$op cases=${after.size} controlMin=${before.min} controlMax=${before.max} candidateMin=${after.min} candidateMax=${after.max}")
+    for (op <- Seq(ClipFloatOperation.multiply, ClipFloatOperation.divide)) {
+      val before = control.filter(s => s.eligible && s.operation == op).map(_.clocks)
+      val after = shortcut.filter(s => s.eligible && s.operation == op).map(_.clocks)
+      info(
+        s"CLIP_FINITE_ZERO_CYCLES operation=$op cases=${after.size} controlMin=${before.min} controlMax=${before.max} candidateMin=${after.min} candidateMax=${after.max}"
+      )
     }
-    info(s"CLIP_FINITE_ZERO cases=${shortcut.size} exactResponse=true legacyControl=true rationalFiniteOracle=true signedZero=true exponentEnvelope=true specialFallback=true invalidPriority=true")
+    info(
+      s"CLIP_FINITE_ZERO cases=${shortcut.size} exactResponse=true legacyControl=true rationalFiniteOracle=true signedZero=true exponentEnvelope=true specialFallback=true invalidPriority=true"
+    )
   }
 
   it should "keep finite zero owned through cancellation reset held replies and no-reset reuse" in {
-    for(fast<-Seq(false,true))simulate(new ClipFloatArithmetic(finiteZeroShortcut=fast)){d=>
-      val t=new Driver(d);val one=decode(BigInt("3f800000",16));val three=decode(BigInt("40400000",16))
-      for(op<-Seq(ClipFloatOperation.multiply,ClipFloatOperation.divide)){
-        val a=E(true);val b=E(false,511,0xffffff);val expected=E(true)
-        val start=t.cycle;t.offer(a,b,op);t.until(d.io.out.valid.peek().litToBoolean)
-        val latency=t.cycle-start;t.response(expected,Some(0))
-        for(cut<-0 to latency+1){
-          t.offer(a,b,op);for(_<-0 until cut)t.tick()
-          val alreadyOffered=d.io.out.valid.peek().litToBoolean
-          val held=if(alreadyOffered)Some(d.io.out.bits.peek().litValue)else None
-          d.io.cancel.poke(true.B);t.until(d.io.out.valid.peek().litToBoolean)
-          val stable=d.io.out.bits.peek().litValue
-          held.foreach(v=>assert(v==stable,"late cancellation changed an offered zero response"))
-          for(_<-0 until 5){t.tick();d.io.in.ready.expect(false.B);assert(d.io.out.bits.peek().litValue==stable)}
+    for (fast <- Seq(false, true)) simulate(new ClipFloatArithmetic(finiteZeroShortcut = fast)) { d =>
+      val t = new Driver(d); val one = decode(BigInt("3f800000", 16)); val three = decode(BigInt("40400000", 16))
+      for (op <- Seq(ClipFloatOperation.multiply, ClipFloatOperation.divide)) {
+        val a = E(true); val b = E(false, 511, 0xffffff); val expected = E(true)
+        val start = t.cycle; t.offer(a, b, op); t.until(d.io.out.valid.peek().litToBoolean)
+        val latency = t.cycle - start; t.response(expected, Some(0))
+        for (cut <- 0 to latency + 1) {
+          t.offer(a, b, op); for (_ <- 0 until cut) t.tick()
+          val alreadyOffered = d.io.out.valid.peek().litToBoolean
+          val held = if (alreadyOffered) Some(d.io.out.bits.peek().litValue) else None
+          d.io.cancel.poke(true.B); t.until(d.io.out.valid.peek().litToBoolean)
+          val stable = d.io.out.bits.peek().litValue
+          held.foreach(v => assert(v == stable, "late cancellation changed an offered zero response"))
+          for (_ <- 0 until 5) {
+            t.tick(); d.io.in.ready.expect(false.B); assert(d.io.out.bits.peek().litValue == stable)
+          }
           // The existing prepare-stage cancellation publishes canonical +0.
           // Once prepared, the accepted signed result drains before completion.
-          t.response(if(cut==0)E()else expected,Some(0),cancelled= !alreadyOffered)
-          d.io.cancel.poke(false.B);t.run(one,three,ClipFloatOperation.divide);t.run(a,b,op)
+          t.response(if (cut == 0) E() else expected, Some(0), cancelled = !alreadyOffered)
+          d.io.cancel.poke(false.B); t.run(one, three, ClipFloatOperation.divide); t.run(a, b, op)
         }
-        for(cut<-0 to latency+1){
-          t.offer(a,b,op);for(_<-0 until cut)t.tick()
-          d.reset.poke(true.B);t.tick();d.reset.poke(false.B)
-          for(_<-0 until latency+2){d.io.out.valid.expect(false.B);d.io.busy.expect(false.B);t.tick()}
-          t.run(one,three,ClipFloatOperation.divide);t.run(a,b,op)
+        for (cut <- 0 to latency + 1) {
+          t.offer(a, b, op); for (_ <- 0 until cut) t.tick()
+          d.reset.poke(true.B); t.tick(); d.reset.poke(false.B)
+          for (_ <- 0 until latency + 2) { d.io.out.valid.expect(false.B); d.io.busy.expect(false.B); t.tick() }
+          t.run(one, three, ClipFloatOperation.divide); t.run(a, b, op)
         }
       }
       // Descriptor legality retains its original precedence over cancellation,
       // even when the other operand would otherwise qualify as finite zero.
-      for(op<-Seq(ClipFloatOperation.multiply,ClipFloatOperation.divide);
-          bad<-Seq(E(false,1,0),E(false,512,0x800000))){
-        t.offer(E(true),bad,op);d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
-        t.response(E(),Some(0),error=1,cancelled=true)
-        t.run(one,three,ClipFloatOperation.divide)
+      for (
+        op <- Seq(ClipFloatOperation.multiply, ClipFloatOperation.divide);
+        bad <- Seq(E(false, 1, 0), E(false, 512, 0x800000))
+      ) {
+        t.offer(E(true), bad, op); d.io.cancel.poke(true.B); t.tick(); d.io.cancel.poke(false.B)
+        t.response(E(), Some(0), error = 1, cancelled = true)
+        t.run(one, three, ClipFloatOperation.divide)
       }
-      info(s"CLIP_FINITE_ZERO_DRAIN enabled=$fast allClockCuts=true resetNoGhost=true cancelBeforeAndAfterPrepare=true heldReply=true generalDivideReuse=true")
+      info(
+        s"CLIP_FINITE_ZERO_DRAIN enabled=$fast allClockCuts=true resetNoGhost=true cancelBeforeAndAfterPrepare=true heldReply=true generalDivideReuse=true"
+      )
     }
   }
 
   it should "retain tiny crossing contributions and separately report final FP32 packing loss" in {
-    simulate(new ClipFloatArithmetic()) { d=>
-      val t=new Driver(d);val small=decode(1);val large=decode(BigInt("7f7fffff",16))
-      val denominator=t.run(large,small,ClipFloatOperation.add)
-      val tiny=t.run(small,denominator,ClipFloatOperation.divide)
-      assert(tiny.exponent< -149 && tiny.sig!=0 && packed(tiny)==((BigInt(0),3)))
-      val nearOne=t.run(large,denominator,ClipFloatOperation.divide)
-      val contribution=t.run(tiny,large,ClipFloatOperation.multiply)
-      assert(packed(contribution)._1==1)
-      val other=t.run(nearOne,small,ClipFloatOperation.multiply)
-      val sum=t.run(contribution,other,ClipFloatOperation.add)
-      assert(packed(sum)._1==2)
-      val huge=t.run(large,large,ClipFloatOperation.add)
-      assert(huge.exponent==128 && packed(huge)==((BigInt("7f800000",16),5)))
-      val recovered=t.run(huge,decode(BigInt("40000000",16)),ClipFloatOperation.divide)
-      assert(recovered==large)
+    simulate(new ClipFloatArithmetic()) { d =>
+      val t = new Driver(d); val small = decode(1); val large = decode(BigInt("7f7fffff", 16))
+      val denominator = t.run(large, small, ClipFloatOperation.add)
+      val tiny = t.run(small, denominator, ClipFloatOperation.divide)
+      assert(tiny.exponent < -149 && tiny.sig != 0 && packed(tiny) == ((BigInt(0), 3)))
+      val nearOne = t.run(large, denominator, ClipFloatOperation.divide)
+      val contribution = t.run(tiny, large, ClipFloatOperation.multiply)
+      assert(packed(contribution)._1 == 1)
+      val other = t.run(nearOne, small, ClipFloatOperation.multiply)
+      val sum = t.run(contribution, other, ClipFloatOperation.add)
+      assert(packed(sum)._1 == 2)
+      val huge = t.run(large, large, ClipFloatOperation.add)
+      assert(huge.exponent == 128 && packed(huge) == ((BigInt("7f800000", 16), 5)))
+      val recovered = t.run(huge, decode(BigInt("40000000", 16)), ClipFloatOperation.divide)
+      assert(recovered == large)
       // Packing distinguishes exact subnormals, halfway ties and rounded normal results.
-      for(v<-Seq(E(false,-150,0x800000),E(false,-150,0x800001),E(false,-127,0xffffff),E(true,-512,0x800000)))
-        t.run(v,decode(BigInt("3f800000",16)),ClipFloatOperation.multiply)
-      info("CLIP_FLOAT tinyWeightRetained=true independentWeights=true recoveredSubnormalContribution=true finiteDistanceOverflowRetained=true gradualPacking=true tiesToEven=true")
+      for (
+        v <- Seq(E(false, -150, 0x800000), E(false, -150, 0x800001), E(false, -127, 0xffffff), E(true, -512, 0x800000))
+      )
+        t.run(v, decode(BigInt("3f800000", 16)), ClipFloatOperation.multiply)
+      info(
+        "CLIP_FLOAT tinyWeightRetained=true independentWeights=true recoveredSubnormalContribution=true finiteDistanceOverflowRetained=true gradualPacking=true tiesToEven=true"
+      )
     }
   }
 
   it should "preserve special arithmetic and reject malformed or out-of-envelope operands" in {
-    simulate(new ClipFloatArithmetic()) { d=>
-      val t=new Driver(d);val one=decode(BigInt("3f800000",16));val inf=E(false,0,0,1);val nan=E(false,0,0x400000,2)
-      for((a,b,op,out,flags)<-Seq(
-        (one,E(),3,inf,8),(E(),E(),3,nan,16),(inf,inf,1,nan,16),(inf,E(),2,nan,16),
-        (E(true,0,0,1),one,0,E(true,0,0,1),0),(one,inf,3,E(),0),
-        (E(true),one,2,E(true),0),(E(true),E(true),0,E(true),0))) {
-        t.offer(a,b,op);t.response(out,Some(flags))
+    simulate(new ClipFloatArithmetic()) { d =>
+      val t = new Driver(d); val one = decode(BigInt("3f800000", 16)); val inf = E(false, 0, 0, 1);
+      val nan = E(false, 0, 0x400000, 2)
+      for (
+        (a, b, op, out, flags) <- Seq(
+          (one, E(), 3, inf, 8),
+          (E(), E(), 3, nan, 16),
+          (inf, inf, 1, nan, 16),
+          (inf, E(), 2, nan, 16),
+          (E(true, 0, 0, 1), one, 0, E(true, 0, 0, 1), 0),
+          (one, inf, 3, E(), 0),
+          (E(true), one, 2, E(true), 0),
+          (E(true), E(true), 0, E(true), 0)
+        )
+      ) {
+        t.offer(a, b, op); t.response(out, Some(flags))
       }
-      val malformed=Seq(E(false,0,1),E(false,1,0),E(false,-513,0x800000),E(false,512,0x800000),
-        E(false,0,1,1),E(false,1,0,1),E(false,0,0,2),E(false,0,0x800001,2),E(false,0,0,3))
-      for(a<-malformed){t.offer(a,one,0);t.response(E(),Some(0),1)}
-      t.offer(one,one,7);t.response(E(),Some(0),1)
-      t.run(E(false,511,0x800000),E(false,511,0x800000),2)
-      t.run(E(false,-512,0x800000),E(false,-512,0x800000),2)
-      t.run(one,one,0)
+      val malformed = Seq(
+        E(false, 0, 1),
+        E(false, 1, 0),
+        E(false, -513, 0x800000),
+        E(false, 512, 0x800000),
+        E(false, 0, 1, 1),
+        E(false, 1, 0, 1),
+        E(false, 0, 0, 2),
+        E(false, 0, 0x800001, 2),
+        E(false, 0, 0, 3)
+      )
+      for (a <- malformed) { t.offer(a, one, 0); t.response(E(), Some(0), 1) }
+      t.offer(one, one, 7); t.response(E(), Some(0), 1)
+      t.run(E(false, 511, 0x800000), E(false, 511, 0x800000), 2)
+      t.run(E(false, -512, 0x800000), E(false, -512, 0x800000), 2)
+      t.run(one, one, 0)
       info("CLIP_FLOAT specialCases=8 malformedOperands=9 invalidOperation=true rangeFailures=true healthyReuse=true")
     }
   }
 
   it should "drain accepted arithmetic through cancellation and retain an already offered response" in {
-    simulate(new ClipFloatArithmetic()) { d=>
-      val t=new Driver(d);val one=decode(BigInt("3f800000",16));val three=decode(BigInt("40400000",16))
-      t.offer(one,three,3);for(_<-0 until 6)t.tick();d.io.cancel.poke(true.B)
-      for(_<-0 until 7){t.tick();d.io.busy.expect(true.B);d.io.in.ready.expect(false.B);d.io.out.valid.expect(false.B)}
-      d.io.cancel.poke(false.B);val (result,flags)=reference(one,three,3);t.response(result,Some(flags),cancelled=true)
+    simulate(new ClipFloatArithmetic()) { d =>
+      val t = new Driver(d); val one = decode(BigInt("3f800000", 16)); val three = decode(BigInt("40400000", 16))
+      t.offer(one, three, 3); for (_ <- 0 until 6) t.tick(); d.io.cancel.poke(true.B)
+      for (_ <- 0 until 7) {
+        t.tick(); d.io.busy.expect(true.B); d.io.in.ready.expect(false.B); d.io.out.valid.expect(false.B)
+      }
+      d.io.cancel.poke(false.B); val (result, flags) = reference(one, three, 3);
+      t.response(result, Some(flags), cancelled = true)
       // Cancellation after the response offer cannot change any of its bits.
-      t.offer(one,one,0);t.until(d.io.out.valid.peek().litToBoolean);val held=d.io.out.bits.peek().litValue
-      d.io.cancel.poke(true.B);for(_<-0 until 11){t.tick();assert(d.io.out.bits.peek().litValue==held)}
-      d.io.cancel.poke(false.B);t.response(decode(BigInt("40000000",16)),Some(0))
-      t.offer(one,three,3);d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
-      t.response(E(),Some(0),cancelled=true);t.run(one,three,3)
-      info("CLIP_FLOAT cancelAcceptedDivider=true noFlush=true heldResponseIrrevocable=true cancelBeforeIssue=true healthyReuse=true")
+      t.offer(one, one, 0); t.until(d.io.out.valid.peek().litToBoolean); val held = d.io.out.bits.peek().litValue
+      d.io.cancel.poke(true.B); for (_ <- 0 until 11) { t.tick(); assert(d.io.out.bits.peek().litValue == held) }
+      d.io.cancel.poke(false.B); t.response(decode(BigInt("40000000", 16)), Some(0))
+      t.offer(one, three, 3); d.io.cancel.poke(true.B); t.tick(); d.io.cancel.poke(false.B)
+      t.response(E(), Some(0), cancelled = true); t.run(one, three, 3)
+      info(
+        "CLIP_FLOAT cancelAcceptedDivider=true noFlush=true heldResponseIrrevocable=true cancelBeforeIssue=true healthyReuse=true"
+      )
     }
   }
 }

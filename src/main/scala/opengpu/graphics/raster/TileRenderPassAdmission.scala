@@ -3,9 +3,8 @@ package opengpu.graphics
 import chisel3._
 import chisel3.util._
 
-/** Snapshot then validate full-precision address ranges in bounded stages.
-  * Keeping multiply, base addition, column addition and comparisons in
-  * separate cycles avoids an input-descriptor-to-ready combinational cone.
+/** Snapshot then validate full-precision address ranges in bounded stages. Keeping multiply, base addition, column
+  * addition and comparisons in separate cycles avoids an input-descriptor-to-ready combinational cone.
   */
 class TileRenderPassAdmissionResult extends Bundle {
   val valid = Bool()
@@ -17,8 +16,19 @@ class TileRenderPassAdmission(maxSampleCount: Int, screenWidth: Int, screenHeigh
     val in = Flipped(Decoupled(new TileRenderPassDescriptor))
     val out = Decoupled(new TileRenderPassAdmissionResult)
   })
-  private val Seq(idle, coordinates, products, joinProducts, productSum, rowSums, rowCarry,
-    ranges, rangeCarry, validate, complete) = Enum(11)
+  private val Seq(
+    idle,
+    coordinates,
+    products,
+    joinProducts,
+    productSum,
+    rowSums,
+    rowCarry,
+    ranges,
+    rangeCarry,
+    validate,
+    complete
+  ) = Enum(11)
   private val state = RegInit(idle)
   private val descriptor = Reg(new TileRenderPassDescriptor)
   private val basicValid = Reg(Bool())
@@ -75,9 +85,12 @@ class TileRenderPassAdmission(maxSampleCount: Int, screenWidth: Int, screenHeigh
     columnEnd(1) := sourceColumnEnd
     columnEnd(2) := xEnd << 2
     val classSize = Mux(descriptor.tileLog2 === 3.U, 8.U, 16.U)
-    val sourceViewsValid = Seq(descriptor.color, descriptor.depth).map(view =>
-      view.base(1, 0) === 0.U && view.rowPitch(1, 0) === 0.U &&
-        view.rowPitch >= sourceColumnEnd && view.loadOp <= AttachmentLoadOp.discard.U).reduce(_ && _)
+    val sourceViewsValid = Seq(descriptor.color, descriptor.depth)
+      .map(view =>
+        view.base(1, 0) === 0.U && view.rowPitch(1, 0) === 0.U &&
+          view.rowPitch >= sourceColumnEnd && view.loadOp <= AttachmentLoadOp.discard.U
+      )
+      .reduce(_ && _)
     basicValid := descriptor.version === 1.U &&
       (descriptor.tileLog2 === 3.U || descriptor.tileLog2 === 4.U) &&
       descriptor.originX(2, 0) === 0.U && descriptor.originY(2, 0) === 0.U &&

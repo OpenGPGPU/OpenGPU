@@ -34,8 +34,7 @@ class FpuIssueStageSpec extends AnyFlatSpec {
 
       // fmadd.s f4, f1, f2, f3
       dut.io.in.bits.poke(0.U.asTypeOf(dut.io.in.bits))
-      dut.io.in.bits.instruction.poke(
-        "b00011_00_00010_00001_000_00100_1000011".U)
+      dut.io.in.bits.instruction.poke("b00011_00_00010_00001_000_00100_1000011".U)
       dut.io.in.bits.warpId.poke(0.U)
       dut.io.in.bits.activeMask.poke("hff".U)
       dut.io.in.bits.decoded.readsRs1.poke(true.B)
@@ -54,8 +53,7 @@ class FpuIssueStageSpec extends AnyFlatSpec {
 
       // fadd.s f5, f4, f1 must wait for f4 writeback.
       dut.io.in.bits.poke(0.U.asTypeOf(dut.io.in.bits))
-      dut.io.in.bits.instruction.poke(
-        "b0000000_00001_00100_000_00101_1010011".U)
+      dut.io.in.bits.instruction.poke("b0000000_00001_00100_000_00101_1010011".U)
       dut.io.in.bits.warpId.poke(0.U)
       dut.io.in.bits.decoded.readsRs1.poke(true.B)
       dut.io.in.bits.decoded.readsRs2.poke(true.B)

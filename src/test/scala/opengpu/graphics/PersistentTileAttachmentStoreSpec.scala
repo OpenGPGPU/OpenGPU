@@ -6,15 +6,31 @@ import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
 private[graphics] object TilePassTestData {
-  case class Pass(mode: Int = 0, width: Int = 5, height: Int = 3,
-    originX: Int = 16, originY: Int = 16, pitch: Long = 512,
-    colorBase: Long = 0x10000, depthBase: Long = 0x20000,
-    colorLoad: Int = AttachmentLoadOp.clear, depthLoad: Int = AttachmentLoadOp.clear,
-    colorStore: Boolean = true, depthStore: Boolean = true,
-    colorClear: Long = 0x10203040L, depthClear: Long = 0x5affffffL,
-    id: Int = 7, generation: Int = 11, resolve: Boolean = false,
-    resolveBase: Long = 0x30000, resolvePitch: Long = 512, tileLog2: Int = 4,
-    context: Long = 3,format: Int = PixelFormat.native,allocationBytes: Long = 65536) {
+  case class Pass(
+      mode: Int = 0,
+      width: Int = 5,
+      height: Int = 3,
+      originX: Int = 16,
+      originY: Int = 16,
+      pitch: Long = 512,
+      colorBase: Long = 0x10000,
+      depthBase: Long = 0x20000,
+      colorLoad: Int = AttachmentLoadOp.clear,
+      depthLoad: Int = AttachmentLoadOp.clear,
+      colorStore: Boolean = true,
+      depthStore: Boolean = true,
+      colorClear: Long = 0x10203040L,
+      depthClear: Long = 0x5affffffL,
+      id: Int = 7,
+      generation: Int = 11,
+      resolve: Boolean = false,
+      resolveBase: Long = 0x30000,
+      resolvePitch: Long = 512,
+      tileLog2: Int = 4,
+      context: Long = 3,
+      format: Int = PixelFormat.native,
+      allocationBytes: Long = 65536
+  ) {
     val samples: Int = 1 << mode
     def index(x: Int, y: Int, sample: Int = 0): Int =
       (((originY + y) & 15) * 16 + ((originX + x) & 15)) * samples + sample
@@ -41,9 +57,12 @@ private[graphics] object TilePassTestData {
     d.resolveBase.poke(p.resolveBase.U)
     d.resolveLimit.poke(math.min(1L << 32, p.resolveBase + 65536).U)
     d.resolveRowPitch.poke(p.resolvePitch.U)
-    for ((view, base, load, store, clear) <- Seq(
-      (d.color, p.colorBase, p.colorLoad, p.colorStore, p.colorClear),
-      (d.depth, p.depthBase, p.depthLoad, p.depthStore, p.depthClear))) {
+    for (
+      (view, base, load, store, clear) <- Seq(
+        (d.color, p.colorBase, p.colorLoad, p.colorStore, p.colorClear),
+        (d.depth, p.depthBase, p.depthLoad, p.depthStore, p.depthClear)
+      )
+    ) {
       view.base.poke(base.U)
       view.limit.poke(math.min(1L << 32, base + p.allocationBytes).U)
       view.rowPitch.poke(p.pitch.U)
@@ -59,8 +78,11 @@ class PersistentTileAttachmentStoreSpec extends AnyFlatSpec {
   behavior of "PersistentTileAttachmentStore"
   private val credits = sys.props.get("opengpu.tileStoreCredits").map(_.toInt).getOrElse(1)
   private def store(capacity: Int = 4): PersistentTileAttachmentStore =
-    new PersistentTileAttachmentStore(maxSampleCount = capacity, storeCredits = credits,
-      bankedSamples=sys.props.get("opengpu.bankedTileSamples").contains("true"))
+    new PersistentTileAttachmentStore(
+      maxSampleCount = capacity,
+      storeCredits = credits,
+      bankedSamples = sys.props.get("opengpu.bankedTileSamples").contains("true")
+    )
 
   import PersistentTileAttachmentStoreTestSupport._
 
@@ -75,7 +97,7 @@ class PersistentTileAttachmentStoreSpec extends AnyFlatSpec {
         // Mutation after admission must not change the snapshot or owner.
         pokeDescriptor(dut.io.pass.begin.bits, p.copy(colorBase = 0x30000, id = 99))
         d.issue(1, 1, p.samples - 1, depth = true)
-        if(dut.io.quad.nonEmpty)d.waitFor(dut.io.events.clearRead.peek().litToBoolean)
+        if (dut.io.quad.nonEmpty) d.waitFor(dut.io.events.clearRead.peek().litToBoolean)
         assert(d.clearReads == priorClearReads, "clear read diagnostic must be registered")
         dut.io.events.clearRead.expect(true.B)
         d.response(p.depthClear)
@@ -96,10 +118,14 @@ class PersistentTileAttachmentStoreSpec extends AnyFlatSpec {
         val expectedWords = p.width * p.height * p.samples * 2
         assert(d.requests.size == expectedWords && d.requests.forall(_.write))
         assert(d.requests.map(_.address).distinct.size == expectedWords)
-        for (depth <- Seq(false, true); y <- 0 until p.height;
-          x <- 0 until p.width; s <- 0 until p.samples) {
-          val expected = if (depth) p.depthClear
-            else if (x == 1 && y == 1 && s == p.samples - 1) 0xaabbccddL else p.colorClear
+        for (
+          depth <- Seq(false, true); y <- 0 until p.height;
+          x <- 0 until p.width; s <- 0 until p.samples
+        ) {
+          val expected =
+            if (depth) p.depthClear
+            else if (x == 1 && y == 1 && s == p.samples - 1) 0xaabbccddL
+            else p.colorClear
           assert(d.memory(p.address(x, y, s, depth)) == expected)
         }
       }
@@ -111,8 +137,7 @@ class PersistentTileAttachmentStoreSpec extends AnyFlatSpec {
   it should "load once and preserve untouched samples during partial updates and store discard" in {
     simulate(store()) { dut =>
       val d = new Driver(dut)
-      val p = Pass(colorLoad = AttachmentLoadOp.load,
-        depthLoad = AttachmentLoadOp.discard, depthStore = false)
+      val p = Pass(colorLoad = AttachmentLoadOp.load, depthLoad = AttachmentLoadOp.discard, depthStore = false)
       d.begin(p)
       val addr = p.address(2, 1, 0, depth = false)
       d.memory(addr) = 0x12345678L
@@ -227,13 +252,22 @@ class PersistentTileAttachmentStoreSpec extends AnyFlatSpec {
     simulate(store()) { dut =>
       val d = new Driver(dut)
       val invalid = Seq[TileRenderPassDescriptor => Unit](
-        _.version.poke(2.U), _.tileLog2.poke(2.U), _.sampleMode.poke(3.U), _.tileWidth.poke(0.U),
-        _.tileHeight.poke(17.U), _.originX.poke(17.U), _.color.loadOp.poke(3.U),
-        _.colorFormat.poke(7.U), _.color.rowPitch.poke(4.U),
-        _.depth.rowPitch.poke(516.U), _.color.limit.poke(0x10004.U),
-        _.depth.base.poke(0x10000.U), _.color.base.poke(0xfffffff0L.U),
+        _.version.poke(2.U),
+        _.tileLog2.poke(2.U),
+        _.sampleMode.poke(3.U),
+        _.tileWidth.poke(0.U),
+        _.tileHeight.poke(17.U),
+        _.originX.poke(17.U),
+        _.color.loadOp.poke(3.U),
+        _.colorFormat.poke(7.U),
+        _.color.rowPitch.poke(4.U),
+        _.depth.rowPitch.poke(516.U),
+        _.color.limit.poke(0x10004.U),
+        _.depth.base.poke(0x10000.U),
+        _.color.base.poke(0xfffffff0L.U),
         d => { d.resolve.poke(true.B); d.resolveBase.poke(0x10000.U) },
-        d => { d.resolve.poke(true.B); d.resolveLimit.poke(0x30004.U) })
+        d => { d.resolve.poke(true.B); d.resolveLimit.poke(0x30004.U) }
+      )
       for ((mutate, i) <- invalid.zipWithIndex) {
         val p = Pass(id = i)
         d.pass = p
@@ -248,22 +282,33 @@ class PersistentTileAttachmentStoreSpec extends AnyFlatSpec {
     }
   }
 
-  private def average(words: Seq[Long]): Long = (0 until 4).map { c =>
-    val sum = words.map(w => (w >>> (8 * c)) & 255).sum
-    ((sum + words.size / 2) / words.size) << (8 * c)
-  }.reduce(_ | _)
+  private def average(words: Seq[Long]): Long = (0 until 4)
+    .map { c =>
+      val sum = words.map(w => (w >>> (8 * c)) & 255).sum
+      ((sum + words.size / 2) / words.size) << (8 * c)
+    }
+    .reduce(_ | _)
 
   it should "resolve resident samples and lazy clears without exporting discarded MSAA attachments" in {
     simulate(store()) { dut =>
       val d = new Driver(dut)
       for (mode <- 0 to 2) {
-        val p = Pass(mode = mode, width = 3, height = 2, resolve = true,
-          colorStore = false, depthStore = false, id = 30 + mode)
+        val p = Pass(
+          mode = mode,
+          width = 3,
+          height = 2,
+          resolve = true,
+          colorStore = false,
+          depthStore = false,
+          id = 30 + mode
+        )
         d.requests.clear()
         d.begin(p)
         val values = mutable.Map.empty[(Int, Int, Int), Long].withDefaultValue(p.colorClear)
-        for (y <- 0 until p.height; x <- 0 until p.width; s <- 0 until p.samples
-          if (x + y + s) % 2 == 0) {
+        for (
+          y <- 0 until p.height; x <- 0 until p.width; s <- 0 until p.samples
+          if (x + y + s) % 2 == 0
+        ) {
           val value = ((x * 31 + s * 53).toLong << 24) | ((y * 59 + s * 23).toLong << 16) |
             ((x * 17 + s * 7).toLong << 8) | (y * 17 + s * 13)
           values((x, y, s)) = value
@@ -285,8 +330,15 @@ class PersistentTileAttachmentStoreSpec extends AnyFlatSpec {
   it should "resolve load-start samples with exact rounding and attribute resolve load and store faults" in {
     simulate(store()) { dut =>
       val d = new Driver(dut)
-      val p = Pass(mode = 2, width = 2, height = 1, resolve = true,
-        colorStore = false, depthStore = false, colorLoad = AttachmentLoadOp.load)
+      val p = Pass(
+        mode = 2,
+        width = 2,
+        height = 1,
+        resolve = true,
+        colorStore = false,
+        depthStore = false,
+        colorLoad = AttachmentLoadOp.load
+      )
       d.begin(p)
       val values = Seq(0x00000000L, 0x01020304L, 0x02040608L, 0xffffffffL)
       for (x <- 0 until p.width; s <- 0 until p.samples)
@@ -297,13 +349,16 @@ class PersistentTileAttachmentStoreSpec extends AnyFlatSpec {
       for (x <- 0 until p.width) assert(d.memory(p.resolveAddress(x, 0)) == average(values))
       for (load <- Seq(true, false)) {
         d.requests.clear()
-        d.begin(p.copy(id = if (load) 8 else 9,
-          colorLoad = if (load) AttachmentLoadOp.load else AttachmentLoadOp.clear))
+        d.begin(
+          p.copy(id = if (load) 8 else 9, colorLoad = if (load) AttachmentLoadOp.load else AttachmentLoadOp.clear)
+        )
         d.faultNextResponse = true
         d.end()
         d.complete(TilePassStatus.memoryFault)
-        assert(d.requests.nonEmpty && d.requests.size <= (if (load) 1 else credits) &&
-          d.requests.forall(_.write == !load))
+        assert(
+          d.requests.nonEmpty && d.requests.size <= (if (load) 1 else credits) &&
+            d.requests.forall(_.write == !load)
+        )
       }
     }
   }
@@ -312,9 +367,12 @@ class PersistentTileAttachmentStoreSpec extends AnyFlatSpec {
     simulate(store()) { dut =>
       val d = new Driver(dut)
       for (mode <- 0 to 2; load <- Seq(false, true)) {
-        val p = Pass(mode = mode, id = 40 + mode * 2 + (if (load) 1 else 0),
+        val p = Pass(
+          mode = mode,
+          id = 40 + mode * 2 + (if (load) 1 else 0),
           colorLoad = if (load) AttachmentLoadOp.load else AttachmentLoadOp.clear,
-          depthLoad = if (load) AttachmentLoadOp.load else AttachmentLoadOp.clear)
+          depthLoad = if (load) AttachmentLoadOp.load else AttachmentLoadOp.clear
+        )
         val initialColor = if (load) 0x12345678L else p.colorClear
         val initialDepth = if (load) 0x5aabcdefL else p.depthClear
         d.requests.clear()
@@ -389,11 +447,22 @@ class PersistentTileAttachmentStoreSpec extends AnyFlatSpec {
     for (capacity <- Seq(1, 2, 4)) {
       simulate(store(capacity)) { dut =>
         val d = new Driver(dut)
-        for (mode <- 0 to Integer.numberOfTrailingZeros(capacity);
-          (ox, oy) <- Seq((0, 0), (8, 0), (0, 8), (8, 8))) {
-          val p = Pass(mode = mode, tileLog2 = 3, width = 8, height = 8,
-            originX = ox, originY = oy, resolve = true, id = 50 + ox + oy * 2,
-            colorStore = false, depthStore = false)
+        for (
+          mode <- 0 to Integer.numberOfTrailingZeros(capacity);
+          (ox, oy) <- Seq((0, 0), (8, 0), (0, 8), (8, 8))
+        ) {
+          val p = Pass(
+            mode = mode,
+            tileLog2 = 3,
+            width = 8,
+            height = 8,
+            originX = ox,
+            originY = oy,
+            resolve = true,
+            id = 50 + ox + oy * 2,
+            colorStore = false,
+            depthStore = false
+          )
           d.requests.clear()
           d.begin(p)
           for ((x, y) <- Seq((0, 0), (7, 7))) {
@@ -448,8 +517,7 @@ class PersistentTileAttachmentStoreSpec extends AnyFlatSpec {
   it should "validate the exclusive 4 GiB allocation boundary and cancel descriptor admission" in {
     simulate(store()) { dut =>
       val d = new Driver(dut)
-      val p = Pass(width = 1, height = 1, originX = 0, originY = 0,
-        pitch = 4, colorBase = 0xfffffffcL)
+      val p = Pass(width = 1, height = 1, originX = 0, originY = 0, pitch = 4, colorBase = 0xfffffffcL)
       d.begin(p)
       d.issue(0, 0, write = true, data = 0x12345678L)
       d.response(0)
@@ -492,21 +560,23 @@ class PersistentTileAttachmentStoreSpec extends AnyFlatSpec {
     }
   }
 
-  for(fault <- Seq(false,true)) {
+  for (fault <- Seq(false, true)) {
     it should s"retain late cancellation after a local resolve completes until its external write drains fault=$fault" in {
-      simulate(store()) { dut=>
-        val d=new Driver(dut)
-        val p=Pass(mode=2,width=1,height=1,colorStore=false,depthStore=false,resolve=true)
-        d.begin(p);d.deliverResponses=false;d.end()
+      simulate(store()) { dut =>
+        val d = new Driver(dut)
+        val p = Pass(mode = 2, width = 1, height = 1, colorStore = false, depthStore = false, resolve = true)
+        d.begin(p); d.deliverResponses = false; d.end()
         d.waitFor(d.requests.nonEmpty)
-        assert(d.requests.size==1 && d.requests.head.write && d.requests.head.address==p.resolveAddress(0,0))
-        for(_ <- 0 until 12) { d.tick();dut.io.pass.active.expect(true.B);dut.io.pass.completion.valid.expect(false.B) }
-        dut.io.pass.cancel.poke(true.B);d.tick();dut.io.pass.cancel.poke(false.B)
-        for(_ <- 0 until 5) { d.tick();dut.io.pass.completion.valid.expect(false.B) }
-        d.faultNextResponse=fault;d.deliverResponses=true
-        d.complete(if(fault)TilePassStatus.memoryFault else TilePassStatus.cancelled)
-        assert(d.requests.size==1)
-        d.begin(Pass(id=8,generation=12,colorStore=false,depthStore=false));d.end();d.complete()
+        assert(d.requests.size == 1 && d.requests.head.write && d.requests.head.address == p.resolveAddress(0, 0))
+        for (_ <- 0 until 12) {
+          d.tick(); dut.io.pass.active.expect(true.B); dut.io.pass.completion.valid.expect(false.B)
+        }
+        dut.io.pass.cancel.poke(true.B); d.tick(); dut.io.pass.cancel.poke(false.B)
+        for (_ <- 0 until 5) { d.tick(); dut.io.pass.completion.valid.expect(false.B) }
+        d.faultNextResponse = fault; d.deliverResponses = true
+        d.complete(if (fault) TilePassStatus.memoryFault else TilePassStatus.cancelled)
+        assert(d.requests.size == 1)
+        d.begin(Pass(id = 8, generation = 12, colorStore = false, depthStore = false)); d.end(); d.complete()
       }
     }
   }
@@ -515,8 +585,14 @@ class PersistentTileAttachmentStoreSpec extends AnyFlatSpec {
     it should "resolve load misses while old stores wait and attribute a late reordered write fault" in {
       simulate(store()) { dut =>
         val d = new Driver(dut)
-        val p = Pass(mode = 2, width = math.min(2, credits - 1), height = 1, colorLoad = AttachmentLoadOp.load,
-          depthStore = false, resolve = true)
+        val p = Pass(
+          mode = 2,
+          width = math.min(2, credits - 1),
+          height = 1,
+          colorLoad = AttachmentLoadOp.load,
+          depthStore = false,
+          resolve = true
+        )
         d.begin(p)
         d.issue(0, 0, write = true, data = 0x12345678L)
         d.response(0)
@@ -547,13 +623,24 @@ class PersistentTileAttachmentStoreSpec extends AnyFlatSpec {
       for (iteration <- 0 until 24) {
         val tileLog2 = if (random.nextBoolean()) 3 else 4
         val edge = 1 << tileLog2
-        val p = Pass(mode = iteration % 3, tileLog2 = tileLog2,
-          width = 1 + random.nextInt(edge), height = 1 + random.nextInt(edge),
-          originX = random.nextInt(32 / edge) * edge, originY = random.nextInt(32 / edge) * edge,
-          colorLoad = random.nextInt(3), depthLoad = random.nextInt(3),
-          colorStore = random.nextBoolean(), depthStore = random.nextBoolean(),
-          resolve = random.nextBoolean(), colorClear = word(), depthClear = word(),
-          id = 100 + iteration, generation = 1000 + iteration, context = word())
+        val p = Pass(
+          mode = iteration % 3,
+          tileLog2 = tileLog2,
+          width = 1 + random.nextInt(edge),
+          height = 1 + random.nextInt(edge),
+          originX = random.nextInt(32 / edge) * edge,
+          originY = random.nextInt(32 / edge) * edge,
+          colorLoad = random.nextInt(3),
+          depthLoad = random.nextInt(3),
+          colorStore = random.nextBoolean(),
+          depthStore = random.nextBoolean(),
+          resolve = random.nextBoolean(),
+          colorClear = word(),
+          depthClear = word(),
+          id = 100 + iteration,
+          generation = 1000 + iteration,
+          context = word()
+        )
         val initial = mutable.Map.empty[Long, Long]
         val logical = mutable.Map.empty[Long, Long]
         val dirty = mutable.Set.empty[Long]
@@ -563,7 +650,8 @@ class PersistentTileAttachmentStoreSpec extends AnyFlatSpec {
           initial(addr) = old
           d.memory(addr) = old
           val load = if (depth) p.depthLoad else p.colorLoad
-          logical(addr) = if (load == AttachmentLoadOp.load) old
+          logical(addr) =
+            if (load == AttachmentLoadOp.load) old
             else if (load == AttachmentLoadOp.clear) { if (depth) p.depthClear else p.colorClear }
             else 0L
         }
@@ -612,14 +700,16 @@ class PersistentTileAttachmentStoreSpec extends AnyFlatSpec {
         }
         if (p.resolve) {
           for (y <- 0 until p.height; x <- 0 until p.width)
-            expectedWrites(p.resolveAddress(x, y)) = average((0 until p.samples).map(s =>
-              logical(p.address(x, y, s, depth = false))))
+            expectedWrites(p.resolveAddress(x, y)) =
+              average((0 until p.samples).map(s => logical(p.address(x, y, s, depth = false))))
         }
         d.end()
         d.complete()
         val actualWrites = d.requests.filter(_.write)
-        assert(actualWrites.size == expectedWrites.size && actualWrites.map(_.address).toSet == expectedWrites.keySet,
-          s"incorrect stores in randomized pass $iteration")
+        assert(
+          actualWrites.size == expectedWrites.size && actualWrites.map(_.address).toSet == expectedWrites.keySet,
+          s"incorrect stores in randomized pass $iteration"
+        )
         initial.foreach { case (addr, old) => assert(d.memory(addr) == expectedWrites.getOrElse(addr, old)) }
         expectedWrites.foreach { case (addr, value) => assert(d.memory(addr) == value) }
       }

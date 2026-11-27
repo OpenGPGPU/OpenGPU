@@ -7,15 +7,16 @@ import chisel3.util._
 
 class IsolinePipelineCompletion extends Bundle {
   val taskId = UInt(32.W); val generated = UInt(16.W); val published = UInt(16.W)
+
   /** 0 success/discard, 1 invalid input, 2 evaluation fault, 4 cancellation. */
   val status = UInt(3.W); val discarded = Bool()
+
   /** Evaluation fault: 1 response tag mismatch, 2 executor failure. */
   val evaluationFault = UInt(2.W)
 }
 
-/** Own a patch until the domain generator and evaluation handoff are drained.
-  * Published primitives are provisional until a successful completion; an
-  * enclosing renderer must discard them if completion reports an error.
+/** Own a patch until the domain generator and evaluation handoff are drained. Published primitives are provisional
+  * until a successful completion; an enclosing renderer must discard them if completion reports an error.
   */
 class TessellationIsolineEvaluationPipeline extends Module {
   val io = IO(new Bundle {

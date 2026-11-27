@@ -3,8 +3,8 @@ package opengpu.graphics
 import chisel3._
 import chisel3.util._
 
-/** Internal single-invocation geometry output protocol. Values are opaque
-  * 32-bit components; their linked-program layout is owned by the caller.
+/** Internal single-invocation geometry output protocol. Values are opaque 32-bit components; their linked-program
+  * layout is owned by the caller.
   */
 object GeometryOutputTopology {
   val points = 0.U(2.W)
@@ -54,9 +54,8 @@ class GeometryOutputCompletion extends Bundle {
   val status = UInt(2.W)
 }
 
-/** Serial geometry-output assembly with bounded ownership and held outputs.
-  * The caller must provide invocations in the required primitive/invocation
-  * order, and must separately capture emitted vertices for transform feedback.
+/** Serial geometry-output assembly with bounded ownership and held outputs. The caller must provide invocations in the
+  * required primitive/invocation order, and must separately capture emitted vertices for transform feedback.
   */
 class GeometryOutputAssembler extends Module {
   val io = IO(new Bundle {

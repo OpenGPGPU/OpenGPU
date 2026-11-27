@@ -1,7 +1,7 @@
 package opengpu.system
 
-/** Native shared-CU admitted instruction limits. This record describes
-  * cooperative fetch-boundary interruption, not a cycle timeout for memory.
+/** Native shared-CU admitted instruction limits. This record describes cooperative fetch-boundary interruption, not a
+  * cycle timeout for memory.
   */
 object NativeShaderExecutionCapabilities {
   val base = 0x300
@@ -13,6 +13,14 @@ object NativeShaderExecutionCapabilities {
   // Per-warp quota, kernel snapshot, command-reset interruption, attributed
   // stop causes and nonzero native quota policy.
   val flags = 31
-  val words: Seq[BigInt] = Seq(magic, wordCount, flags, 32, defaultQuota,
-    BigInt("04051918", 16), quotaRegister, opengpu.graphics.GpuCommandMmioRegs.RESET)
+  val words: Seq[BigInt] = Seq(
+    magic,
+    wordCount,
+    flags,
+    32,
+    defaultQuota,
+    BigInt("04051918", 16),
+    quotaRegister,
+    opengpu.graphics.GpuCommandMmioRegs.RESET
+  )
 }

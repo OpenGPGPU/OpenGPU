@@ -3,9 +3,8 @@ package opengpu.graphics
 import chisel3._
 import chisel3.util._
 
-/** Private interface from primitive/quad preparation, not a memory descriptor.
-  * Position, reciprocal W, depth, sample state and point coordinates are already
-  * prepared. Varying words in `quad` are ignored. Flat values are canonicalized
+/** Private interface from primitive/quad preparation, not a memory descriptor. Position, reciprocal W, depth, sample
+  * state and point coordinates are already prepared. Varying words in `quad` are ignored. Flat values are canonicalized
   * at vertex zero by clipping. Unused line/point vertices are ignored.
   */
 class PreparedFragmentInterpolation(p: VertexShaderStageConfig, g: GraphicsConfig) extends Bundle {
@@ -20,6 +19,7 @@ class PreparedFragmentInterpolation(p: VertexShaderStageConfig, g: GraphicsConfi
   val preparationStatus = UInt(3.W)
   val preparationFaultLane = UInt(2.W)
   val invalidHelpers = UInt(4.W)
+
   /** Shared setup precedes the lane-major arithmetic accounting. */
   val setupOperations = UInt(16.W)
   val setupArithmeticStatus = UInt(5.W)
@@ -29,21 +29,22 @@ class PreparedFragmentInterpolation(p: VertexShaderStageConfig, g: GraphicsConfi
   val lanePackingStatus = Vec(4, UInt(5.W))
 }
 
-/** Four privately owned prepared quads feeding the four spatial component lanes.
-  * Accepted data is immutable until its ordered completion retires. Posted row
-  * requests drain on cancellation; unposted rows can be abandoned. A held quad
-  * or completion remains immutable. A cancellation after a quad offer is
-  * reflected in the subsequent completion, which records that output escaped.
+/** Four privately owned prepared quads feeding the four spatial component lanes. Accepted data is immutable until its
+  * ordered completion retires. Posted row requests drain on cancellation; unposted rows can be abandoned. A held quad
+  * or completion remains immutable. A cancellation after a quad offer is reflected in the subsequent completion, which
+  * records that output escaped.
   *
-  * Per-lane prefixes preserve scalar lane-major first-error accounting despite
-  * parallel evaluation. Prepared metadata/depth/sample work remains outside
-  * this owner; this block does not establish native renderer throughput.
-  * With reservedInputs, an enclosing owner must reserve capacity before
-  * preparation and stop fresh work on cancellation. Already owned transfers
-  * can then enter during cancellation, avoiding an internal admission deadlock.
+  * Per-lane prefixes preserve scalar lane-major first-error accounting despite parallel evaluation. Prepared
+  * metadata/depth/sample work remains outside this owner; this block does not establish native renderer throughput.
+  * With reservedInputs, an enclosing owner must reserve capacity before preparation and stop fresh work on
+  * cancellation. Already owned transfers can then enter during cancellation, avoiding an internal admission deadlock.
   */
-class Fp32PreparedQuadInterpolator(p: VertexShaderStageConfig = VertexShaderStageConfig(),
-    g: GraphicsConfig = GraphicsConfig(), contexts: Int = 4, reservedInputs: Boolean = false) extends Module {
+class Fp32PreparedQuadInterpolator(
+    p: VertexShaderStageConfig = VertexShaderStageConfig(),
+    g: GraphicsConfig = GraphicsConfig(),
+    contexts: Int = 4,
+    reservedInputs: Boolean = false
+) extends Module {
   require(contexts >= 2 && contexts <= 8 && isPow2(contexts))
   private val contextBits = log2Ceil(contexts)
   private val components = p.varyings * 4
@@ -111,8 +112,11 @@ class Fp32PreparedQuadInterpolator(p: VertexShaderStageConfig = VertexShaderStag
     live(allocate) := true.B
     scanDone(allocate) := false.B
     cancelled(allocate) := (if (reservedInputs) io.cancel || cancelling else false.B)
-    status(allocate) := Mux(io.in.bits.preparationStatus =/= 0.U, io.in.bits.preparationStatus,
-      Mux(metadataLegal, 0.U, 1.U))
+    status(allocate) := Mux(
+      io.in.bits.preparationStatus =/= 0.U,
+      io.in.bits.preparationStatus,
+      Mux(metadataLegal, 0.U, 1.U)
+    )
     rowLimit(allocate) := Mux(metadataLegal, io.in.bits.quad.varyingSlots << 2, 0.U)
     cursor(allocate) := 0.U
     posted(allocate) := 0.U
@@ -157,8 +161,12 @@ class Fp32PreparedQuadInterpolator(p: VertexShaderStageConfig = VertexShaderStag
   private val slot = if (p.varyings == 1) 0.U else row(componentBits - 1, 2)
   private val request = inputs(issue)
   private val rows = rowLimit(issue)
-  private val activeLanes = VecInit((0 until 4).map(lane => request.quad.lanes(lane).perspectiveValid &&
-    (status(issue) === 0.U || (status(issue) === 7.U && lane.U < request.preparationFaultLane))))
+  private val activeLanes = VecInit(
+    (0 until 4).map(lane =>
+      request.quad.lanes(lane).perspectiveValid &&
+        (status(issue) === 0.U || (status(issue) === 7.U && lane.U < request.preparationFaultLane))
+    )
+  )
   // A later lane's preparation failure cannot preempt component faults in an
   // earlier lane. Finish those prefixes even if cancellation arrives after
   // the primary error is already known.
@@ -184,11 +192,17 @@ class Fp32PreparedQuadInterpolator(p: VertexShaderStageConfig = VertexShaderStag
           (request.centroidMask(row) || request.quad.lanes(lane).sampleLocationValid)
         val active = activeLanes(lane)
         for (v <- 0 until 3) {
-          fetchedWeights(lane)(v) := Mux(active,
-            Mux(centroid, request.centroidWeights(lane)(v), request.weights(lane)(v)), ClipFloat.zero)
+          fetchedWeights(lane)(v) := Mux(
+            active,
+            Mux(centroid, request.centroidWeights(lane)(v), request.weights(lane)(v)),
+            ClipFloat.zero
+          )
         }
-        fetchedDenominators(lane) := Mux(active,
-          Mux(centroid, request.centroidDenominators(lane), request.denominators(lane)), ClipFloat.fromFp32("h3f800000".U))
+        fetchedDenominators(lane) := Mux(
+          active,
+          Mux(centroid, request.centroidDenominators(lane), request.denominators(lane)),
+          ClipFloat.fromFp32("h3f800000".U)
+        )
       }
       posted(issue) := posted(issue) + 1.U
       cursor(issue) := cursor(issue) + 1.U
@@ -217,8 +231,10 @@ class Fp32PreparedQuadInterpolator(p: VertexShaderStageConfig = VertexShaderStag
         laneOperations(target)(lane) := laneOperations(target)(lane) + response.operations
         laneArithmetic(target)(lane) := laneArithmetic(target)(lane) | response.arithmeticStatus
         lanePacking(target)(lane) := lanePacking(target)(lane) | response.packingStatus
-        when(response.error =/= 0.U && !cancelled(target) &&
-          (!io.cancel || laneFailed(target).asUInt.orR || status(target) =/= 0.U)) {
+        when(
+          response.error =/= 0.U && !cancelled(target) &&
+            (!io.cancel || laneFailed(target).asUInt.orR || status(target) =/= 0.U)
+        ) {
           laneFailed(target)(lane) := true.B
         }
       }
@@ -231,7 +247,8 @@ class Fp32PreparedQuadInterpolator(p: VertexShaderStageConfig = VertexShaderStag
   private val priorComponentFailure = failed && (status(retire) === 0.U ||
     (status(retire) === 7.U && faultLane < inputs(retire).preparationFaultLane))
   private val cutoff = Mux(priorComponentFailure, faultLane, inputs(retire).preparationFaultLane)
-  private val includeLane = (0 until 4).map(lane => !(priorComponentFailure || status(retire) =/= 0.U) || lane.U <= cutoff)
+  private val includeLane =
+    (0 until 4).map(lane => !(priorComponentFailure || status(retire) =/= 0.U) || lane.U <= cutoff)
   private val operations = (0 until 4).map(lane => Mux(includeLane(lane), laneOperations(retire)(lane), 0.U))
   private val arithmetic = (0 until 4).map(lane => Mux(includeLane(lane), laneArithmetic(retire)(lane), 0.U))
   private val packing = (0 until 4).map(lane => Mux(includeLane(lane), lanePacking(retire)(lane), 0.U))
@@ -245,10 +262,16 @@ class Fp32PreparedQuadInterpolator(p: VertexShaderStageConfig = VertexShaderStag
     result.primitiveId := q.primitiveId
     result.instanceId := q.instanceId
     result.partIndex := q.partIndex
-    result.status := Mux(priorComponentFailure, 7.U, Mux(status(retire) =/= 0.U, status(retire),
-      Mux(cancelled(retire) || io.cancel, 4.U, 0.U)))
-    result.faultLane := Mux(priorComponentFailure, faultLane,
-      Mux(status(retire) =/= 0.U, inputs(retire).preparationFaultLane, 0.U))
+    result.status := Mux(
+      priorComponentFailure,
+      7.U,
+      Mux(status(retire) =/= 0.U, status(retire), Mux(cancelled(retire) || io.cancel, 4.U, 0.U))
+    )
+    result.faultLane := Mux(
+      priorComponentFailure,
+      faultLane,
+      Mux(status(retire) =/= 0.U, inputs(retire).preparationFaultLane, 0.U)
+    )
     result.invalidHelpers := inputs(retire).invalidHelpers & VecInit(includeLane).asUInt
     result.arithmeticOperations := inputs(retire).setupOperations + operations.reduce(_ +& _)
     result.arithmeticStatus := inputs(retire).setupArithmeticStatus | arithmetic.reduce(_ | _)

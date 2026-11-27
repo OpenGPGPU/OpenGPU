@@ -33,10 +33,10 @@ class ScalarIssueStageSpec extends AnyFlatSpec {
   behavior of "ScalarIssueStage"
 
   private def writeRegister(
-    dut: ScalarIssueHarness,
-    warpId: Int,
-    rd: Int,
-    data: Int
+      dut: ScalarIssueHarness,
+      warpId: Int,
+      rd: Int,
+      data: Int
   ): Unit = {
     dut.io.writeback.valid.poke(true.B)
     dut.io.writeback.bits.warpId.poke(warpId.U)
@@ -48,10 +48,10 @@ class ScalarIssueStageSpec extends AnyFlatSpec {
   }
 
   private def send(
-    dut: ScalarIssueHarness,
-    instruction: BigInt,
-    pc: Int,
-    mask: Int
+      dut: ScalarIssueHarness,
+      instruction: BigInt,
+      pc: Int,
+      mask: Int
   ): Unit = {
     dut.io.in.valid.poke(true.B)
     dut.io.in.bits.instruction.poke(instruction.U)

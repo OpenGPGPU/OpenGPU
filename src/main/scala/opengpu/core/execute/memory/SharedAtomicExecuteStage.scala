@@ -2,24 +2,27 @@ package opengpu.core.execute.memory
 
 import chisel3._
 import chisel3.util._
-import opengpu.config.{CachePolicy,GpuConfig}
+import opengpu.config.{CachePolicy, GpuConfig}
 import opengpu.core.backend.issue.ScalarIssuedInstruction
 import opengpu.core.backend.writeback.ScalarCommitRequest
 import opengpu.core.memory.{ScalarMemoryFault, SharedAtomicRequest, SharedAtomicResponse}
 
-/** Route RV32A word AMOs to local shared memory or global translation/L2.
-  * Trap addresses retain the original virtual instruction operand.
+/** Route RV32A word AMOs to local shared memory or global translation/L2. Trap addresses retain the original virtual
+  * instruction operand.
   */
-class SharedAtomicExecuteStage(config: GpuConfig = GpuConfig(),helperInvocations: Boolean=false) extends Module {
-  private val Seq(idle, localRequest, localResponse, globalRequest,
-    globalResponse, commit, fault, unsupported) = Enum(8)
+class SharedAtomicExecuteStage(config: GpuConfig = GpuConfig(), helperInvocations: Boolean = false) extends Module {
+  private val Seq(idle, localRequest, localResponse, globalRequest, globalResponse, commit, fault, unsupported) = Enum(
+    8
+  )
   private val state = RegInit(idle)
   private val instruction = Reg(new ScalarIssuedInstruction(config))
   private val oldValue = Reg(UInt(32.W))
   private val faultMisaligned = RegInit(false.B)
   private val faultPageFault = RegInit(false.B)
   val io = IO(new Bundle {
-    val invocations=if(helperInvocations)Some(Input(Vec(config.warps,new opengpu.core.memory.WarpInvocationPolicy(config))))else None
+    val invocations =
+      if (helperInvocations) Some(Input(Vec(config.warps, new opengpu.core.memory.WarpInvocationPolicy(config))))
+      else None
     val in = Flipped(Decoupled(new ScalarIssuedInstruction(config)))
     val atomicRequest = Decoupled(new SharedAtomicRequest(config))
     val atomicResponse = Flipped(Decoupled(new SharedAtomicResponse(config)))
@@ -39,12 +42,19 @@ class SharedAtomicExecuteStage(config: GpuConfig = GpuConfig(),helperInvocations
     instruction := io.in.bits
     faultMisaligned := io.in.bits.rs1Data(1, 0).orR
     faultPageFault := false.B
-    val suppressed=if(helperInvocations)
-      !opengpu.core.memory.HelperInvocationPolicy.real(opengpu.core.memory.HelperInvocationPolicy.select(io.invocations.get,io.in.bits.decode.warpId),io.in.bits.decode.activeMask)
+    val suppressed =
+      if (helperInvocations)
+        !opengpu.core.memory.HelperInvocationPolicy.real(
+          opengpu.core.memory.HelperInvocationPolicy.select(io.invocations.get, io.in.bits.decode.warpId),
+          io.in.bits.decode.activeMask
+        )
       else false.B
-    when(suppressed){oldValue:=0.U}
-    state := Mux(suppressed,commit,Mux(io.in.bits.rs1Data(1, 0).orR, fault,
-      Mux(isShared(io.in.bits.rs1Data), localRequest, globalRequest)))
+    when(suppressed) { oldValue := 0.U }
+    state := Mux(
+      suppressed,
+      commit,
+      Mux(io.in.bits.rs1Data(1, 0).orR, fault, Mux(isShared(io.in.bits.rs1Data), localRequest, globalRequest))
+    )
   }
 
   io.atomicRequest.valid := state === localRequest

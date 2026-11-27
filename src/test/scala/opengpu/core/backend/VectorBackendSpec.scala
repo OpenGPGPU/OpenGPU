@@ -108,8 +108,7 @@ class VectorBackendSpec extends AnyFlatSpec {
       while (!dut.io.initialize.ready.peek().litToBoolean && waited < 8) {
         dut.clock.step(); waited += 1
       }
-      assert(dut.io.initialize.ready.peek().litToBoolean,
-        "initialize must be accepted")
+      assert(dut.io.initialize.ready.peek().litToBoolean, "initialize must be accepted")
       dut.clock.step()
       dut.io.initialize.valid.poke(false.B)
       dut.clock.step(2)
@@ -144,14 +143,14 @@ class VectorBackendSpec extends AnyFlatSpec {
       while (!dut.io.memoryRequest.valid.peek().litToBoolean && cycles < 12) {
         dut.clock.step(); cycles += 1
       }
-      assert(dut.io.memoryRequest.valid.peek().litToBoolean,
-        "store must reach the memory port")
+      assert(dut.io.memoryRequest.valid.peek().litToBoolean, "store must reach the memory port")
       assert(dut.io.memoryRequest.bits.isStore.peek().litToBoolean)
       for (lane <- 0 until config.lanes) {
         val got = dut.io.memoryRequest.bits.writeData(lane).peek().litValue
-        assert(got == BigInt(lane),
-          s"v1 lane$lane stored 0x${
-            got.toString(16)}, expected ${lane}: the initialize write was lost")
+        assert(
+          got == BigInt(lane),
+          s"v1 lane$lane stored 0x${got.toString(16)}, expected ${lane}: the initialize write was lost"
+        )
       }
     }
   }
@@ -185,15 +184,13 @@ class VectorBackendSpec extends AnyFlatSpec {
       def step(): Unit = {
         dut.io.memoryResponse.valid.poke(respond.B)
         if (dut.io.committedVectorWriteback.valid.peek().litToBoolean) {
-          commits += (
-            dut.io.committedVectorWriteback.bits.vd.peek().litValue.toInt ->
-              dut.io.committedVectorWriteback.bits.data(0).peek().litValue)
+          commits += (dut.io.committedVectorWriteback.bits.vd.peek().litValue.toInt ->
+            dut.io.committedVectorWriteback.bits.data(0).peek().litValue)
         }
         val request = dut.io.memoryRequest.valid.peek().litToBoolean
         if (request) {
           stores += (dut.io.memoryRequest.bits.laneMask.peek().litValue ->
-            (0 until config.lanes).map(lane =>
-              dut.io.memoryRequest.bits.writeData(lane).peek().litValue))
+            (0 until config.lanes).map(lane => dut.io.memoryRequest.bits.writeData(lane).peek().litValue))
         }
         if (respond && dut.io.memoryResponse.ready.peek().litToBoolean)
           respond = false
@@ -201,10 +198,15 @@ class VectorBackendSpec extends AnyFlatSpec {
         if (request) respond = true
       }
 
-      def issue(instruction: BigInt, unit: VectorUnit.Type,
-                configure: Boolean = false, readsVs2: Boolean = false,
-                readsScalar: Boolean = false, writesVd: Boolean = false,
-                memoryWrite: Boolean = false): Unit = {
+      def issue(
+          instruction: BigInt,
+          unit: VectorUnit.Type,
+          configure: Boolean = false,
+          readsVs2: Boolean = false,
+          readsScalar: Boolean = false,
+          writesVd: Boolean = false,
+          memoryWrite: Boolean = false
+      ): Unit = {
         dut.io.in.valid.poke(true.B)
         dut.io.in.bits.instruction.poke(instruction.U)
         dut.io.in.bits.pc.poke(0x1000.U)
@@ -238,8 +240,12 @@ class VectorBackendSpec extends AnyFlatSpec {
       }
 
       // vsetvli x0, x9(=3), e32,m1
-      issue((BigInt(0x010) << 20) | (BigInt(9) << 15) | (BigInt(7) << 12) |
-        0x57, VectorUnit.configuration, configure = true)
+      issue(
+        (BigInt(0x010) << 20) | (BigInt(9) << 15) | (BigInt(7) << 12) |
+          0x57,
+        VectorUnit.configuration,
+        configure = true
+      )
 
       def initialize(register: Int, values: Seq[BigInt]): Unit = {
         dut.io.initialize.valid.poke(true.B)
@@ -256,25 +262,43 @@ class VectorBackendSpec extends AnyFlatSpec {
         dut.io.initialize.valid.poke(false.B)
       }
       initialize(1, Seq(0, 1, 2, 3))
-      initialize(0, Seq(BigInt("b3865eb6", 16), BigInt("549f802d", 16),
-        BigInt("89d37fe6", 16), BigInt("02b6780a", 16)))
+      initialize(0, Seq(BigInt("b3865eb6", 16), BigInt("549f802d", 16), BigInt("89d37fe6", 16), BigInt("02b6780a", 16)))
 
       // vmsltu.vx v0, v1, x9; vse32.v v1, (x1), v0.t; vse32.v v0, (x1)
-      issue((BigInt(0x1a) << 26) | (BigInt(1) << 25) | (BigInt(1) << 20) |
-        (BigInt(9) << 15) | (BigInt(4) << 12) | 0x57, VectorUnit.mask,
-        readsVs2 = true, readsScalar = true, writesVd = true)
+      issue(
+        (BigInt(0x1a) << 26) | (BigInt(1) << 25) | (BigInt(1) << 20) |
+          (BigInt(9) << 15) | (BigInt(4) << 12) | 0x57,
+        VectorUnit.mask,
+        readsVs2 = true,
+        readsScalar = true,
+        writesVd = true
+      )
       dut.io.scalarRs1Data.poke(0x400.U)
-      issue((BigInt(1) << 15) | (BigInt(6) << 12) | (BigInt(1) << 7) | 0x27,
-        VectorUnit.loadStore, readsScalar = true, memoryWrite = true)
-      issue((BigInt(1) << 25) | (BigInt(1) << 15) | (BigInt(6) << 12) | 0x27,
-        VectorUnit.loadStore, readsScalar = true, memoryWrite = true)
+      issue(
+        (BigInt(1) << 15) | (BigInt(6) << 12) | (BigInt(1) << 7) | 0x27,
+        VectorUnit.loadStore,
+        readsScalar = true,
+        memoryWrite = true
+      )
+      issue(
+        (BigInt(1) << 25) | (BigInt(1) << 15) | (BigInt(6) << 12) | 0x27,
+        VectorUnit.loadStore,
+        readsScalar = true,
+        memoryWrite = true
+      )
       for (_ <- 0 until 64) step()
 
       val trace = s"commits=${commits.map { case (vd, word) =>
-        s"v$vd:0x${word.toString(16)}" }} stores=${stores.map {
-        case (mask, data) => s"${mask.toString(2)}:${data.map(_.toString(16))}" }}"
-      assert(commits.headOption.exists { case (vd, word) =>
-        vd == 0 && (word & 0xf) == 0x7 }, trace)
+          s"v$vd:0x${word.toString(16)}"
+        }} stores=${stores.map { case (mask, data) =>
+          s"${mask.toString(2)}:${data.map(_.toString(16))}"
+        }}"
+      assert(
+        commits.headOption.exists { case (vd, word) =>
+          vd == 0 && (word & 0xf) == 0x7
+        },
+        trace
+      )
       assert(stores.size == 2, trace)
       assert(stores(0)._1 == 0x7 && stores(0)._2.take(3) == Seq(0, 1, 2), trace)
       assert((stores(1)._2.head & 0xf) == 0x7, trace)
@@ -398,7 +422,8 @@ class VectorBackendSpec extends AnyFlatSpec {
       assert(dut.io.committedVectorWriteback.valid.peek().litToBoolean)
       dut.io.committedVectorWriteback.bits.vd.expect(6.U)
       for (lane <- 0 until config.lanes)
-        dut.io.committedVectorWriteback.bits.data(lane)
+        dut.io.committedVectorWriteback.bits
+          .data(lane)
           .expect((0x20 + lane).U)
 
       dut.clock.step() // retire the unmasked extension before initialization
@@ -413,8 +438,10 @@ class VectorBackendSpec extends AnyFlatSpec {
       dut.clock.step()
       dut.io.in.valid.poke(false.B)
       cycles = 0
-      while (!dut.io.committedVectorWriteback.valid.peek().litToBoolean &&
-        cycles < 24) {
+      while (
+        !dut.io.committedVectorWriteback.valid.peek().litToBoolean &&
+        cycles < 24
+      ) {
         dut.clock.step()
         cycles += 1
       }
@@ -429,8 +456,10 @@ class VectorBackendSpec extends AnyFlatSpec {
       dut.io.in.bits.activeMask.poke(15.U)
 
       // Exercise paired RF reads all the way through ALU and writeback.
-      for (funct6 <- Seq(0x2c, 0x2e, 0x2f); masked <- Seq(false, true);
-           shift <- Seq(0, 32)) {
+      for (
+        funct6 <- Seq(0x2c, 0x2e, 0x2f); masked <- Seq(false, true);
+        shift <- Seq(0, 32)
+      ) {
         initialize(6, 100)
         dut.io.scalarRs1Data.poke(shift.U)
         val narrowInstruction = (BigInt(funct6) << 26) |
@@ -449,8 +478,10 @@ class VectorBackendSpec extends AnyFlatSpec {
         dut.clock.step()
         dut.io.in.valid.poke(false.B)
         cycles = 0
-        while (!dut.io.committedVectorWriteback.valid.peek().litToBoolean &&
-          cycles < 24) {
+        while (
+          !dut.io.committedVectorWriteback.valid.peek().litToBoolean &&
+          cycles < 24
+        ) {
           dut.clock.step()
           cycles += 1
         }
@@ -458,12 +489,14 @@ class VectorBackendSpec extends AnyFlatSpec {
         dut.io.committedVectorWriteback.bits.warpId.expect(1.U)
         dut.io.committedVectorWriteback.bits.vd.expect(6.U)
         for (lane <- 0 until config.lanes) {
-          val value = if (shift == 32) BigInt(0x30 + lane)
+          val value =
+            if (shift == 32) BigInt(0x30 + lane)
             else if (funct6 == 0x2c) BigInt(0x20 + lane)
             else if (funct6 == 0x2e) BigInt("ffffffff", 16)
             else BigInt("7fffffff", 16)
-          dut.io.committedVectorWriteback.bits.data(lane).expect(
-            (if (!masked || lane == 0) value else BigInt(100 + lane)).U)
+          dut.io.committedVectorWriteback.bits
+            .data(lane)
+            .expect((if (!masked || lane == 0) value else BigInt(100 + lane)).U)
         }
         dut.clock.step()
       }
@@ -473,8 +506,10 @@ class VectorBackendSpec extends AnyFlatSpec {
       val scalingValues = Seq("ffffffff", "80000001", "00000005", "7fffffff")
         .map(BigInt(_, 16))
       initialize(3, 1) // vv shift amounts 1, 2, 3, 4
-      for (funct6 <- Seq(0x2a, 0x2b); form <- Seq(0, 3, 4);
-           masked <- Seq(false, true)) {
+      for (
+        funct6 <- Seq(0x2a, 0x2b); form <- Seq(0, 3, 4);
+        masked <- Seq(false, true)
+      ) {
         dut.io.initialize.valid.poke(true.B)
         dut.io.initialize.bits.warpId.poke(1.U)
         dut.io.initialize.bits.vd.poke(31.U)
@@ -502,8 +537,10 @@ class VectorBackendSpec extends AnyFlatSpec {
         dut.clock.step()
         dut.io.in.valid.poke(false.B)
         cycles = 0
-        while (!dut.io.committedVectorWriteback.valid.peek().litToBoolean &&
-          cycles < 24) {
+        while (
+          !dut.io.committedVectorWriteback.valid.peek().litToBoolean &&
+          cycles < 24
+        ) {
           dut.clock.step()
           cycles += 1
         }
@@ -512,12 +549,13 @@ class VectorBackendSpec extends AnyFlatSpec {
         dut.io.committedVectorWriteback.bits.vd.expect(31.U)
         scalingValues.zipWithIndex.foreach { case (raw, lane) =>
           val shift = if (form == 0) lane + 1 else 1
-          val value = if (funct6 == 0x2b && raw.testBit(31))
-            raw - (BigInt(1) << 32) else raw
+          val value =
+            if (funct6 == 0x2b && raw.testBit(31))
+              raw - (BigInt(1) << 32)
+            else raw
           val rounded = ((value + (BigInt(1) << (shift - 1))) >> shift) &
             BigInt("ffffffff", 16) // reset vxrm is RNU
-          dut.io.committedVectorWriteback.bits.data(lane).expect(
-            (if (!masked || lane == 0) rounded else raw).U)
+          dut.io.committedVectorWriteback.bits.data(lane).expect((if (!masked || lane == 0) rounded else raw).U)
         }
         dut.clock.step()
       }
@@ -551,8 +589,10 @@ class VectorBackendSpec extends AnyFlatSpec {
         dut.clock.step()
         dut.io.in.valid.poke(false.B)
         cycles = 0
-        while (!dut.io.committedVectorWriteback.valid.peek().litToBoolean &&
-          cycles < 100) {
+        while (
+          !dut.io.committedVectorWriteback.valid.peek().litToBoolean &&
+          cycles < 100
+        ) {
           dut.clock.step()
           cycles += 1
         }
@@ -597,7 +637,8 @@ class VectorBackendSpec extends AnyFlatSpec {
       dut.io.committedVectorWriteback.bits.warpId.expect(1.U)
       dut.io.committedVectorWriteback.bits.vd.expect(3.U)
       for (lane <- 0 until config.lanes) {
-        dut.io.committedVectorWriteback.bits.data(lane)
+        dut.io.committedVectorWriteback.bits
+          .data(lane)
           .expect((0x25 + lane).U)
       }
 
@@ -669,7 +710,8 @@ class VectorBackendSpec extends AnyFlatSpec {
       assert(dut.io.memoryRequest.valid.peek().litToBoolean)
       dut.io.memoryRequest.bits.laneMask.expect("b1111".U)
       for (lane <- 0 until config.lanes) {
-        dut.io.memoryRequest.bits.addresses(lane)
+        dut.io.memoryRequest.bits
+          .addresses(lane)
           .expect((0x400 + lane * 4).U)
       }
       dut.io.memoryRequest.ready.poke(true.B)
@@ -695,7 +737,8 @@ class VectorBackendSpec extends AnyFlatSpec {
       assert(dut.io.committedVectorWriteback.valid.peek().litToBoolean)
       dut.io.committedVectorWriteback.bits.vd.expect(4.U)
       for (lane <- 0 until config.lanes) {
-        dut.io.committedVectorWriteback.bits.data(lane)
+        dut.io.committedVectorWriteback.bits
+          .data(lane)
           .expect((0x80 + lane).U)
       }
       dut.clock.step()
@@ -732,7 +775,8 @@ class VectorBackendSpec extends AnyFlatSpec {
       }
       assert(dut.io.memoryRequest.valid.peek().litToBoolean)
       for (lane <- 0 until config.lanes)
-        dut.io.memoryRequest.bits.addresses(lane)
+        dut.io.memoryRequest.bits
+          .addresses(lane)
           .expect((0x520 + lane).U)
     }
   }
@@ -873,9 +917,11 @@ class VectorBackendSpec extends AnyFlatSpec {
       assert(dut.io.committedVectorWriteback.valid.peek().litToBoolean)
       dut.io.committedVectorWriteback.bits.warpId.expect(0.U)
       dut.io.committedVectorWriteback.bits.vd.expect(3.U)
-      dut.io.committedVectorWriteback.bits.data(0)
+      dut.io.committedVectorWriteback.bits
+        .data(0)
         .expect(BigInt("40400000", 16).U) // 3.0
-      dut.io.committedVectorWriteback.bits.data(1)
+      dut.io.committedVectorWriteback.bits
+        .data(1)
         .expect(BigInt("40a00000", 16).U) // 5.0
       dut.io.committedVectorFlags.valid.expect(true.B)
       dut.io.committedVectorFlags.bits.flags.expect(0.U)
@@ -914,9 +960,11 @@ class VectorBackendSpec extends AnyFlatSpec {
       }
       assert(dut.io.committedVectorWriteback.valid.peek().litToBoolean)
       dut.io.committedVectorWriteback.bits.vd.expect(3.U)
-      dut.io.committedVectorWriteback.bits.data(0)
+      dut.io.committedVectorWriteback.bits
+        .data(0)
         .expect(BigInt("40000000", 16).U) // 2.0 / 1.0
-      dut.io.committedVectorWriteback.bits.data(1)
+      dut.io.committedVectorWriteback.bits
+        .data(1)
         .expect(BigInt("3f2aaaab", 16).U) // 2.0 / 3.0
       dut.io.committedVectorFlags.valid.expect(true.B)
       assert((dut.io.committedVectorFlags.bits.flags.peek().litValue & 1) != 0)
@@ -1050,9 +1098,11 @@ class VectorBackendSpec extends AnyFlatSpec {
       }
       assert(dut.io.committedVectorWriteback.valid.peek().litToBoolean)
       dut.io.committedVectorWriteback.bits.vd.expect(3.U)
-      dut.io.committedVectorWriteback.bits.data(0)
+      dut.io.committedVectorWriteback.bits
+        .data(0)
         .expect(BigInt("40a00000", 16).U) // 5.0
-      dut.io.committedVectorWriteback.bits.data(1)
+      dut.io.committedVectorWriteback.bits
+        .data(1)
         .expect(BigInt("c0a00000", 16).U) // -5.0
       dut.io.committedVectorFlags.valid.expect(true.B)
       dut.io.committedVectorFlags.bits.flags.expect(0.U)
@@ -1092,9 +1142,11 @@ class VectorBackendSpec extends AnyFlatSpec {
       }
       assert(dut.io.committedVectorWriteback.valid.peek().litToBoolean)
       dut.io.committedVectorWriteback.bits.vd.expect(3.U)
-      dut.io.committedVectorWriteback.bits.data(0)
+      dut.io.committedVectorWriteback.bits
+        .data(0)
         .expect(BigInt("40000000", 16).U) // sqrt(4)
-      dut.io.committedVectorWriteback.bits.data(1)
+      dut.io.committedVectorWriteback.bits
+        .data(1)
         .expect(BigInt("3f800000", 16).U) // sqrt(1)
       dut.io.committedVectorFlags.valid.expect(true.B)
       dut.io.committedVectorFlags.bits.flags.expect(0.U)
@@ -1134,9 +1186,11 @@ class VectorBackendSpec extends AnyFlatSpec {
       }
       assert(dut.io.committedVectorWriteback.valid.peek().litToBoolean)
       dut.io.committedVectorWriteback.bits.vd.expect(3.U)
-      dut.io.committedVectorWriteback.bits.data(0)
+      dut.io.committedVectorWriteback.bits
+        .data(0)
         .expect(BigInt("8", 16).U) // -0.0 -> bit 3
-      dut.io.committedVectorWriteback.bits.data(1)
+      dut.io.committedVectorWriteback.bits
+        .data(1)
         .expect(BigInt("80", 16).U) // +inf -> bit 7
       dut.io.committedVectorFlags.valid.expect(true.B)
       dut.io.committedVectorFlags.bits.flags.expect(0.U)
@@ -1176,9 +1230,11 @@ class VectorBackendSpec extends AnyFlatSpec {
       }
       assert(dut.io.committedVectorWriteback.valid.peek().litToBoolean)
       dut.io.committedVectorWriteback.bits.vd.expect(3.U)
-      dut.io.committedVectorWriteback.bits.data(0)
+      dut.io.committedVectorWriteback.bits
+        .data(0)
         .expect(BigInt("3f7f0000", 16).U) // recip7(1.0)
-      dut.io.committedVectorWriteback.bits.data(1)
+      dut.io.committedVectorWriteback.bits
+        .data(1)
         .expect(BigInt("3eaa0000", 16).U) // recip7(3.0)
       dut.io.committedVectorFlags.valid.expect(true.B)
       dut.io.committedVectorFlags.bits.flags.expect(0.U)
@@ -1275,11 +1331,9 @@ class VectorBackendSpec extends AnyFlatSpec {
       dut.clock.step()
 
       // Seed 1.0, elements 2.0/3.0/4.0/0.5, destination starts at 7.0.
-      initialize(2, Seq(BigInt("40000000", 16), BigInt("40400000", 16),
-        BigInt("40800000", 16), BigInt("3f000000", 16)))
+      initialize(2, Seq(BigInt("40000000", 16), BigInt("40400000", 16), BigInt("40800000", 16), BigInt("3f000000", 16)))
       initialize(4, Seq(BigInt("3f800000", 16), BigInt(0), BigInt(0), BigInt(0)))
-      initialize(3, Seq(BigInt("40e00000", 16), BigInt("40e00000", 16),
-        BigInt("40e00000", 16), BigInt("40e00000", 16)))
+      initialize(3, Seq(BigInt("40e00000", 16), BigInt("40e00000", 16), BigInt("40e00000", 16), BigInt("40e00000", 16)))
 
       // vfredusum.vs v3, v2, v4
       dut.io.in.valid.poke(true.B)
@@ -1304,19 +1358,23 @@ class VectorBackendSpec extends AnyFlatSpec {
       dut.io.in.valid.poke(false.B)
 
       cycles = 0
-      while (!dut.io.committedVectorWriteback.valid.peek().litToBoolean &&
-        cycles < 120) {
+      while (
+        !dut.io.committedVectorWriteback.valid.peek().litToBoolean &&
+        cycles < 120
+      ) {
         dut.clock.step()
         cycles += 1
       }
       assert(dut.io.committedVectorWriteback.valid.peek().litToBoolean)
       dut.io.committedVectorWriteback.bits.vd.expect(3.U)
       // 1 + 2 + 3 + 4 + 0.5
-      dut.io.committedVectorWriteback.bits.data(0)
+      dut.io.committedVectorWriteback.bits
+        .data(0)
         .expect(BigInt("41280000", 16).U)
       // Elements past 0 keep the 7.0 the initialize wrote.
       for (lane <- 1 until config.lanes) {
-        dut.io.committedVectorWriteback.bits.data(lane)
+        dut.io.committedVectorWriteback.bits
+          .data(lane)
           .expect(BigInt("40e00000", 16).U)
       }
       dut.io.committedVectorFlags.valid.expect(true.B)
@@ -1426,8 +1484,7 @@ class VectorBackendSpec extends AnyFlatSpec {
       dut.clock.step()
 
       // 0, 4, -4, 20
-      initialize(5, Seq(BigInt(0), BigInt("40800000", 16),
-        BigInt("c0800000", 16), BigInt("41a00000", 16)))
+      initialize(5, Seq(BigInt(0), BigInt("40800000", 16), BigInt("c0800000", 16), BigInt("41a00000", 16)))
 
       def opv(f6: Int, vs2: Int, vs1: Int, vd: Int): BigInt =
         (BigInt(f6) << 26) | (BigInt(1) << 25) | (BigInt(vs2) << 20) |
@@ -1458,17 +1515,12 @@ class VectorBackendSpec extends AnyFlatSpec {
       assert(seen.contains(6), s"vfadd never wrote v6, saw $seen")
       assert(seen.contains(5), "vfcvt.x.f never wrote v5")
       assert(seen.contains(8), "vfcvt.f.x never wrote v8")
-      val sum = Seq(BigInt(0), BigInt("41000000", 16),
-        BigInt("c1000000", 16), BigInt("42200000", 16))
-      val sumInt = Seq(BigInt(0), BigInt(8),
-        (BigInt(1) << 32) - 8, BigInt(40))
+      val sum = Seq(BigInt(0), BigInt("41000000", 16), BigInt("c1000000", 16), BigInt("42200000", 16))
+      val sumInt = Seq(BigInt(0), BigInt(8), (BigInt(1) << 32) - 8, BigInt(40))
       for (lane <- 0 until config.lanes) {
-        assert(seen(6)(lane) == sum(lane),
-          s"add lane $lane got ${seen(6)(lane).toString(16)}")
-        assert(seen(5)(lane) == sumInt(lane),
-          s"cvt.x lane $lane got ${seen(5)(lane).toString(16)}")
-        assert(seen(8)(lane) == sum(lane),
-          s"cvt.f lane $lane got ${seen(8)(lane).toString(16)}")
+        assert(seen(6)(lane) == sum(lane), s"add lane $lane got ${seen(6)(lane).toString(16)}")
+        assert(seen(5)(lane) == sumInt(lane), s"cvt.x lane $lane got ${seen(5)(lane).toString(16)}")
+        assert(seen(8)(lane) == sum(lane), s"cvt.f lane $lane got ${seen(8)(lane).toString(16)}")
       }
     }
   }
@@ -1588,10 +1640,12 @@ class VectorBackendSpec extends AnyFlatSpec {
       configure(0)
       configure(1)
       // Warp 0 squares to 0, 8, -8, 40. Warp 1 squares to 2, 4, 6, 10.
-      initialize(0, 5, Seq(BigInt(0), BigInt("40800000", 16),
-        BigInt("c0800000", 16), BigInt("41a00000", 16)))
-      initialize(1, 5, Seq(BigInt("3f800000", 16), BigInt("40000000", 16),
-        BigInt("40400000", 16), BigInt("40a00000", 16)))
+      initialize(0, 5, Seq(BigInt(0), BigInt("40800000", 16), BigInt("c0800000", 16), BigInt("41a00000", 16)))
+      initialize(
+        1,
+        5,
+        Seq(BigInt("3f800000", 16), BigInt("40000000", 16), BigInt("40400000", 16), BigInt("40a00000", 16))
+      )
 
       issue(0, opv(0x00, 5, 5, 6), 0x00, vs1 = true)
       issue(1, opv(0x00, 5, 5, 6), 0x00, vs1 = true)
@@ -1614,19 +1668,15 @@ class VectorBackendSpec extends AnyFlatSpec {
         cycles += 1
       }
       assert(seen.size == 6, s"missing writebacks: $seen")
-      val sum0 = Seq(BigInt(0), BigInt("41000000", 16),
-        BigInt("c1000000", 16), BigInt("42200000", 16))
-      val sum1 = Seq(BigInt("40000000", 16), BigInt("40800000", 16),
-        BigInt("40c00000", 16), BigInt("41200000", 16))
+      val sum0 = Seq(BigInt(0), BigInt("41000000", 16), BigInt("c1000000", 16), BigInt("42200000", 16))
+      val sum1 = Seq(BigInt("40000000", 16), BigInt("40800000", 16), BigInt("40c00000", 16), BigInt("41200000", 16))
       val int0 = Seq(BigInt(0), BigInt(8), (BigInt(1) << 32) - 8, BigInt(40))
       val int1 = Seq(BigInt(2), BigInt(4), BigInt(6), BigInt(10))
       for (lane <- 0 until config.lanes) {
         assert(seen((0, 6))(lane) == sum0(lane), s"warp0 add $lane")
         assert(seen((1, 6))(lane) == sum1(lane), s"warp1 add $lane")
-        assert(seen((0, 5))(lane) == int0(lane),
-          s"warp0 cvt ${seen((0, 5))(lane).toString(16)}")
-        assert(seen((1, 5))(lane) == int1(lane),
-          s"warp1 cvt ${seen((1, 5))(lane).toString(16)}")
+        assert(seen((0, 5))(lane) == int0(lane), s"warp0 cvt ${seen((0, 5))(lane).toString(16)}")
+        assert(seen((1, 5))(lane) == int1(lane), s"warp1 cvt ${seen((1, 5))(lane).toString(16)}")
         assert(seen((0, 8))(lane) == sum0(lane), s"warp0 back $lane")
         assert(seen((1, 8))(lane) == sum1(lane), s"warp1 back $lane")
       }
@@ -1640,11 +1690,11 @@ class VectorBackendSpec extends AnyFlatSpec {
         1 -> BigInt("3f800000", 16), // color.r
         7 -> BigInt("41800000", 16), // radius.x = 16
         8 -> BigInt("41800000", 16), // radius.y = 16
-        13 -> BigInt(0),             // 0
+        13 -> BigInt(0), // 0
         14 -> BigInt("40000000", 16), // 2
         15 -> BigInt("bf800000", 16), // -1
         16 -> BigInt("3f000000", 16), // 0.5
-        17 -> BigInt("3f800000", 16)  // 1
+        17 -> BigInt("3f800000", 16) // 1
       )
       val seen = scala.collection.mutable.Map.empty[Int, Seq[BigInt]]
       val trace = scala.collection.mutable.ListBuffer.empty[(Int, String)]
@@ -1714,7 +1764,7 @@ class VectorBackendSpec extends AnyFlatSpec {
         BigInt("40800000", 16), // 4, inside
         BigInt("41a00000", 16), // 20, outside
         BigInt("41000000", 16), // 8, inside
-        BigInt("00000000", 16)  // 0, ellipse center
+        BigInt("00000000", 16) // 0, ellipse center
       )
       initialize(0, Seq.fill(4)(BigInt(0)))
       initialize(4, Seq.fill(4)(BigInt(0))) // dy
@@ -1727,14 +1777,45 @@ class VectorBackendSpec extends AnyFlatSpec {
 
       // Ellipse body from the reciprocal of the radius through the coverage move.
       val program = Seq(
-        "h5e03d0d7", "h8618d3d7", "h92539357", "h5e0450d7", "h8618d4d7",
-        "h924493d7", "h5e075157", "h92231257", "h5e075157", "h922394d7",
-        "h5e03d0d7", "h8618d5d7", "h92459557", "h5e0450d7", "h8618d5d7",
-        "h92959257", "h92631157", "h927390d7", "h02209157", "h5e0104d7",
-        "h5e07d0d7", "h02909357", "h92a51157", "h924210d7", "h02209157",
-        "h5e0103d7", "h4e7294d7", "h8698d257", "h8648d4d7", "h926493d7",
-        "h5e085157", "h267390d7", "h02209357", "h1a66d357", "h1268d357",
-        "h7686d057", "h5e06d3d7", "h5c6380d7", "h5e008257"
+        "h5e03d0d7",
+        "h8618d3d7",
+        "h92539357",
+        "h5e0450d7",
+        "h8618d4d7",
+        "h924493d7",
+        "h5e075157",
+        "h92231257",
+        "h5e075157",
+        "h922394d7",
+        "h5e03d0d7",
+        "h8618d5d7",
+        "h92459557",
+        "h5e0450d7",
+        "h8618d5d7",
+        "h92959257",
+        "h92631157",
+        "h927390d7",
+        "h02209157",
+        "h5e0104d7",
+        "h5e07d0d7",
+        "h02909357",
+        "h92a51157",
+        "h924210d7",
+        "h02209157",
+        "h5e0103d7",
+        "h4e7294d7",
+        "h8698d257",
+        "h8648d4d7",
+        "h926493d7",
+        "h5e085157",
+        "h267390d7",
+        "h02209357",
+        "h1a66d357",
+        "h1268d357",
+        "h7686d057",
+        "h5e06d3d7",
+        "h5c6380d7",
+        "h5e008257"
       )
       program.zipWithIndex.foreach { case (word, pc) =>
         dut.io.fetch.valid.poke(true.B)
@@ -1748,8 +1829,10 @@ class VectorBackendSpec extends AnyFlatSpec {
         while (!dut.io.fetch.ready.peek().litToBoolean && spins < 500) {
           stepFp(); spins += 1
         }
-        assert(dut.io.fetch.ready.peek().litToBoolean,
-          s"instruction $pc ($word) was not accepted; trace ${trace.takeRight(16)}")
+        assert(
+          dut.io.fetch.ready.peek().litToBoolean,
+          s"instruction $pc ($word) was not accepted; trace ${trace.takeRight(16)}"
+        )
         stepFp()
         dut.io.fetch.valid.poke(false.B)
       }
@@ -1767,14 +1850,11 @@ class VectorBackendSpec extends AnyFlatSpec {
         stepFp()
         cycles += 1
       }
-      assert(seen.contains(4),
-        s"coverage never wrote v4, trace ${trace.takeRight(8)}")
+      assert(seen.contains(4), s"coverage never wrote v4, trace ${trace.takeRight(8)}")
       val coverage = seen(4)
       val one = BigInt("3f800000", 16)
-      assert(coverage(0) == one,
-        s"inside dx=4 ${coverage(0).toString(16)} trace ${trace.takeRight(12)}")
-      assert(coverage(1) == 0,
-        s"outside dx=20 ${coverage(1).toString(16)} trace ${trace.takeRight(12)}")
+      assert(coverage(0) == one, s"inside dx=4 ${coverage(0).toString(16)} trace ${trace.takeRight(12)}")
+      assert(coverage(1) == 0, s"outside dx=20 ${coverage(1).toString(16)} trace ${trace.takeRight(12)}")
       assert(coverage(2) == one, s"inside dx=8 ${coverage(2).toString(16)}")
       assert(coverage(3) == one, s"center dx=0 ${coverage(3).toString(16)}")
     }

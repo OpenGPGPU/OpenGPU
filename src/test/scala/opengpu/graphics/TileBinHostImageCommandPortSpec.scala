@@ -24,16 +24,16 @@ class TileBinHostImageCommandPortSpec extends AnyFlatSpec {
       images.table.identity.context.poke(0xabcdef01L.U)
       images.table.identity.pass.poke(13.U); images.table.identity.generation.poke(0xffffffffL.U)
       d.io.command.valid.poke(true.B)
-      for(opcode <- Seq(GpuCommandOpcode.kernel, GpuCommandOpcode.kernelIndirect)) {
+      for (opcode <- Seq(GpuCommandOpcode.kernel, GpuCommandOpcode.kernelIndirect)) {
         d.io.command.bits.opcode.poke(opcode)
-        if(opcode.litValue == GpuCommandOpcode.kernelIndirect.litValue) {
+        if (opcode.litValue == GpuCommandOpcode.kernelIndirect.litValue) {
           d.io.otherCommand.valid.expect(false.B)
           d.io.command.ready.expect(false.B)
           d.io.renderIdle.poke(true.B)
         }
         d.io.otherCommand.valid.expect(true.B); d.io.command.ready.expect(false.B)
         val expected = images.peek().litValue
-        for(_ <- 0 until 9) {
+        for (_ <- 0 until 9) {
           assert(d.io.otherCommand.bits.images.get.peek().litValue == expected)
           d.io.otherCommand.bits.opcode.expect(opcode); d.clock.step()
         }

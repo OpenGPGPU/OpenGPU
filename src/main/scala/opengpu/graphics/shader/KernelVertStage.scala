@@ -19,12 +19,12 @@ import opengpu.dispatch.KernelCompletion
 
 /** Draw descriptor emitted by `CommandBufferStage` when `vertCore = true`.
   *
-  * Replaces the inline clip-space vertices of the legacy 40-word draw record
-  * with a vertex-buffer pointer and vertex-shader descriptor.  The fragment
-  * shader descriptor and render-target state fields are passed through to the
+  * Replaces the inline clip-space vertices of the legacy 40-word draw record with a vertex-buffer pointer and
+  * vertex-shader descriptor. The fragment shader descriptor and render-target state fields are passed through to the
   * downstream pipeline unchanged.
   */
 class VertexDrawCommand(config: GraphicsConfig) extends Bundle with HasDrawState {
+
   /** ABI v10: these clamped axes carry vertex Q16.16 values biased by 2^31. */
   val clampBiasedU = Bool()
   val clampBiasedV = Bool()
@@ -59,8 +59,8 @@ class VertexDrawCommand(config: GraphicsConfig) extends Bundle with HasDrawState
 
 /** Core-backed vertex shader stage.
   *
-  * Processes vertices through a compiled RV32 kernel on the SIMT compute unit,
-  * mirroring the `KernelFragStage` pattern for fragments:
+  * Processes vertices through a compiled RV32 kernel on the SIMT compute unit, mirroring the `KernelFragStage` pattern
+  * for fragments:
   *   1. read vertex attributes from the vertex buffer (through the word bridge);
   *   2. stage SoA kernarg inputs (through the word bridge);
   *   3. launch the vertex shader kernel;
@@ -68,35 +68,23 @@ class VertexDrawCommand(config: GraphicsConfig) extends Bundle with HasDrawState
   *   5. read back transformed vertices (through the word bridge);
   *   6. group every 3 output vertices into a `SceneTriangle` and emit.
   *
-  * Batch size is the largest multiple of 3 not exceeding `warps*lanes`.  The
-  * driver pads vertex counts to multiples of 3, so each batch produces whole
-  * triangles with no cross-batch accumulation.
+  * Batch size is the largest multiple of 3 not exceeding `warps*lanes`. The driver pads vertex counts to multiples of
+  * 3, so each batch produces whole triangles with no cross-batch accumulation.
   *
-  * Vertex kernarg ABI (`stride = 4*warps*lanes`):
-  *   [0*stride, 1*stride)   pos_x  (i32 Q16.16)
-  *   [1*stride, 2*stride)   pos_y  (i32 Q16.16)
-  *   [2*stride, 3*stride)   pos_z  (i32 Q16.16)
-  *   [3*stride, 4*stride)   pos_w  (i32 Q16.16)
-  *   [4*stride, 5*stride)   color  (u32 RGBA8888)
-  *   [5*stride, 6*stride)   depth  (i32)
-  *   [6*stride, 7*stride)   tex_u  (u32 Q16.16)
-  *   [7*stride, 8*stride)   tex_v  (u32 Q16.16)
-  *   [8*stride, 9*stride)   clip_x (i32 Q16.16)  [output]
-  *   [9*stride, 10*stride)  clip_y (i32 Q16.16)  [output]
-  *   [10*stride, 11*stride) clip_z (i32 Q16.16)  [output]
-  *   [11*stride, 12*stride) clip_w (i32 Q16.16)  [output]
-  *   [12*stride, 13*stride) out_color (u32 RGBA8888) [output]
-  *   [13*stride, 14*stride) out_depth (i32)       [output]
-  *   [14*stride, 15*stride) out_u  (u32 Q16.16)  [output]
-  *   [15*stride, 16*stride) out_v  (u32 Q16.16)  [output]
-  *   [16*stride, ...)       uniforms
+  * Vertex kernarg ABI (`stride = 4*warps*lanes`): [0*stride, 1*stride) pos_x (i32 Q16.16) [1*stride, 2*stride) pos_y
+  * (i32 Q16.16) [2*stride, 3*stride) pos_z (i32 Q16.16) [3*stride, 4*stride) pos_w (i32 Q16.16) [4*stride, 5*stride)
+  * color (u32 RGBA8888) [5*stride, 6*stride) depth (i32) [6*stride, 7*stride) tex_u (u32 Q16.16) [7*stride, 8*stride)
+  * tex_v (u32 Q16.16) [8*stride, 9*stride) clip_x (i32 Q16.16) [output] [9*stride, 10*stride) clip_y (i32 Q16.16)
+  * [output] [10*stride, 11*stride) clip_z (i32 Q16.16) [output] [11*stride, 12*stride) clip_w (i32 Q16.16) [output]
+  * [12*stride, 13*stride) out_color (u32 RGBA8888) [output] [13*stride, 14*stride) out_depth (i32) [output] [14*stride,
+  * 15*stride) out_u (u32 Q16.16) [output] [15*stride, 16*stride) out_v (u32 Q16.16) [output] [16*stride, ...) uniforms
   */
 class KernelVertStage(
-  config: GpuConfig = GpuConfig(),
-  gfxConfig: GraphicsConfig = GraphicsConfig(),
-  /** Compatibility mode for direct stage tests; RenderPipeline supplies the CU. */
-  standaloneKernel: Boolean = true,
-  constantBlend: Boolean = false
+    config: GpuConfig = GpuConfig(),
+    gfxConfig: GraphicsConfig = GraphicsConfig(),
+    /** Compatibility mode for direct stage tests; RenderPipeline supplies the CU. */
+    standaloneKernel: Boolean = true,
+    constantBlend: Boolean = false
 ) extends Module {
   private val batchCap = config.warps * config.lanes
   private val batchEff = (batchCap / 3) * 3
@@ -161,6 +149,7 @@ class KernelVertStage(
     val wordMemResp = Flipped(Decoupled(new ComputeMemoryResponse(64, 2)))
     val l1Invalidate = Flipped(Decoupled(new CacheLineInvalidate(config)))
     val l1InvalidateDone = Decoupled(new CacheLineInvalidate(config))
+
     /** Evict staged kernarg lines before the vertex kernel reuses a bank. */
     val stagingInvalidate = Decoupled(new CacheLineInvalidate(config))
     val stagingInvalidateDone = Flipped(Decoupled(new CacheLineInvalidate(config)))
@@ -189,8 +178,7 @@ class KernelVertStage(
 
   // Vertex kernarg staging is CPU-written; bypass L1/L2.
   // Two slots; packs into translated staging IDs [2,4) via the owner bit.
-  private val bridge = Module(new OmWordToLinePort(
-    config, uncached = true, maxOutstanding = 2))
+  private val bridge = Module(new OmWordToLinePort(config, uncached = true, maxOutstanding = 2))
   private val internalKernel = if (standaloneKernel) Some(Module(new KernelShaderStage(config))) else None
   private val stagingReqActive = Wire(Bool())
   private val stagingAckReady = Wire(Bool())
@@ -256,8 +244,7 @@ class KernelVertStage(
     val selectStaging = stagingReqActive
     kernel.io.l1Invalidate.valid :=
       Mux(selectStaging, true.B, io.l1Invalidate.valid) && invalidateOwners.io.enq.ready
-    kernel.io.l1Invalidate.bits := Mux(selectStaging,
-      io.stagingInvalidate.bits, io.l1Invalidate.bits)
+    kernel.io.l1Invalidate.bits := Mux(selectStaging, io.stagingInvalidate.bits, io.l1Invalidate.bits)
     io.l1Invalidate.ready := !selectStaging &&
       kernel.io.l1Invalidate.ready && invalidateOwners.io.enq.ready
     invalidateReady := selectStaging &&
@@ -315,7 +302,8 @@ class KernelVertStage(
   // ---------------------------------------------------------------------
   // FSM.
   // ---------------------------------------------------------------------
-  private val sIdle :: sReadVB :: sWrite :: sInvalidateReq :: sInvalidateAck :: sLaunch :: sRun :: sReadback :: sEmitTri :: Nil = Enum(9)
+  private val sIdle :: sReadVB :: sWrite :: sInvalidateReq :: sInvalidateAck :: sLaunch :: sRun :: sReadback :: sEmitTri :: Nil =
+    Enum(9)
   private val state = RegInit(sIdle)
 
   private val vertIdx = RegInit(0.U(countWidth.W))
@@ -390,21 +378,27 @@ class KernelVertStage(
   // -- Word bridge request generation --
   wordValid := (state === sReadVB || state === sWrite || state === sReadback) && !wordPending
   wordBits.write := (state === sWrite)
-  wordBits.addr := Mux(state === sReadVB,
+  wordBits.addr := Mux(
+    state === sReadVB,
     snapVertBase + (drawVertBase + vertIdx) * snapVertStride + vbWord * 4.U,
-    Mux(state === sWrite,
+    Mux(
+      state === sWrite,
       snapKernarg + field * arrayStride.U + (vertIdx << 2),
-      snapKernarg + (8.U + field) * arrayStride.U + (vertIdx << 2)))
-  wordBits.data := MuxLookup(field, 0.U)(Seq(
-    0.U -> inPosX(vertIdxIdx).asUInt,
-    1.U -> inPosY(vertIdxIdx).asUInt,
-    2.U -> inPosZ(vertIdxIdx).asUInt,
-    3.U -> inPosW(vertIdxIdx).asUInt,
-    4.U -> inColor(vertIdxIdx),
-    5.U -> inDepth(vertIdxIdx).asUInt,
-    6.U -> inTexU(vertIdxIdx),
-    7.U -> inTexV(vertIdxIdx)
-  ))
+      snapKernarg + (8.U + field) * arrayStride.U + (vertIdx << 2)
+    )
+  )
+  wordBits.data := MuxLookup(field, 0.U)(
+    Seq(
+      0.U -> inPosX(vertIdxIdx).asUInt,
+      1.U -> inPosY(vertIdxIdx).asUInt,
+      2.U -> inPosZ(vertIdxIdx).asUInt,
+      3.U -> inPosW(vertIdxIdx).asUInt,
+      4.U -> inColor(vertIdxIdx),
+      5.U -> inDepth(vertIdxIdx).asUInt,
+      6.U -> inTexU(vertIdxIdx),
+      7.U -> inTexV(vertIdxIdx)
+    )
+  )
 
   // -- Triangle emission --
   private val triBase = emitTriIdx * 3.U
@@ -457,13 +451,13 @@ class KernelVertStage(
   io.vertOut.bits.texNearest := snapTexNearest
   io.vertOut.bits.pixelCenter := snapPixelCenter
   io.vertOut.bits.texMaxLevel := snapTexMaxLevel
-    io.vertOut.bits.texLodBias := snapTexLodBias
-    io.vertOut.bits.texMinLevel := snapTexMinLevel
-    io.vertOut.bits.scissorEnable := snapScissorEnable
-    io.vertOut.bits.scissorMinX := snapScissorMinX
-    io.vertOut.bits.scissorMinY := snapScissorMinY
-    io.vertOut.bits.scissorMaxX := snapScissorMaxX
-    io.vertOut.bits.scissorMaxY := snapScissorMaxY
+  io.vertOut.bits.texLodBias := snapTexLodBias
+  io.vertOut.bits.texMinLevel := snapTexMinLevel
+  io.vertOut.bits.scissorEnable := snapScissorEnable
+  io.vertOut.bits.scissorMinX := snapScissorMinX
+  io.vertOut.bits.scissorMinY := snapScissorMinY
+  io.vertOut.bits.scissorMaxX := snapScissorMaxX
+  io.vertOut.bits.scissorMaxY := snapScissorMaxY
 
   io.done := state === sIdle
 
@@ -520,8 +514,7 @@ class KernelVertStage(
         drawVertBase := 0.U
         remainingVerts := io.vertCount
         emitTriTotal := io.vertCount / 3.U
-        val thisBatch = Mux(io.vertCount >= batchEff.U,
-          batchEff.U, (io.vertCount / 3.U) * 3.U)
+        val thisBatch = Mux(io.vertCount >= batchEff.U, batchEff.U, (io.vertCount / 3.U) * 3.U)
         batchVertCount := thisBatch
         emitTriBatch := thisBatch / 3.U
         emitTriIdx := 0.U
@@ -581,8 +574,10 @@ class KernelVertStage(
     }
     is(sInvalidateAck) {
       when(invalidateAck) {
-        assert(invalidateAckAddress === invalidateAddress,
-          "vertex staging invalidate acknowledged the wrong cache line")
+        assert(
+          invalidateAckAddress === invalidateAddress,
+          "vertex staging invalidate acknowledged the wrong cache line"
+        )
         state := sLaunch
       }
     }
@@ -639,11 +634,13 @@ class KernelVertStage(
             // Alternate complete kernarg banks between batches to separate
             // staging writes. Invalidate before each launch as well, since a
             // later batch can reuse a line cached from two batches earlier.
-            snapKernarg := Mux(snapKernargBankStride.orR && !kernargBank,
-              snapKernargBase + snapKernargBankStride, snapKernargBase)
+            snapKernarg := Mux(
+              snapKernargBankStride.orR && !kernargBank,
+              snapKernargBase + snapKernargBankStride,
+              snapKernargBase
+            )
             kernargBank := !kernargBank
-            val nextBatch = Mux(newRemaining >= batchEff.U,
-              batchEff.U, (newRemaining / 3.U) * 3.U)
+            val nextBatch = Mux(newRemaining >= batchEff.U, batchEff.U, (newRemaining / 3.U) * 3.U)
             batchVertCount := nextBatch
             emitTriBatch := nextBatch / 3.U
             vertIdx := 0.U
@@ -662,14 +659,10 @@ class KernelVertStage(
   // -- Memory port mux: bridge is active during VB read, write, and readback --
   private val stagingActive = state === sWrite || state === sReadback ||
     state === sReadVB
-  io.wordMemReq.valid := Mux(stagingActive,
-    bridge.io.memoryRequest.valid, false.B)
-  io.wordMemReq.bits := Mux(stagingActive,
-    bridge.io.memoryRequest.bits,
-    0.U.asTypeOf(bridge.io.memoryRequest.bits))
+  io.wordMemReq.valid := Mux(stagingActive, bridge.io.memoryRequest.valid, false.B)
+  io.wordMemReq.bits := Mux(stagingActive, bridge.io.memoryRequest.bits, 0.U.asTypeOf(bridge.io.memoryRequest.bits))
   bridge.io.memoryRequest.ready := io.wordMemReq.ready && stagingActive
-  io.wordMemResp.ready := Mux(stagingActive,
-    bridge.io.memoryResponse.ready, false.B)
+  io.wordMemResp.ready := Mux(stagingActive, bridge.io.memoryResponse.ready, false.B)
   bridge.io.memoryResponse.valid := io.wordMemResp.valid && stagingActive
   bridge.io.memoryResponse.bits := io.wordMemResp.bits
 }

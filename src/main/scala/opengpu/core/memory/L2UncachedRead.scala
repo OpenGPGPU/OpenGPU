@@ -4,12 +4,10 @@ import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
 
-/** A non-allocating read may wait for memory without holding the L2 lookup
-  * controller. Keep its line reserved through upstream reply consumption so
-  * younger same-line stores and fences cannot overtake it.
+/** A non-allocating read may wait for memory without holding the L2 lookup controller. Keep its line reserved through
+  * upstream reply consumption so younger same-line stores and fences cannot overtake it.
   */
-class L2UncachedRead(config: GpuConfig = GpuConfig(),
-    maxOutstanding: Int = 8, lowerId: Int = 7) extends Module {
+class L2UncachedRead(config: GpuConfig = GpuConfig(), maxOutstanding: Int = 8, lowerId: Int = 7) extends Module {
   require(lowerId >= 0 && lowerId < maxOutstanding)
   val io = IO(new Bundle {
     val allocate = Flipped(Decoupled(new ComputeMemoryRequest(config, 64, maxOutstanding)))
@@ -41,8 +39,10 @@ class L2UncachedRead(config: GpuConfig = GpuConfig(),
   }
   when(io.lowerRequest.fire) { state := State.waitData }
   when(io.lowerResponse.valid) {
-    assert(state === State.waitData && io.lowerResponse.bits.transactionId === lowerId.U,
-      "uncached read reply must identify the issued request")
+    assert(
+      state === State.waitData && io.lowerResponse.bits.transactionId === lowerId.U,
+      "uncached read reply must identify the issued request"
+    )
   }
   when(io.lowerResponse.fire) {
     response := io.lowerResponse.bits

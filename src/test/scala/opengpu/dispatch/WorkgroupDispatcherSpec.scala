@@ -40,14 +40,14 @@ class WorkgroupDispatcherSpec extends AnyFlatSpec {
       sendWorkgroup(dut, Seq(17, 1, 1))
       awaitWarp(dut)
 
-      Seq((0, 0xff, true, false), (8, 0xff, false, false),
-        (16, 0x01, false, true)).foreach { case (base, mask, first, last) =>
-        dut.io.warp.valid.expect(true.B)
-        dut.io.warp.bits.localLinearBase.expect(base.U)
-        dut.io.warp.bits.activeMask.expect(mask.U)
-        dut.io.warp.bits.firstWarp.expect(first.B)
-        dut.io.warp.bits.lastWarp.expect(last.B)
-        dut.clock.step()
+      Seq((0, 0xff, true, false), (8, 0xff, false, false), (16, 0x01, false, true)).foreach {
+        case (base, mask, first, last) =>
+          dut.io.warp.valid.expect(true.B)
+          dut.io.warp.bits.localLinearBase.expect(base.U)
+          dut.io.warp.bits.activeMask.expect(mask.U)
+          dut.io.warp.bits.firstWarp.expect(first.B)
+          dut.io.warp.bits.lastWarp.expect(last.B)
+          dut.clock.step()
       }
       dut.io.warp.valid.expect(false.B)
       (0 until 3).foreach { _ =>

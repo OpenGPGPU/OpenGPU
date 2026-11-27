@@ -11,7 +11,7 @@ class InputUsageDrawContextSpec extends AnyFlatSpec {
     // These are simulator drives, deliberately using poke rather than Chisel
     // connection syntax (:=).  The latter only builds hardware during module
     // elaboration and does not drive a DUT in a test.
-    dut.io.enq.bits.fragInputSkip.poke((tag*17).U)
+    dut.io.enq.bits.fragInputSkip.poke((tag * 17).U)
     dut.io.enq.bits.shaderPc.poke((0x1000 + tag).U)
     dut.io.enq.bits.kernargBase.poke((0x2000 + tag).U)
     dut.io.enq.bits.kernargBankStride.poke((0x3000 + tag).U)

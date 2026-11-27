@@ -18,8 +18,10 @@ object EmitComputeStorageArti {
         graphicsGpuConfig = Some(GpuConfig(lanes = 4, warps = 2)),
         storageAvailable = true,
         enableFpuBackend = true,
-        memoryAxiDataBytes = 8),
+        memoryAxiDataBytes = 8
+      ),
       Array("--target-dir", args(0)),
-      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays"))
+      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays")
+    )
   }
 }

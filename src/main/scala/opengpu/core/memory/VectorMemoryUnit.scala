@@ -21,8 +21,8 @@ class VectorMemoryExecuteRequest(config: GpuConfig) extends Bundle {
   val isStore = Bool()
 }
 
-/** Cache/coalescer-facing transaction. Each lane represents one architectural
-  * element; inactive lanes must not cause a memory access.
+/** Cache/coalescer-facing transaction. Each lane represents one architectural element; inactive lanes must not cause a
+  * memory access.
   */
 class VectorMemoryTransaction(config: GpuConfig) extends Bundle {
   val warpId = UInt(config.warpIdWidth.W)
@@ -66,21 +66,20 @@ class VectorMemoryFault(config: GpuConfig) extends Bundle {
 
 /** One outstanding vector memory transaction, with registered retirement.
   *
-  * Address generation is parallel across lanes. The external cache/coalescer
-  * owns banking, replay, and physical memory timing; architectural completion
-  * occurs only after its response. A healthy result can retire on the same
-  * edge that accepts the next request; held and faulted results close admission.
+  * Address generation is parallel across lanes. The external cache/coalescer owns banking, replay, and physical memory
+  * timing; architectural completion occurs only after its response. A healthy result can retire on the same edge that
+  * accepts the next request; held and faulted results close admission.
   */
-class VectorMemoryUnit(config: GpuConfig = GpuConfig(),helperInvocations: Boolean=false) extends Module {
+class VectorMemoryUnit(config: GpuConfig = GpuConfig(), helperInvocations: Boolean = false) extends Module {
   val io = IO(new Bundle {
-    val invocations=if(helperInvocations)Some(Input(Vec(config.warps,new WarpInvocationPolicy(config))))else None
+    val invocations = if (helperInvocations) Some(Input(Vec(config.warps, new WarpInvocationPolicy(config)))) else None
     val in = Flipped(Decoupled(new VectorMemoryExecuteRequest(config)))
     val memoryRequest = Decoupled(new VectorMemoryTransaction(config))
     val memoryResponse = Flipped(Decoupled(new VectorMemoryResponse(config)))
     val out = Decoupled(new VectorMemoryResult(config))
   })
 
-  private val policy=if(helperInvocations)Some(Reg(new WarpInvocationPolicy(config)))else None
+  private val policy = if (helperInvocations) Some(Reg(new WarpInvocationPolicy(config))) else None
   private val requestValid = RegInit(false.B)
   private val requestBits = Reg(new VectorMemoryExecuteRequest(config))
   private val issued = RegInit(false.B)
@@ -94,7 +93,7 @@ class VectorMemoryUnit(config: GpuConfig = GpuConfig(),helperInvocations: Boolea
   when(io.in.fire) {
     requestValid := true.B
     requestBits := io.in.bits
-    if(helperInvocations)policy.get:=HelperInvocationPolicy.select(io.invocations.get,io.in.bits.warpId)
+    if (helperInvocations) policy.get := HelperInvocationPolicy.select(io.invocations.get, io.in.bits.warpId)
     issued := false.B
     for (lane <- 0 until config.lanes) {
       val laneNumber = lane.U(config.xLen.W)
@@ -112,11 +111,18 @@ class VectorMemoryUnit(config: GpuConfig = GpuConfig(),helperInvocations: Boolea
     }
   }
 
-  private val permitted=if(helperInvocations)VecInit((0 until config.lanes).map { lane=>
-    !requestBits.isStore || !policy.get.helpers(lane) || HelperInvocationPolicy.privateAccess(config,policy.get,precomputedAddresses(lane),1.U(4.W)<<requestBits.elementSize)
-  }).asUInt else Fill(config.lanes,1.U(1.W))
-  private val memoryMask=requestBits.activeMask & permitted
-  private val suppressed=if(helperInvocations)requestBits.isStore && !memoryMask.orR else false.B
+  private val permitted =
+    if (helperInvocations) VecInit((0 until config.lanes).map { lane =>
+      !requestBits.isStore || !policy.get.helpers(lane) || HelperInvocationPolicy.privateAccess(
+        config,
+        policy.get,
+        precomputedAddresses(lane),
+        1.U(4.W) << requestBits.elementSize
+      )
+    }).asUInt
+    else Fill(config.lanes, 1.U(1.W))
+  private val memoryMask = requestBits.activeMask & permitted
+  private val suppressed = if (helperInvocations) requestBits.isStore && !memoryMask.orR else false.B
   io.memoryRequest.valid := requestValid && !issued && !suppressed
   io.memoryRequest.bits.warpId := requestBits.warpId
   io.memoryRequest.bits.laneMask := memoryMask
@@ -133,7 +139,7 @@ class VectorMemoryUnit(config: GpuConfig = GpuConfig(),helperInvocations: Boolea
   io.memoryResponse.ready := requestValid && issued && !outputValid
   private val suppressedCompletion = requestValid && !issued && suppressed && !outputValid
   private val response = WireDefault(io.memoryResponse.bits)
-  when(suppressedCompletion){response:=0.U.asTypeOf(response)}
+  when(suppressedCompletion) { response := 0.U.asTypeOf(response) }
   // Capture formatted data and attribution directly into the held result.
   // No response can overwrite an older result waiting for retirement.
   when(io.memoryResponse.fire || suppressedCompletion) {

@@ -1,11 +1,11 @@
 package opengpu.elaboration
 
-import opengpu.config.{GpuConfig,MobileGpuConfig}
+import opengpu.config.{GpuConfig, MobileGpuConfig}
 import opengpu.graphics.GraphicsConfig
 import opengpu.system.GpuHostSystemAxi
 
-/** Emits [[GpuHostSystemAxi]], the product GPU top, as SystemVerilog.
-  * Defaults to the mobile-oriented GPU configuration with four compute CUs.
+/** Emits [[GpuHostSystemAxi]], the product GPU top, as SystemVerilog. Defaults to the mobile-oriented GPU configuration
+  * with four compute CUs.
   */
 object EmitGpuTop {
   def main(args: Array[String]): Unit = {
@@ -26,11 +26,12 @@ object EmitGpuTop {
     val forceLocalPayloads = rest.contains("--local-shader-payloads")
     val globalPayloads = rest.contains("--global-shader-payloads")
     require(!forceLocalPayloads || !globalPayloads, "choose one shader payload transport")
-    require(!forceLocalPayloads || (binnedJobs && fragCore && sharedGraphics && parallelGraphics),
-      "--local-shader-payloads requires binned jobs with parallel shared fragments")
+    require(
+      !forceLocalPayloads || (binnedJobs && fragCore && sharedGraphics && parallelGraphics),
+      "--local-shader-payloads requires binned jobs with parallel shared fragments"
+    )
     require(!parallelGraphics || sharedGraphics, "--parallel-graphics requires --shared-graphics")
-    require(!vertCore || fragCore,
-      "--vert-core requires --frag-core because both stages share the shader CU")
+    require(!vertCore || fragCore, "--vert-core requires --frag-core because both stages share the shader CU")
 
     def intOption(name: String): Option[Int] = {
       val i = rest.indexOf(name)
@@ -43,51 +44,61 @@ object EmitGpuTop {
 
     val fragmentBatchLimit = intOption("--fragment-batch-limit").getOrElse(0)
     val fragmentWorkers = intOption("--fragment-workers").getOrElse(0)
-    require(fragmentWorkers>=0 && fragmentWorkers<=16 && (fragmentWorkers==0 || (parallelGraphics && !binnedJobs)),
-      "--fragment-workers requires the legacy --parallel-graphics renderer")
-    require(fragmentBatchLimit == 0 || parallelGraphics,
-      "--fragment-batch-limit requires --parallel-graphics")
+    require(
+      fragmentWorkers >= 0 && fragmentWorkers <= 16 && (fragmentWorkers == 0 || (parallelGraphics && !binnedJobs)),
+      "--fragment-workers requires the legacy --parallel-graphics renderer"
+    )
+    require(fragmentBatchLimit == 0 || parallelGraphics, "--fragment-batch-limit requires --parallel-graphics")
 
-    val width = intOption("--width").getOrElse(if(binnedJobs)1280 else 64)
-    val height = intOption("--height").getOrElse(if(binnedJobs)720 else 64)
+    val width = intOption("--width").getOrElse(if (binnedJobs) 1280 else 64)
+    val height = intOption("--height").getOrElse(if (binnedJobs) 720 else 64)
     val computeUnits = intOption("--compute-units")
       .getOrElse(GpuConfig.MobileComputeUnits)
     val cuLanes = intOption("--cu-lanes").getOrElse(16)
     val cuWarps = intOption("--cu-warps").getOrElse(8)
-    require(!sharedGraphics || fragCore,
-      "--shared-graphics requires --frag-core")
-    require(!sharedGraphics || (cuLanes % 4 == 0 && cuLanes * cuWarps <= 255),
-      "shared graphics requires whole helper quads and an eight-bit batch capacity")
-    val tileEngines=intOption("--tile-engines").getOrElse(2)
-    require(tileEngines>=1 && tileEngines<=4)
-    val gpuConfig = if(binnedJobs) GpuConfig(lanes=cuLanes,warps=cuWarps,
-      l2Sets=intOption("--l2-sets").getOrElse(512),
-      l2StoreEntries=intOption("--l2-store-entries").getOrElse(1<<chisel3.util.log2Ceil(2*tileEngines)))
-      else GpuConfig(lanes=cuLanes,warps=cuWarps)
-    val memoryAxiDataBytes = intOption("--memory-axi-data-bytes").getOrElse(if(binnedJobs)32 else 8)
+    require(!sharedGraphics || fragCore, "--shared-graphics requires --frag-core")
+    require(
+      !sharedGraphics || (cuLanes % 4 == 0 && cuLanes * cuWarps <= 255),
+      "shared graphics requires whole helper quads and an eight-bit batch capacity"
+    )
+    val tileEngines = intOption("--tile-engines").getOrElse(2)
+    require(tileEngines >= 1 && tileEngines <= 4)
+    val gpuConfig =
+      if (binnedJobs)
+        GpuConfig(
+          lanes = cuLanes,
+          warps = cuWarps,
+          l2Sets = intOption("--l2-sets").getOrElse(512),
+          l2StoreEntries = intOption("--l2-store-entries").getOrElse(1 << chisel3.util.log2Ceil(2 * tileEngines))
+        )
+      else GpuConfig(lanes = cuLanes, warps = cuWarps)
+    val memoryAxiDataBytes = intOption("--memory-axi-data-bytes").getOrElse(if (binnedJobs) 32 else 8)
     val persistentAttachments = rest.contains("--persistent-tile-jobs")
     val tileSize = intOption("--tile-size").getOrElse(if (persistentAttachments || binnedJobs) 16 else 0)
     val tileAttachments = rest.contains("--tile-attachments") || persistentAttachments || binnedJobs
     val tileBinning = rest.contains("--tile-binning")
     def isPow2(n: Int): Boolean = n > 0 && (n & (n - 1)) == 0
-    require(width >= 16 && height >= 16,
-      s"resolution must be at least 16x16, got ${width}x${height}")
-    require(computeUnits > 0,
-      s"compute-unit count must be positive, got $computeUnits")
-    require(isPow2(memoryAxiDataBytes) && memoryAxiDataBytes >= 4 &&
-      memoryAxiDataBytes <= 64,
-      s"memory AXI beat must be 4, 8, 16, 32 or 64 bytes, got $memoryAxiDataBytes")
+    require(width >= 16 && height >= 16, s"resolution must be at least 16x16, got ${width}x${height}")
+    require(computeUnits > 0, s"compute-unit count must be positive, got $computeUnits")
+    require(
+      isPow2(memoryAxiDataBytes) && memoryAxiDataBytes >= 4 &&
+        memoryAxiDataBytes <= 64,
+      s"memory AXI beat must be 4, 8, 16, 32 or 64 bytes, got $memoryAxiDataBytes"
+    )
 
     EmitRtl.emit(
       new GpuHostSystemAxi(
         GraphicsConfig(
-          screenWidth = width, screenHeight = height, subPixelBits = 8,
+          screenWidth = width,
+          screenHeight = height,
+          subPixelBits = 8,
           omInflight = intOption("--om-inflight").getOrElse(16),
           omLocality = rest.contains("--om-locality"),
           fragmentBatchLimit = fragmentBatchLimit,
           tileSize = tileSize,
           tileAttachments = tileAttachments,
-          tileBinning = tileBinning),
+          tileBinning = tileBinning
+        ),
         gpuConfig,
         numComputeUnits = computeUnits,
         // Counter, uniform, storage and texture services reserve sixteen CU IDs.
@@ -109,21 +120,35 @@ object EmitGpuTop {
         bufferCommandReads = rest.contains("--buffer-command-reads"),
         bufferTextureReads = rest.contains("--buffer-texture-reads"),
         persistentAttachments = persistentAttachments,
-        binnedRendering = if(binnedJobs) Some(MobileGpuConfig(execution=gpuConfig,
-          computeUnits=computeUnits,tileEngines=tileEngines,axiBytes=memoryAxiDataBytes,
-          attachmentStoreCredits=intOption("--tile-store-credits").getOrElse(8),
-          payloadBytes=intOption("--payload-bytes").getOrElse(64*1024),
-          localShaderPayloads= !globalPayloads)) else None,
+        binnedRendering =
+          if (binnedJobs)
+            Some(
+              MobileGpuConfig(
+                execution = gpuConfig,
+                computeUnits = computeUnits,
+                tileEngines = tileEngines,
+                axiBytes = memoryAxiDataBytes,
+                attachmentStoreCredits = intOption("--tile-store-credits").getOrElse(8),
+                payloadBytes = intOption("--payload-bytes").getOrElse(64 * 1024),
+                localShaderPayloads = !globalPayloads
+              )
+            )
+          else None,
         tileStoreCredits = intOption("--tile-store-credits")
           .getOrElse(opengpu.config.MobileGpuConfig().attachmentStoreCredits),
         fragCore = fragCore,
         vertCore = vertCore,
-        version = if (vertCore && !tileBinning && !tileAttachments &&
-          !persistentAttachments && !binnedJobs && !sharedGraphics && !parallelGraphics)
-          { if (fragCore) 11 else 9 } else 2,
+        version =
+          if (
+            vertCore && !tileBinning && !tileAttachments &&
+            !persistentAttachments && !binnedJobs && !sharedGraphics && !parallelGraphics
+          ) { if (fragCore) 11 else 9 }
+          else 2,
         enableFpuBackend = true,
         useBlackBoxes = rest.contains("--sram-black-boxes"),
-        memoryAxiDataBytes = memoryAxiDataBytes),
-      targetDir)
+        memoryAxiDataBytes = memoryAxiDataBytes
+      ),
+      targetDir
+    )
   }
 }

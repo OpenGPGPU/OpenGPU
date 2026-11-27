@@ -9,11 +9,9 @@ class TileAttachmentWrite extends Bundle {
   val resolve = Bool()
 }
 
-/** Bounded credits for one pass owner's attachment stores. Requests issue in
-  * enqueue order; address-matched acknowledgements may reorder. Repeated
-  * addresses wait for older writes.
-  * Abort drops unoffered work, retains a backpressured offered request, and
-  * drains every issued credit before another pass can reuse the slots.
+/** Bounded credits for one pass owner's attachment stores. Requests issue in enqueue order; address-matched
+  * acknowledgements may reorder. Repeated addresses wait for older writes. Abort drops unoffered work, retains a
+  * backpressured offered request, and drains every issued credit before another pass can reuse the slots.
   */
 class TileAttachmentWriteQueue(credits: Int = 8) extends Module {
   require(credits > 0 && credits <= 32)
@@ -26,6 +24,7 @@ class TileAttachmentWriteQueue(credits: Int = 8) extends Module {
     val response = Flipped(Decoupled(new OmMemoryResponse))
     val responseFault = Input(Bool())
     val drained = Output(Bool())
+
     /** Includes allocated, offered and issued credits; not a DRAM-only count. */
     val occupancy = Output(UInt(log2Ceil(credits + 1).W))
   })
@@ -38,19 +37,27 @@ class TileAttachmentWriteQueue(credits: Int = 8) extends Module {
   // A zero-latency responder holds valid until the next cycle's credit is
   // registered. Keeping request.ready out of this decode avoids a loop when
   // an upstream arbiter uses response faults to stop admission.
-  private val matches = VecInit((0 until credits).map(i => live(i) && issued(i) &&
-    entries(i).address === io.response.bits.addr))
+  private val matches = VecInit(
+    (0 until credits).map(i =>
+      live(i) && issued(i) &&
+        entries(i).address === io.response.bits.addr
+    )
+  )
   io.response.ready := matches.asUInt.orR
   private val abortNow = io.abort || (io.response.fire && io.responseFault)
-  private val duplicate = VecInit((0 until credits).map(i => live(i) &&
-    entries(i).address === io.enqueue.bits.address)).asUInt.orR
+  private val duplicate = VecInit(
+    (0 until credits).map(i =>
+      live(i) &&
+        entries(i).address === io.enqueue.bits.address
+    )
+  ).asUInt.orR
   private val free = VecInit(live.map(!_))
   private val freeSlot = PriorityEncoder(free)
   // Slot numbers are recycled as replies arrive. Choosing the lowest waiting
   // slot lets newer words repeatedly overtake old high slots, splitting a
   // gathered line even on a contiguous export. Queue only the bounded slot
   // handles; data and acknowledgement ownership remain in the credit table.
-  private val order = Module(new Queue(UInt(slotBits.W),credits))
+  private val order = Module(new Queue(UInt(slotBits.W), credits))
   private val admit = free.asUInt.orR && !duplicate && !aborting && !abortNow
   order.io.enq.valid := io.enqueue.valid && admit
   order.io.enq.bits := freeSlot

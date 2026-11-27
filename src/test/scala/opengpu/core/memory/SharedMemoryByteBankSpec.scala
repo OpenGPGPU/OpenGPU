@@ -8,9 +8,11 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 private class SharedByteBankResources extends BlackBox with HasBlackBoxInline {
   val io = IO(new Bundle { val present = Output(Bool()) })
-  setInline("SharedByteBankResources.sv",
+  setInline(
+    "SharedByteBankResources.sv",
     "module SharedByteBankResources(output present); assign present=1'b1; endmodule\n" +
-      Files.readString(Paths.get("depends/asap7_sram_0p0/generated/verilog/srambank_64x4x32_6t122.v")))
+      Files.readString(Paths.get("depends/asap7_sram_0p0/generated/verilog/srambank_64x4x32_6t122.v"))
+  )
 }
 
 private class SharedByteBankComparison(depth: Int) extends Module {

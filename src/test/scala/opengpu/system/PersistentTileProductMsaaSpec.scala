@@ -8,28 +8,44 @@ import opengpu.testutil.GraphicsTestResolution
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-/** Join typed clear/draw ordering, programmable MSAA, resolve and the proposed
-  * cache/viewport configuration. This remains one resident tile, not a frame
-  * throughput benchmark. The oracle evaluates each covered sample separately.
+/** Join typed clear/draw ordering, programmable MSAA, resolve and the proposed cache/viewport configuration. This
+  * remains one resident tile, not a frame throughput benchmark. The oracle evaluates each covered sample separately.
   */
 abstract class PersistentTileProductMsaaChecks(crossing: Boolean) extends AnyFlatSpec with GpuHostTestSupport {
   behavior of s"typed persistent tiles at the mobile execution configuration (clipped=$crossing)"
-  private val samplePositions = Seq(Seq((0, 0)), Seq((-1, -1), (1, 1)),
-    Seq((-1, -1), (1, -1), (-1, 1), (1, 1)))
+  private val samplePositions = Seq(Seq((0, 0)), Seq((-1, -1), (1, 1)), Seq((-1, -1), (1, -1), (-1, 1), (1, 1)))
 
   for (shared <- Seq(false, true)) {
     it should s"preserve every sample and resolve ordered masked clears with shared=$shared clipped=$crossing" in {
-      assume(Runtime.getRuntime.maxMemory() >= 4L * 1024 * 1024 * 1024,
-        "Run sbt -J-Xmx8G 'testOnly opengpu.system.PersistentTileProductMsaaSpec'.")
+      assume(
+        Runtime.getRuntime.maxMemory() >= 4L * 1024 * 1024 * 1024,
+        "Run sbt -J-Xmx8G 'testOnly opengpu.system.PersistentTileProductMsaaSpec'."
+      )
       val gpu = MobileGpuConfig().execution
       val count = if (shared) 4 else 1
       val width = GraphicsTestResolution.width; val height = GraphicsTestResolution.height
-      val gfx = GraphicsConfig(screenWidth = width, screenHeight = height,
-        tileSize = 16, tileAttachments = true, fragmentBatchLimit = gpu.lanes)
-      simulate(new GpuHostSystemAxi(gfx, gpu, numComputeUnits = count,
-        fragCore = shared, sharedGraphics = shared, parallelGraphics = shared,
-        enableFpuBackend = shared, persistentAttachments = true, bufferCommandReads = true,
-        memoryAxiDataBytes = 32, exposePerformance = true)) { dut =>
+      val gfx = GraphicsConfig(
+        screenWidth = width,
+        screenHeight = height,
+        tileSize = 16,
+        tileAttachments = true,
+        fragmentBatchLimit = gpu.lanes
+      )
+      simulate(
+        new GpuHostSystemAxi(
+          gfx,
+          gpu,
+          numComputeUnits = count,
+          fragCore = shared,
+          sharedGraphics = shared,
+          parallelGraphics = shared,
+          enableFpuBackend = shared,
+          persistentAttachments = true,
+          bufferCommandReads = true,
+          memoryAxiDataBytes = 32,
+          exposePerformance = true
+        )
+      ) { dut =>
         initialize(dut)
         axiWrite(dut, RenderHostRegs.IRQ, 3)
         val memory = mutable.Map.empty[BigInt, Long]
@@ -53,8 +69,8 @@ abstract class PersistentTileProductMsaaChecks(crossing: Boolean) extends AnyFla
           dut.io.m_axi_wready.poke(false.B); dut.io.m_axi_rvalid.poke(false.B)
           dut.io.m_axi_rlast.poke(false.B); dut.io.m_axi_bvalid.poke(false.B)
         }
-        def put(address: Long, values: Seq[Long]): Unit = values.zipWithIndex.foreach {
-          case (v, i) => memory(BigInt(address + offset + i * 4)) = v & 0xffffffffL
+        def put(address: Long, values: Seq[Long]): Unit = values.zipWithIndex.foreach { case (v, i) =>
+          memory(BigInt(address + offset + i * 4)) = v & 0xffffffffL
         }
         def word(address: Long): Long = memory.getOrElse(BigInt(address + offset), 0L)
         def sampleAddress(base: Long, x: Int, y: Int, s: Int): Long =
@@ -66,7 +82,8 @@ abstract class PersistentTileProductMsaaChecks(crossing: Boolean) extends AnyFla
           if (a >= 0x4000 && a < commandEnd) commandLines += 1
           if (a >= colorBase && a < resolveBase) attachmentReads += 1
           val base = address & ~BigInt(63)
-          (0 until 16).map(i => BigInt(memory.getOrElse(base + i * 4, 0L)) << (i * 32))
+          (0 until 16)
+            .map(i => BigInt(memory.getOrElse(base + i * 4, 0L)) << (i * 32))
             .foldLeft(BigInt(0))(_ | _)
         }
         def writeLine(address: BigInt, data: BigInt, mask: BigInt): Unit = {
@@ -78,8 +95,7 @@ abstract class PersistentTileProductMsaaChecks(crossing: Boolean) extends AnyFla
               assert((0 until 4).forall(b => mask.testBit(i * 4 + b)), "partial attachment word")
               assert(written.add(a + i * 4), "a final sample was exported twice")
             }
-          } else assert(shared && a >= 0x80000 && a < 0x90000,
-            s"unexpected write to ${a.toHexString}")
+          } else assert(shared && a >= 0x80000 && a < 0x90000, s"unexpected write to ${a.toHexString}")
           for (i <- 0 until 16) {
             val target = address + i * 4
             var v = memory.getOrElse(target, 0L)
@@ -119,10 +135,14 @@ abstract class PersistentTileProductMsaaChecks(crossing: Boolean) extends AnyFla
         }
         def clear(rect: Long, cm: Long, dm: Long, cv: Long, dv: Long): Seq[Long] =
           Seq(1L, rect, cm, dm, cv, dv) ++ Seq.fill(35)(0L)
-        val records = Seq(clear(0, 0, 0, 0, 0), draw(100, 40, 60, 16),
+        val records = Seq(
+          clear(0, 0, 0, 0, 0),
+          draw(100, 40, 60, 16),
           clear(0x06060202L, 0x00ff0000L, 0x00ffffffL, 0x00a00000L, 0x00ffffffL),
-          draw(50, 20, 30, 32), clear(0x04040000L, 0xff0000ffL, 0xff000000L, 0x07000022L, 0x33000000L),
-          draw(20, 30, 40, 8, last = true))
+          draw(50, 20, 30, 32),
+          clear(0x04040000L, 0xff0000ffL, 0xff000000L, 0x07000022L, 0x33000000L),
+          draw(20, 30, 40, 8, last = true)
+        )
         def covered(x: Int, y: Int, position: (Int, Int)): Boolean =
           (originX + x) * 4 + position._1 > 0 && (originY + y) * 4 + position._2 > 0
         def expected(x: Int, y: Int, position: (Int, Int)): (Long, Long) = {
@@ -135,9 +155,12 @@ abstract class PersistentTileProductMsaaChecks(crossing: Boolean) extends AnyFla
             c = (c & 0xff00ffffL) | 0x00a00000L; d = (d & 0xff000000L) | 0x00ffffffL
           }
           if (hit && (d >>> 24) == 0x5a && 32 < (d & 0xffffff)) {
-            c = Seq(24, 16, 8, 0).zip(Seq(50L, 20L, 30L, 255L)).map {
-              case (shift, v) => math.min(255L, ((c >>> shift) & 255) + v) << shift
-            }.reduce(_ | _)
+            c = Seq(24, 16, 8, 0)
+              .zip(Seq(50L, 20L, 30L, 255L))
+              .map { case (shift, v) =>
+                math.min(255L, ((c >>> shift) & 255) + v) << shift
+              }
+              .reduce(_ | _)
             d = (d & 0xff000000L) | 32
           }
           if (x < 4 && y < 4) { c = (c & 0x00ffff00L) | 0x07000022L; d = (d & 0x00ffffffL) | 0x33000000L }
@@ -163,7 +186,8 @@ abstract class PersistentTileProductMsaaChecks(crossing: Boolean) extends AnyFla
           val job = TileDescriptorTestData.words(records.size)
           job(0) = 0x47545002L; job(7) = commandEnd; job(9) = width; job(10) = height
           job(11) = originX | (originY << 16)
-          job(12) = (if (size == 8) 3L else 4L) | (size.toLong << 8) | (size.toLong << 16) | (mode.toLong << 24) | (1L << 31)
+          job(12) =
+            (if (size == 8) 3L else 4L) | (size.toLong << 8) | (size.toLong << 16) | (mode.toLong << 24) | (1L << 31)
           job(13) = colorBase; job(14) = depthBase; job(16) = pitch
           job(19) = depthBase; job(20) = resolveBase; job(22) = pitch
           job(25) = resolveBase; job(26) = 0x400000; job(28) = resolvePitch
@@ -174,26 +198,39 @@ abstract class PersistentTileProductMsaaChecks(crossing: Boolean) extends AnyFla
             put(sampleAddress(depthBase, x, y, s), Seq(if (loadStart) 0x5affffffL else 0xdeadbeefL))
           }
           val id = 0x50 + mode * 4 + (if (size == 16) 2 else 0) + (if (translated) 1 else 0)
-          for ((reg, value) <- Seq(GpuCommandMmioRegs.COMMAND_ID -> id.toLong,
-            GpuCommandMmioRegs.OPCODE -> 7L, GpuCommandMmioRegs.SOURCE -> 0x1000L,
-            GpuCommandMmioRegs.DESTINATION -> 0x1100L, GpuCommandMmioRegs.BYTES -> 256L,
-            GpuCommandMmioRegs.SUBMIT -> 1L)) axiWrite(dut, reg, value.toInt)
+          for (
+            (reg, value) <- Seq(
+              GpuCommandMmioRegs.COMMAND_ID -> id.toLong,
+              GpuCommandMmioRegs.OPCODE -> 7L,
+              GpuCommandMmioRegs.SOURCE -> 0x1000L,
+              GpuCommandMmioRegs.DESTINATION -> 0x1100L,
+              GpuCommandMmioRegs.BYTES -> 256L,
+              GpuCommandMmioRegs.SUBMIT -> 1L
+            )
+          ) axiWrite(dut, reg, value.toInt)
           val start = dut.io.performance.get.system.cycles.peek().litValue
           val activeStart = dut.io.performance.get.system.activeCuCycles.peek().litValue
           try {
-            serviceMemoryMaster(dut, readLine, writeAckDelay = 17, readResponseDelay = 8,
-              maxCycles = 250000)(writeLine) { dut.io.m_irq.peek().litToBoolean }
+            serviceMemoryMaster(dut, readLine, writeAckDelay = 17, readResponseDelay = 8, maxCycles = 250000)(
+              writeLine
+            ) { dut.io.m_irq.peek().litToBoolean }
           } catch {
-            case failure: AssertionError => throw new AssertionError(
-              s"mode=$mode tile=$size Sv32=$translated load=$loadStart commandLines=$commandLines " +
-                s"attachmentReads=$attachmentReads stored=$attachmentBytes resolved=$resolveBytes: ${failure.getMessage}", failure)
+            case failure: AssertionError =>
+              throw new AssertionError(
+                s"mode=$mode tile=$size Sv32=$translated load=$loadStart commandLines=$commandLines " +
+                  s"attachmentReads=$attachmentReads stored=$attachmentBytes resolved=$resolveBytes: ${failure.getMessage}",
+                failure
+              )
           }
           pauseMemory()
           val cycles = dut.io.performance.get.system.cycles.peek().litValue - start
           val activeCycles = dut.io.performance.get.system.activeCuCycles.peek().litValue - activeStart
           if (shared) assert(activeCycles > 0, "the programmable case did not execute on a CU")
           val result = axiRead(dut, GpuCommandMmioRegs.COMPLETION)
-          assert((result & 255) == id && result.testBit(15) && ((result >> 11) & 15) == 0, s"mode=$mode size=$size Sv32=$translated completion=$result")
+          assert(
+            (result & 255) == id && result.testBit(15) && ((result >> 11) & 15) == 0,
+            s"mode=$mode size=$size Sv32=$translated completion=$result"
+          )
           assert(axiRead(dut, GpuCommandMmioRegs.COMPLETION_BYTES_LO) == 984)
           assert(commandLines == 16 && resolveBytes == size * size * 4)
           if (!loadStart) assert(attachmentReads == 0) else assert(attachmentReads > 0)
@@ -208,9 +245,11 @@ abstract class PersistentTileProductMsaaChecks(crossing: Boolean) extends AnyFla
                 expectedWrites += sampleAddress(depthBase, x, y, s)
               }
             }
-            val resolved = Seq(0, 8, 16, 24).map { shift =>
-              ((values.map(v => (v._1 >>> shift) & 255).sum + activeSamples / 2) / activeSamples) << shift
-            }.reduce(_ | _)
+            val resolved = Seq(0, 8, 16, 24)
+              .map { shift =>
+                ((values.map(v => (v._1 >>> shift) & 255).sum + activeSamples / 2) / activeSamples) << shift
+              }
+              .reduce(_ | _)
             assert(word(resolveAddress(x, y)) == resolved, s"resolve mode=$mode size=$size ($x,$y)")
             expectedWrites += resolveAddress(x, y)
           }
@@ -218,10 +257,15 @@ abstract class PersistentTileProductMsaaChecks(crossing: Boolean) extends AnyFla
           assert(attachmentBytes + resolveBytes == expectedWrites.size * 4)
           axiWrite(dut, GpuCommandMmioRegs.COMPLETION_POP, 1)
           axiWrite(dut, RenderHostRegs.IRQ, 3)
-          info(s"shared=$shared clipped=$crossing CUs=$count lanes=${gpu.lanes} warps=${gpu.warps} viewport=${GraphicsTestResolution.label} L2Bytes=131072 tile=$size originX=$originX originY=$originY samples=$activeSamples Sv32=$translated load=$loadStart commandLines=$commandLines attachmentReads=$attachmentReads attachmentBytes=$attachmentBytes resolveBytes=$resolveBytes activeCuCycles=$activeCycles cycles=$cycles")
+          info(
+            s"shared=$shared clipped=$crossing CUs=$count lanes=${gpu.lanes} warps=${gpu.warps} viewport=${GraphicsTestResolution.label} L2Bytes=131072 tile=$size originX=$originX originY=$originY samples=$activeSamples Sv32=$translated load=$loadStart commandLines=$commandLines attachmentReads=$attachmentReads attachmentBytes=$attachmentBytes resolveBytes=$resolveBytes activeCuCycles=$activeCycles cycles=$cycles"
+          )
         }
-        if (shared) assert(dut.io.performance.get.system.maxActiveComputeUnits.peek().litValue == count,
-          "the product matrix did not exercise the complete shared CU pool")
+        if (shared)
+          assert(
+            dut.io.performance.get.system.maxActiveComputeUnits.peek().litValue == count,
+            "the product matrix did not exercise the complete shared CU pool"
+          )
       }
     }
   }

@@ -101,10 +101,10 @@ class CheckedStorageWordAccessSpec extends AnyFlatSpec {
         d.io.out.bits.status.expect(status.U); d.io.out.ready.poke(true.B); d.clock.step()
         d.io.out.ready.poke(false.B)
       }
-      reject(BigInt("18000100",16), BigInt("10000000",16), true, 0, StorageWordStatus.invalidView)
-      reject(BigInt("10001000",16), BigInt("10000004",16), true, 0, StorageWordStatus.invalidView)
-      reject(BigInt("10001000",16), BigInt("10000000",16), false, 0, StorageWordStatus.invalidView)
-      reject(BigInt("10001000",16), BigInt("10000000",16), true, 2, StorageWordStatus.outOfBounds)
+      reject(BigInt("18000100", 16), BigInt("10000000", 16), true, 0, StorageWordStatus.invalidView)
+      reject(BigInt("10001000", 16), BigInt("10000004", 16), true, 0, StorageWordStatus.invalidView)
+      reject(BigInt("10001000", 16), BigInt("10000000", 16), false, 0, StorageWordStatus.invalidView)
+      reject(BigInt("10001000", 16), BigInt("10000000", 16), true, 2, StorageWordStatus.outOfBounds)
     }
   }
 
@@ -148,7 +148,7 @@ class CheckedStorageWordAccessSpec extends AnyFlatSpec {
             d.io.memoryRequest.bits.byteMask.expect((BigInt(15) << lane).U)
           } else d.io.memoryRequest.bits.byteMask.expect(((BigInt(1) << 64) - 1).U)
           d.io.memoryRequest.ready.poke(true.B); d.clock.step(); d.io.memoryRequest.ready.poke(false.B)
-          d.io.memoryResponse.bits.readData.poke((BigInt("87654321",16) << (8 * lane)).U)
+          d.io.memoryResponse.bits.readData.poke((BigInt("87654321", 16) << (8 * lane)).U)
           d.io.memoryResponse.valid.poke(true.B); d.clock.step(); d.io.memoryResponse.valid.poke(false.B)
           if (!write) d.io.out.bits.data.expect("h87654321".U)
         } else d.io.memoryRequest.valid.expect(false.B)
@@ -157,25 +157,26 @@ class CheckedStorageWordAccessSpec extends AnyFlatSpec {
         d.io.out.ready.poke(true.B); d.clock.step(); d.io.out.ready.poke(false.B)
         d.io.busy.expect(false.B)
       }
-      val base = BigInt("10000100",16)
-      for (size <- Seq(1,3,4,63,64,65,67,68,127,128,4095,4097).map(BigInt(_))) {
-        if (size >= 4) for (write <- Seq(false,true))
-          access(base,size,(size / 4 - 1) * 4,write,StorageWordStatus.ok)
-        for (write <- Seq(false,true))
-          access(base,size,size / 4 * 4,write,StorageWordStatus.outOfBounds)
+      val base = BigInt("10000100", 16)
+      for (size <- Seq(1, 3, 4, 63, 64, 65, 67, 68, 127, 128, 4095, 4097).map(BigInt(_))) {
+        if (size >= 4)
+          for (write <- Seq(false, true))
+            access(base, size, (size / 4 - 1) * 4, write, StorageWordStatus.ok)
+        for (write <- Seq(false, true))
+          access(base, size, size / 4 * 4, write, StorageWordStatus.outOfBounds)
       }
       val maximum = BigInt(128) * 1024 * 1024
       for (i <- 0 until 4) {
-        val view = BigInt("cfffCF00",16) + i * (maximum + 4096)
-        access(view,maximum,maximum-4,true,StorageWordStatus.ok)
-        access(view,maximum,maximum,false,StorageWordStatus.outOfBounds)
+        val view = BigInt("cfffCF00", 16) + i * (maximum + 4096)
+        access(view, maximum, maximum - 4, true, StorageWordStatus.ok)
+        access(view, maximum, maximum, false, StorageWordStatus.outOfBounds)
       }
-      val high = BigInt("ffffff00",16)
-      access(high,255,248,false,StorageWordStatus.ok)
-      access(high,255,252,true,StorageWordStatus.outOfBounds)
-      access(high,256,252,true,StorageWordStatus.ok)
-      access(high,257,0,false,StorageWordStatus.invalidView)
-      access(base,65,60,false,StorageWordStatus.ok) // healthy reuse after rejections
+      val high = BigInt("ffffff00", 16)
+      access(high, 255, 248, false, StorageWordStatus.ok)
+      access(high, 255, 252, true, StorageWordStatus.outOfBounds)
+      access(high, 256, 252, true, StorageWordStatus.ok)
+      access(high, 257, 0, false, StorageWordStatus.invalidView)
+      access(base, 65, 60, false, StorageWordStatus.ok) // healthy reuse after rejections
     }
   }
 }

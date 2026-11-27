@@ -3,7 +3,14 @@ package opengpu.graphics
 import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
-import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse, SharedAtomicRequest, SharedAtomicResponse, TranslatedLineClient, VectorTlbFlush}
+import opengpu.core.memory.{
+  ComputeMemoryRequest,
+  ComputeMemoryResponse,
+  SharedAtomicRequest,
+  SharedAtomicResponse,
+  TranslatedLineClient,
+  VectorTlbFlush
+}
 
 class ShaderImageAtomicInstructionRequest(config: GpuConfig) extends Bundle {
   val tag = UInt(32.W); val unitIndex = UInt(32.W)
@@ -14,9 +21,8 @@ class ShaderImageAtomicInstructionRequest(config: GpuConfig) extends Bundle {
   val operand = UInt(32.W); val compareValue = UInt(32.W)
 }
 
-/** Internal task-captured image atomic service. Descriptor reads use the
-  * captured Sv32 root; the parent must translate and arbitrate the virtual
-  * atomic port with atomicSatp and retain publication/VM ownership through drain.
+/** Internal task-captured image atomic service. Descriptor reads use the captured Sv32 root; the parent must translate
+  * and arbitrate the virtual atomic port with atomicSatp and retain publication/VM ownership through drain.
   */
 class ShaderImageAtomicCuService(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {
@@ -52,7 +58,8 @@ class ShaderImageAtomicCuService(config: GpuConfig = GpuConfig()) extends Module
   resource.io.in.bits.tag := io.in.bits.tag; resource.io.in.bits.unitIndex := io.in.bits.unitIndex
   resource.io.in.bits.stage := task.stage; resource.io.in.bits.shaderTarget := io.in.bits.shaderTarget
   resource.io.in.bits.colorType := io.in.bits.colorType
-  resource.io.in.bits.hasFormatQualifier := io.in.bits.hasFormatQualifier; resource.io.in.bits.shaderFormat := io.in.bits.shaderFormat
+  resource.io.in.bits.hasFormatQualifier := io.in.bits.hasFormatQualifier;
+  resource.io.in.bits.shaderFormat := io.in.bits.shaderFormat
   resource.io.in.bits.x := io.in.bits.x; resource.io.in.bits.y := io.in.bits.y; resource.io.in.bits.z := io.in.bits.z
   resource.io.in.bits.warpId := io.in.bits.warpId; resource.io.in.bits.operation := io.in.bits.operation
   resource.io.in.bits.operand := io.in.bits.operand; resource.io.in.bits.compareValue := io.in.bits.compareValue

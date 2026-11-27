@@ -25,7 +25,7 @@ object EmitComputeIndirectAbi {
 #endif
 """
     EmitCommandAbi.emit(args, "driver/opengpu_indirect_compute_abi.h", header)
-    require(ComputeIndirectCapabilities.base==0x340 && ComputeIndirectCapabilities.opcode==14)
+    require(ComputeIndirectCapabilities.base == 0x340 && ComputeIndirectCapabilities.opcode == 14)
     println(s"COMPUTE_INDIRECT_ABI checked=${args.nonEmpty} argumentBytes=12 opcode=14")
   }
 }

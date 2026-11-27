@@ -1,10 +1,15 @@
 package opengpu.graphics
 
-/** Streamed reference for the two complementary full-viewport triangles only.
-  * It deliberately does not generalize to arbitrary geometry or raster state.
+/** Streamed reference for the two complementary full-viewport triangles only. It deliberately does not generalize to
+  * arbitrary geometry or raster state.
   */
-private[graphics] final class NativeRectangleFrameReference(width: Int, height: Int,
-  mode: Int, clear: Vector[BigInt], colors: Vector[Vector[BigInt]]) {
+private[graphics] final class NativeRectangleFrameReference(
+    width: Int,
+    height: Int,
+    mode: Int,
+    clear: Vector[BigInt],
+    colors: Vector[Vector[BigInt]]
+) {
   require(width > 0 && width <= 65535 && height > 0 && height <= 65535)
   require(mode >= 0 && mode <= 2 && clear.size == 4)
   require(colors.size == 2 && colors.forall(_.size == 4))
@@ -19,14 +24,21 @@ private[graphics] final class NativeRectangleFrameReference(width: Int, height: 
     if (location == 4) TypedColorReference.fp(0.5)
     else {
       val old = TypedColorReference.encode(names(location), clear)._1
-      TypedColorReference.encode(names(location), TypedBlendReference.blend(
-        names(location), colors(draw), old, TypedBlendReference.State(enable = draw == 1)))._1
+      TypedColorReference
+        .encode(
+          names(location),
+          TypedBlendReference.blend(names(location), colors(draw), old, TypedBlendReference.State(enable = draw == 1))
+        )
+        ._1
     }
   }
   private val resolves = Vector.tabulate(5, 1 << samples) { (location, mask) =>
-    TypedResolveReference.resolve(if (location == 4) "R32F" else names(location),
+    TypedResolveReference.resolve(
+      if (location == 4) "R32F" else names(location),
       Vector.tabulate(samples)(s => stored(location)(if ((mask & (1 << s)) == 0) 0 else 1)),
-      mode, depth = location == 4)
+      mode,
+      depth = location == 4
+    )
   }
 
   def owner(x: Int, y: Int, sample: Int): Int = {

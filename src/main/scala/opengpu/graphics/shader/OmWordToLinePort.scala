@@ -8,37 +8,36 @@ import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse}
 class OmWordToLineIO(config: GpuConfig, lineBytes: Int, maxOutstanding: Int) extends Bundle {
   val in = Flipped(Decoupled(new OmMemoryRequest))
   val out = Decoupled(new OmMemoryResponse)
+
   /** Fault metadata for the offered word, independent of response readiness. */
-  val responseFault=Output(Bool())
+  val responseFault = Output(Bool())
   val memoryRequest = Decoupled(new ComputeMemoryRequest(config, lineBytes, maxOutstanding))
   val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(lineBytes, maxOutstanding)))
 }
 
 /** Adapts the graphics word-level memory port to the core's line-level memory.
   *
-  * The graphics fixed-function stages (`CommandBufferStage`, `OutputMerger`,
-  * kernarg staging) speak word requests via `OmMemoryRequest` (a single 32-bit
-  * read or write at a byte address).  The compute core and shared L2 speak
-  * line requests via `ComputeMemoryRequest` (a 64-byte line with a per-byte
-  * write mask).  This port translates between the two so the graphics stages
-  * and the SIMT-kernel shader can share one line-based physical memory.
+  * The graphics fixed-function stages (`CommandBufferStage`, `OutputMerger`, kernarg staging) speak word requests via
+  * `OmMemoryRequest` (a single 32-bit read or write at a byte address). The compute core and shared L2 speak line
+  * requests via `ComputeMemoryRequest` (a 64-byte line with a per-byte write mask). This port translates between the
+  * two so the graphics stages and the SIMT-kernel shader can share one line-based physical memory.
   *
   * Behaviour (matching the core memory interconnect's response-timing rules):
-  *  - A word request is accepted only when a transaction slot is free; on the
-  *    same cycle it is issued as a line request carrying that slot's id.
-  *  - The matching line response, keyed by the echoed transaction id, is
-  *    trimmed to the requested word and returned on the word port.
-  *  - Reads and writes both hold their slot until the line response is
-  *    accepted, so a write is acknowledged (not fire-and-forget).
+  *   - A word request is accepted only when a transaction slot is free; on the same cycle it is issued as a line
+  *     request carrying that slot's id.
+  *   - The matching line response, keyed by the echoed transaction id, is trimmed to the requested word and returned on
+  *     the word port.
+  *   - Reads and writes both hold their slot until the line response is accepted, so a write is acknowledged (not
+  *     fire-and-forget).
   */
 class OmWordToLinePort(
-  config: GpuConfig = GpuConfig(),
-  lineBytes: Int = 64,
-  maxOutstanding: Int = 4,
-  /** When true, line requests bypass L1/L2 so a CPU write is visible without
-    * an explicit shared-L2 invalidate.  Used for command-buffer and kernarg
-    * staging ports; framebuffer/texture clients keep the default cached path. */
-  uncached: Boolean = false
+    config: GpuConfig = GpuConfig(),
+    lineBytes: Int = 64,
+    maxOutstanding: Int = 4,
+    /** When true, line requests bypass L1/L2 so a CPU write is visible without an explicit shared-L2 invalidate. Used
+      * for command-buffer and kernarg staging ports; framebuffer/texture clients keep the default cached path.
+      */
+    uncached: Boolean = false
 ) extends Module {
   require(lineBytes == 64, "current cache hierarchy uses 64-byte lines")
   require(maxOutstanding >= 1)
@@ -48,8 +47,7 @@ class OmWordToLinePort(
   val io = IO(new OmWordToLineIO(config, lineBytes, maxOutstanding))
 
   private val wordIdx = io.in.bits.addr(offsetWidth - 1, 2)
-  private val lineAddress = Cat(
-    io.in.bits.addr(config.xLen - 1, offsetWidth), 0.U(offsetWidth.W))
+  private val lineAddress = Cat(io.in.bits.addr(config.xLen - 1, offsetWidth), 0.U(offsetWidth.W))
 
   // Place the word at its byte offset within the line (word0 at bits[31:0]).
   private val wordSelect = VecInit((0 until wordsPerLine).map { i =>
@@ -75,8 +73,7 @@ class OmWordToLinePort(
   io.memoryRequest.bits.sizeLog2 := 6.U
   io.memoryRequest.bits.cacheClient := false.B
   io.memoryRequest.bits.cacheResident := false.B
-  io.memoryRequest.bits.cachePolicy := Mux(uncached.B, CachePolicy.uncached,
-    CachePolicy.cached)
+  io.memoryRequest.bits.cachePolicy := Mux(uncached.B, CachePolicy.uncached, CachePolicy.cached)
   io.memoryRequest.bits.transactionId := allocatedId
   io.in.ready := hasFreeTransaction && io.memoryRequest.ready
 
@@ -91,7 +88,7 @@ class OmWordToLinePort(
   private val responseIdInRange = responseId < maxOutstanding.U
   private val responseIdValid = responseIdInRange && transactionValid(responseId)
   io.out.valid := responseIdValid && io.memoryResponse.valid
-  io.responseFault:=io.out.valid && io.memoryResponse.bits.fault
+  io.responseFault := io.out.valid && io.memoryResponse.bits.fault
   io.out.bits.data :=
     (io.memoryResponse.bits.readData >> (transactionWord(responseId) * 32.U))(31, 0)
   io.out.bits.write := transactionWrite(responseId)
@@ -99,7 +96,6 @@ class OmWordToLinePort(
   io.memoryResponse.ready := responseIdValid && io.out.ready
   when(io.memoryResponse.fire) { transactionValid(responseId) := false.B }
   when(io.memoryResponse.valid) {
-    assert(responseIdValid,
-      "word-line response must reference an outstanding transaction")
+    assert(responseIdValid, "word-line response must reference an outstanding transaction")
   }
 }

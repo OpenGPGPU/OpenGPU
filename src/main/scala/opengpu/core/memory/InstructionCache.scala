@@ -6,17 +6,17 @@ import opengpu.config.GpuConfig
 import opengpu.core.frontend.{InstructionFetchRequest, InstructionFetchResponse}
 
 class InstructionLineRequest(
-  config: GpuConfig,
-  val lineBytes: Int = 64,
-  val missEntries: Int = 4
+    config: GpuConfig,
+    val lineBytes: Int = 64,
+    val missEntries: Int = 4
 ) extends Bundle {
   val lineAddress = UInt(config.xLen.W)
   val requestId = UInt(math.max(1, log2Ceil(missEntries)).W)
 }
 
 class InstructionLineResponse(
-  val lineBytes: Int = 64,
-  val missEntries: Int = 4
+    val lineBytes: Int = 64,
+    val missEntries: Int = 4
 ) extends Bundle {
   val readData = UInt((lineBytes * 8).W)
   val fault = Bool()
@@ -25,15 +25,15 @@ class InstructionLineResponse(
 
 /** Non-blocking set-associative instruction cache.
   *
-  * Hits can complete while up to `missEntries` independent line refills are
-  * outstanding. Refill responses carry an MSHR ID and may return out of order.
+  * Hits can complete while up to `missEntries` independent line refills are outstanding. Refill responses carry an MSHR
+  * ID and may return out of order.
   */
 class InstructionCache(
-  config: GpuConfig = GpuConfig(),
-  sets: Int = 64,
-  ways: Int = 2,
-  lineBytes: Int = 64,
-  missEntries: Int = 4
+    config: GpuConfig = GpuConfig(),
+    sets: Int = 64,
+    ways: Int = 2,
+    lineBytes: Int = 64,
+    missEntries: Int = 4
 ) extends Module {
   require(isPow2(sets) && isPow2(ways) && isPow2(lineBytes))
   require(lineBytes >= 4 && missEntries > 0)
@@ -49,8 +49,7 @@ class InstructionCache(
     val response = Decoupled(new InstructionFetchResponse(config))
     val lowerRequest =
       Decoupled(new InstructionLineRequest(config, lineBytes, missEntries))
-    val lowerResponse = Flipped(
-      Decoupled(new InstructionLineResponse(lineBytes, missEntries)))
+    val lowerResponse = Flipped(Decoupled(new InstructionLineResponse(lineBytes, missEntries)))
     val invalidate = Input(Bool())
   })
 
@@ -98,10 +97,8 @@ class InstructionCache(
   private val misaligned = io.fetch.bits.pc(1, 0) =/= 0.U
   private val immediate = misaligned || fetchHit
 
-  private val responseArbiter = Module(
-    new RRArbiter(new InstructionFetchResponse(config), 2))
-  private val responseQueue = Module(
-    new Queue(new InstructionFetchResponse(config), missEntries + 2))
+  private val responseArbiter = Module(new RRArbiter(new InstructionFetchResponse(config), 2))
+  private val responseQueue = Module(new Queue(new InstructionFetchResponse(config), missEntries + 2))
   responseQueue.io.enq <> responseArbiter.io.out
   io.response <> responseQueue.io.deq
 
@@ -131,8 +128,7 @@ class InstructionCache(
   private val sendMiss = PriorityEncoder(unsent)
   private val sendRequest = missRequest(sendMiss)
   io.lowerRequest.valid := hasUnsent
-  io.lowerRequest.bits.lineAddress := Cat(
-    sendRequest.pc(config.xLen - 1, offsetWidth), 0.U(offsetWidth.W))
+  io.lowerRequest.bits.lineAddress := Cat(sendRequest.pc(config.xLen - 1, offsetWidth), 0.U(offsetWidth.W))
   io.lowerRequest.bits.requestId := sendMiss
   when(io.lowerRequest.fire) { missSent(sendMiss) := true.B }
 
@@ -154,8 +150,10 @@ class InstructionCache(
     val completedIndex = index(completedRequest.pc)
     val completedTag = tag(completedRequest.pc)
     val completedVictim = missVictim(responseMissId)
-    when(!io.lowerResponse.bits.fault && missEpoch(responseMissId) === epoch &&
-      !io.invalidate) {
+    when(
+      !io.lowerResponse.bits.fault && missEpoch(responseMissId) === epoch &&
+        !io.invalidate
+    ) {
       for (way <- 0 until ways) {
         when(completedVictim === way.U) {
           tags(way)(completedIndex) := completedTag

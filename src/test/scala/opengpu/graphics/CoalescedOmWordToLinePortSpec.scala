@@ -22,12 +22,20 @@ class CoalescedOmWordToLinePortSpec extends AnyFlatSpec {
     def step(): Unit = {
       if (dut.io.memoryRequest.valid.peek().litToBoolean && dut.io.memoryRequest.ready.peek().litToBoolean) {
         val r = dut.io.memoryRequest.bits
-        requests += Request(r.transactionId.peek().litValue, r.address.peek().litValue,
-          r.isWrite.peek().litToBoolean, r.writeData.peek().litValue, r.byteMask.peek().litValue)
+        requests += Request(
+          r.transactionId.peek().litValue,
+          r.address.peek().litValue,
+          r.isWrite.peek().litToBoolean,
+          r.writeData.peek().litValue,
+          r.byteMask.peek().litValue
+        )
       }
       if (dut.io.out.valid.peek().litToBoolean && dut.io.out.ready.peek().litToBoolean)
-        replies += ((dut.io.out.bits.addr.peek().litValue, dut.io.out.bits.write.peek().litToBoolean,
-          dut.io.out.bits.data.peek().litValue))
+        replies += ((
+          dut.io.out.bits.addr.peek().litValue,
+          dut.io.out.bits.write.peek().litToBoolean,
+          dut.io.out.bits.data.peek().litValue
+        ))
       dut.clock.step()
     }
     def run(n: Int): Unit = (0 until n).foreach(_ => step())
@@ -140,9 +148,15 @@ class CoalescedOmWordToLinePortSpec extends AnyFlatSpec {
       h.run(4)
       dut.io.out.ready.poke(true.B)
       h.until(h.replies.size == 5)
-      assert(h.replies.toSet == Set((BigInt(0x1000), true, BigInt(0)),
-        (BigInt(0x1004), true, BigInt(0)), (BigInt(0x2000), true, BigInt(0)),
-        (BigInt(0x2004), true, BigInt(0)), (BigInt(0x300c), false, BigInt(99))))
+      assert(
+        h.replies.toSet == Set(
+          (BigInt(0x1000), true, BigInt(0)),
+          (BigInt(0x1004), true, BigInt(0)),
+          (BigInt(0x2000), true, BigInt(0)),
+          (BigInt(0x2004), true, BigInt(0)),
+          (BigInt(0x300c), false, BigInt(99))
+        )
+      )
       h.send(0x1000, write = true, data = 55)
       h.until(h.requests.size == 4)
       h.respond(h.requests.last)
@@ -183,8 +197,13 @@ class CoalescedOmWordToLinePortSpec extends AnyFlatSpec {
       h.until(h.requests.size == 2)
       h.respond(h.requests.last, BigInt(33) << 64)
       h.until(h.replies.size == 3)
-      assert(h.replies.toSet == Set((BigInt(0x1000), false, BigInt(11)),
-        (BigInt(0x1004), false, BigInt(22)), (BigInt(0x1008), false, BigInt(33))))
+      assert(
+        h.replies.toSet == Set(
+          (BigInt(0x1000), false, BigInt(11)),
+          (BigInt(0x1004), false, BigInt(22)),
+          (BigInt(0x1008), false, BigInt(33))
+        )
+      )
       // Completed lines are never cached: a CPU change must be observable.
       h.send(0x1000, write = false)
       h.until(h.requests.size == 3)
@@ -220,9 +239,13 @@ class CoalescedOmWordToLinePortSpec extends AnyFlatSpec {
         h.respond(oldRead, BigInt(11) | (BigInt(999) << 32) | (BigInt(33) << 64))
         h.respond(freshRead, BigInt(22) << 32)
         h.until(h.replies.size == 4)
-        assert(h.replies.filter(!_._2).toSet == Set(
-          (BigInt(0x1000), false, BigInt(11)), (BigInt(0x1004), false, BigInt(22)),
-          (BigInt(0x1008), false, BigInt(33))))
+        assert(
+          h.replies.filter(!_._2).toSet == Set(
+            (BigInt(0x1000), false, BigInt(11)),
+            (BigInt(0x1004), false, BigInt(22)),
+            (BigInt(0x1008), false, BigInt(33))
+          )
+        )
       }
     }
   }
@@ -262,7 +285,8 @@ class CoalescedOmWordToLinePortSpec extends AnyFlatSpec {
         for (r <- h.requests) {
           val line = (r.address.toInt - 0x1000) / 64
           val expected = (0 until wordsPerLine).foldLeft(BigInt(0))((d, i) =>
-            d | (BigInt(100 + line * wordsPerLine + i) << (32 * i)))
+            d | (BigInt(100 + line * wordsPerLine + i) << (32 * i))
+          )
           val mask = (BigInt(1) << (wordsPerLine * 4)) - 1
           assert(r.write && r.mask == mask && r.data == expected)
         }

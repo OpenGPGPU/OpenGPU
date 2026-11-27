@@ -67,8 +67,9 @@ class NativeTextureInstructionStreamSpec extends AnyFlatSpec {
         r.status.expect((if (w == 2) 3 else 0).U)
         r.instruction.pc.expect((0x200 + w * 4).U); r.instruction.vd.expect((10 + w).U)
         r.instruction.data(0).expect((0x11100000L + w).U)
-        if (w != 2) for (l <- 1 until 4)
-          r.instruction.data(l).expect((0x3e800000L + (w * 4 + l) * 16).U)
+        if (w != 2)
+          for (l <- 1 until 4)
+            r.instruction.data(l).expect((0x3e800000L + (w * 4 + l) * 16).U)
         else { r.faultAddressValid.expect(true.B); r.faultAddress.expect(0xdead1000L.U) }
         t.tick()
       }
@@ -130,7 +131,9 @@ class NativeTextureInstructionStreamSpec extends AnyFlatSpec {
       t.requests.reverse.toVector.foreach(t.reply(_))
       t.until(d.io.out.valid.peek().litToBoolean); d.io.out.bits.status.expect(0.U)
       d.io.out.ready.poke(true.B); t.tick(); d.io.busy.expect(false.B)
-      info("NATIVE_REGISTERED_CANCEL pulseCaptured=true heldOffersStable=true allContextsDrained=true primaryFaultPreserved=true tagsReused=true")
+      info(
+        "NATIVE_REGISTERED_CANCEL pulseCaptured=true heldOffersStable=true allContextsDrained=true primaryFaultPreserved=true tagsReused=true"
+      )
     }
   }
 

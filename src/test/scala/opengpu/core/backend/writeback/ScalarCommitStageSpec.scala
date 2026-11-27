@@ -9,9 +9,9 @@ class ScalarCommitStageSpec extends AnyFlatSpec {
   behavior of "ScalarCommitStage"
 
   private def drive(
-    dut: ScalarCommitStage,
-    writeRd: Boolean,
-    rd: Int
+      dut: ScalarCommitStage,
+      writeRd: Boolean,
+      rd: Int
   ): Unit = {
     dut.io.in.valid.poke(true.B)
     dut.io.in.bits.warpId.poke(1.U)

@@ -11,8 +11,8 @@ class ClipVertex extends Bundle {
   val w = SInt(32.W)
 }
 
-/** A screen-space vertex for the rasterizer: fixed-point (subPixel) position,
-  * twice-the-1/w precision, and interpolated per-vertex attributes.
+/** A screen-space vertex for the rasterizer: fixed-point (subPixel) position, twice-the-1/w precision, and interpolated
+  * per-vertex attributes.
   */
 class ScreenVertex(config: GraphicsConfig) extends Bundle {
   val sx = SInt(config.edgeWidth.W)
@@ -23,21 +23,17 @@ class ScreenVertex(config: GraphicsConfig) extends Bundle {
 
 /** Perspective divide + viewport mapping.
   *
-  * Takes a clip-space triangle (Q16.16) and yields a screen-space triangle in
-  * the rasterizer's fixed-point convention (subPixel bits) plus a per-vertex
-  * 1/w for perspective-correct interpolation:
+  * Takes a clip-space triangle (Q16.16) and yields a screen-space triangle in the rasterizer's fixed-point convention
+  * (subPixel bits) plus a per-vertex 1/w for perspective-correct interpolation:
   *
-  *   sx = ((x + w) * screenW * 2^subPixel) / (2*w)
-  *   sy = ((y + w) * screenH * 2^subPixel) / (2*w)
-  *   invW = 2^32 / |w|            (Q16.16 reciprocal)
+  * sx = ((x + w) * screenW * 2^subPixel) / (2*w) sy = ((y + w) * screenH * 2^subPixel) / (2*w) invW = 2^32 / |w|
+  * (Q16.16 reciprocal)
   *
-  * The per-vertex varyings pass through unchanged. `RenderPipeline` clips the
-  * complete homogeneous view volume before presenting vertices here, so every
-  * accepted vertex has a finite positive w.
+  * The per-vertex varyings pass through unchanged. `RenderPipeline` clips the complete homogeneous view volume before
+  * presenting vertices here, so every accepted vertex has a finite positive w.
   *
-  * This is the durable, non-throwaway part of the geometry front-end — the
-  * programmable 4x4 MVP transform is a separate, temporary block that M5
-  * replaces with SIMT vertex shading.
+  * This is the durable, non-throwaway part of the geometry front-end — the programmable 4x4 MVP transform is a
+  * separate, temporary block that M5 replaces with SIMT vertex shading.
   */
 class GeometryStage(config: GraphicsConfig) extends Module {
   private val invWScale = BigInt(1) << 32

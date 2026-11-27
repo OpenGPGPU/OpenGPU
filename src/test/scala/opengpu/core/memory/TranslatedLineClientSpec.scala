@@ -47,36 +47,33 @@ class TranslatedLineClientSpec extends AnyFlatSpec {
   }
 
   it should "preserve an uncached staging request with translation disabled" in {
-    simulate(new TranslatedLineClient(
-      GpuConfig(lanes = 2, warps = 1), outstanding = 4,
-      preserveCachePolicy = true)) { dut =>
-      initialize(dut, 0)
-      request(dut, 0x2000)
-      waitFor(dut.io.memReq.valid.peek().litToBoolean, dut)
-      dut.io.memReq.bits.address.expect(0x2000.U)
-      dut.io.memReq.bits.cachePolicy.expect(CachePolicy.uncached)
-      dut.io.pageWalk.valid.expect(false.B)
+    simulate(new TranslatedLineClient(GpuConfig(lanes = 2, warps = 1), outstanding = 4, preserveCachePolicy = true)) {
+      dut =>
+        initialize(dut, 0)
+        request(dut, 0x2000)
+        waitFor(dut.io.memReq.valid.peek().litToBoolean, dut)
+        dut.io.memReq.bits.address.expect(0x2000.U)
+        dut.io.memReq.bits.cachePolicy.expect(CachePolicy.uncached)
+        dut.io.pageWalk.valid.expect(false.B)
     }
   }
 
   it should "preserve an uncached staging request across Sv32 translation" in {
-    simulate(new TranslatedLineClient(
-      GpuConfig(lanes = 2, warps = 1), outstanding = 4,
-      preserveCachePolicy = true)) { dut =>
-      initialize(dut, (BigInt(1) << 31) | 0x80)
-      request(dut, 0x2000)
-      waitFor(dut.io.pageWalk.valid.peek().litToBoolean, dut)
-      dut.io.pageWalk.bits.address.expect(0x80000.U)
-      dut.clock.step()
-      // A cacheable PTE must not override staging's uncached request policy.
-      dut.io.pageWalkResp.bits.readData.poke(
-        ((BigInt(0x400) << 10) | 0xcf).U)
-      dut.io.pageWalkResp.valid.poke(true.B)
-      dut.clock.step()
-      dut.io.pageWalkResp.valid.poke(false.B)
-      waitFor(dut.io.memReq.valid.peek().litToBoolean, dut)
-      dut.io.memReq.bits.address.expect(0x402000.U)
-      dut.io.memReq.bits.cachePolicy.expect(CachePolicy.uncached)
+    simulate(new TranslatedLineClient(GpuConfig(lanes = 2, warps = 1), outstanding = 4, preserveCachePolicy = true)) {
+      dut =>
+        initialize(dut, (BigInt(1) << 31) | 0x80)
+        request(dut, 0x2000)
+        waitFor(dut.io.pageWalk.valid.peek().litToBoolean, dut)
+        dut.io.pageWalk.bits.address.expect(0x80000.U)
+        dut.clock.step()
+        // A cacheable PTE must not override staging's uncached request policy.
+        dut.io.pageWalkResp.bits.readData.poke(((BigInt(0x400) << 10) | 0xcf).U)
+        dut.io.pageWalkResp.valid.poke(true.B)
+        dut.clock.step()
+        dut.io.pageWalkResp.valid.poke(false.B)
+        waitFor(dut.io.memReq.valid.peek().litToBoolean, dut)
+        dut.io.memReq.bits.address.expect(0x402000.U)
+        dut.io.memReq.bits.cachePolicy.expect(CachePolicy.uncached)
     }
   }
 

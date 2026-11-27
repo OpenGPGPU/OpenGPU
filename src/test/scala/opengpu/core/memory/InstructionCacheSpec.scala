@@ -85,8 +85,7 @@ class InstructionCacheSpec extends AnyFlatSpec {
   }
 
   it should "keep multiple misses and accept out-of-order refills" in {
-    simulate(new InstructionCache(config, sets = 4, ways = 2, lineBytes = 16,
-      missEntries = 2)) { dut =>
+    simulate(new InstructionCache(config, sets = 4, ways = 2, lineBytes = 16, missEntries = 2)) { dut =>
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B); defaults(dut)
       dut.io.response.ready.poke(false.B)
 

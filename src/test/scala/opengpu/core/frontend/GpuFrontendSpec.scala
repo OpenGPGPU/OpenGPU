@@ -9,10 +9,10 @@ class GpuFrontendSpec extends AnyFlatSpec {
   behavior of "GpuFrontend"
 
   private def launch(
-    dut: GpuFrontend,
-    warpId: Int,
-    pc: Int,
-    activeMask: Int
+      dut: GpuFrontend,
+      warpId: Int,
+      pc: Int,
+      activeMask: Int
   ): Unit = {
     dut.io.launch.valid.poke(true.B)
     dut.io.launch.bits.warpId.poke(warpId.U)

@@ -16,9 +16,11 @@ class VectorPageWalkResponse(config: GpuConfig) extends Bundle {
   val writable = Bool()
   val executable = Bool()
   val global = Bool()
+
   /** Per-page cache policy decoded from PTE bits [9:8]. */
   val cachePolicy = UInt(CachePolicy.width.W)
   val fault = Bool()
+
   /** A physical PTE-fetch failure, rather than an invalid/denied mapping. */
   val accessFault = Bool()
 }
@@ -32,14 +34,13 @@ class VectorTlbFlush(config: GpuConfig) extends Bundle {
 
 /** Fully-associative blocking data TLB and PTW bridge.
   *
-  * A cache-line request cannot cross a 4 KiB page, so one translation covers
-  * the complete coalesced transaction. Permission or PTW faults return through
-  * the ordinary cache-response channel without touching DCache.
+  * A cache-line request cannot cross a 4 KiB page, so one translation covers the complete coalesced transaction.
+  * Permission or PTW faults return through the ordinary cache-response channel without touching DCache.
   */
 class VectorTlb(
-  config: GpuConfig = GpuConfig(),
-  entries: Int = 16,
-  lineBytes: Int = 64
+    config: GpuConfig = GpuConfig(),
+    entries: Int = 16,
+    lineBytes: Int = 64
 ) extends Module {
   require(entries > 0, "TLB must contain at least one entry")
   require(isPow2(lineBytes), "cache line size must be a power of two")
@@ -76,14 +77,13 @@ class VectorTlb(
   private val response = Reg(new VectorCacheLineResponse(lineBytes))
 
   private object State extends ChiselEnum {
-    val idle, lookup, walkRequest, walkResponse, forward, cacheResponse,
-      faultResponse = Value
+    val idle, lookup, walkRequest, walkResponse, forward, cacheResponse, faultResponse = Value
   }
   private val state = RegInit(State.idle)
   private val requestVpn = request.lineAddress(config.xLen - 1, 12)
   private val hitByEntry = VecInit((0 until entries).map { entry =>
     valid(entry) && vpn(entry) === requestVpn &&
-      (global(entry) || entryAsid(entry) === io.asid)
+    (global(entry) || entryAsid(entry) === io.asid)
   })
   private val hit = hitByEntry.asUInt.orR
   private val hitEntry = PriorityEncoder(hitByEntry)

@@ -8,7 +8,14 @@ object NativeVisibilityQueryCapabilities {
   val opcodeHighBit = 16
   // Word6: format version, opcode extension bit, value bit, available bit.
   val completionFormat = BigInt(1) | (BigInt(opcodeHighBit) << 8) | (BigInt(1) << 24)
-  val words: Seq[BigInt] = Seq(magic, wordCount, BigInt("0b0a0908", 16),
-    VisibilityQueryRecord.magic, VisibilityQueryRecord.bytes, activeContexts,
-    completionFormat, BigInt(31))
+  val words: Seq[BigInt] = Seq(
+    magic,
+    wordCount,
+    BigInt("0b0a0908", 16),
+    VisibilityQueryRecord.magic,
+    VisibilityQueryRecord.bytes,
+    activeContexts,
+    completionFormat,
+    BigInt(31)
+  )
 }

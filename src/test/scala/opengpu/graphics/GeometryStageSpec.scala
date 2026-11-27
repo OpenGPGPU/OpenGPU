@@ -24,7 +24,7 @@ class GeometryStageSpec extends AnyFlatSpec {
       val verts = Seq(
         (q(0.0), q(0.0), q(1.0)), // x, y, w => screen (8, 8)
         (q(1.0), q(0.0), q(1.0)), //        => screen (16, 8)
-        (q(0.0), q(1.0), q(2.0))  // x/w=0, y/w=0.5 => screen (8, 12)
+        (q(0.0), q(1.0), q(2.0)) // x/w=0, y/w=0.5 => screen (8, 12)
       )
       for (i <- 0 until 3) {
         dut.io.clip(i).x.poke(verts(i)._1.S)
@@ -51,10 +51,10 @@ class GeometryStageSpec extends AnyFlatSpec {
   it should "map the full positive-w clip range without overflowing the coordinate sum" in {
     val config = GraphicsConfig(screenWidth = 1280, screenHeight = 720)
     val random = new scala.util.Random(0x675031L)
-    val limits = Seq(1L, 2L, 65535L, 65536L, (1L << 30) - 1,
-      1L << 30, (1L << 30) + 1, Int.MaxValue.toLong)
-    val boundary = for (w <- limits; x <- Seq(-w, -w + 1, 0L, w - 1, w))
-      yield (x, -x, w)
+    val limits = Seq(1L, 2L, 65535L, 65536L, (1L << 30) - 1, 1L << 30, (1L << 30) + 1, Int.MaxValue.toLong)
+    val boundary =
+      for (w <- limits; x <- Seq(-w, -w + 1, 0L, w - 1, w))
+        yield (x, -x, w)
     val cases = boundary ++ Seq.fill(256) {
       val w = 1L + random.nextInt(Int.MaxValue)
       def coord: Long = java.lang.Long.remainderUnsigned(random.nextLong(), 2 * w + 1) - w
@@ -84,10 +84,8 @@ class GeometryStageSpec extends AnyFlatSpec {
         for (((x, y, w), lane) <- vertices.zipWithIndex) {
           def mapped(coord: Long, dim: Int): BigInt =
             ((BigInt(coord) + w) * dim << config.subPixelBits) / (BigInt(w) * 2)
-          assert(dut.io.out(lane).sx.peek().litValue == mapped(x, width),
-            s"x=$x w=$w width=$width")
-          assert(dut.io.out(lane).sy.peek().litValue == mapped(y, height),
-            s"y=$y w=$w height=$height")
+          assert(dut.io.out(lane).sx.peek().litValue == mapped(x, width), s"x=$x w=$w width=$width")
+          assert(dut.io.out(lane).sy.peek().litValue == mapped(y, height), s"y=$y w=$w height=$height")
           assert(dut.io.out(lane).invW.peek().litValue == signed32((BigInt(1) << 32) / w))
           dut.io.out(lane).color.r.expect((index & 255).U)
           dut.io.out(lane).color.g.expect(lane.U)

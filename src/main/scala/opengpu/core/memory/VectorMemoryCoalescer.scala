@@ -5,16 +5,17 @@ import chisel3.util._
 import opengpu.config.{CachePolicy, GpuConfig}
 
 class VectorCacheLineRequest(
-  config: GpuConfig,
-  val lineBytes: Int = 64
+    config: GpuConfig,
+    val lineBytes: Int = 64
 ) extends Bundle {
   val warpId = UInt(config.warpIdWidth.W)
   val lineAddress = UInt(config.xLen.W)
   val writeData = UInt((lineBytes * 8).W)
   val byteMask = UInt(lineBytes.W)
   val isStore = Bool()
-  /** Per-page cache policy; the producer sends the default and the TLB
-    * replaces it with the translated page's policy. */
+
+  /** Per-page cache policy; the producer sends the default and the TLB replaces it with the translated page's policy.
+    */
   val cachePolicy = UInt(CachePolicy.width.W)
 }
 
@@ -26,19 +27,17 @@ class VectorCacheLineResponse(val lineBytes: Int = 64) extends Bundle {
 
 /** Coalesces one vector transaction into the unique cache lines it touches.
   *
-  * Unit-stride lanes normally collapse into one or two requests, while strided
-  * lanes may occupy independent lines. Requests are issued one at a time and
-  * load bytes are collected as lines respond and published only after every
+  * Unit-stride lanes normally collapse into one or two requests, while strided lanes may occupy independent lines.
+  * Requests are issued one at a time and load bytes are collected as lines respond and published only after every
   * required line has responded. Full response lines need not be retained.
   *
-  * Admission captures the transaction, registers its unique candidates, then
-  * compacts that registered set. Each physical request is also registered:
-  * address deduplication, compaction and ordered store-byte selection do not
-  * share a combinational path or extend into the downstream cache.
+  * Admission captures the transaction, registers its unique candidates, then compacts that registered set. Each
+  * physical request is also registered: address deduplication, compaction and ordered store-byte selection do not share
+  * a combinational path or extend into the downstream cache.
   */
 class VectorMemoryCoalescer(
-  config: GpuConfig = GpuConfig(),
-  lineBytes: Int = 64
+    config: GpuConfig = GpuConfig(),
+    lineBytes: Int = 64
 ) extends Module {
   require(isPow2(lineBytes), "cache line size must be a power of two")
   require(lineBytes >= config.xLen / 8, "one element must span at most two lines")
@@ -94,12 +93,10 @@ class VectorMemoryCoalescer(
     // Only the line offset determines a crossing. Keep elementSize off a
     // full-address carry chain; the next line still wraps at xLen bits.
     val lastOffset = pending.addresses(lane)(lineOffsetWidth - 1, 0) +& pendingElementBytes - 1.U
-    val nextLine = Cat(pending.addresses(lane)(config.xLen - 1, lineOffsetWidth) + 1.U,
-      0.U(lineOffsetWidth.W))
+    val nextLine = Cat(pending.addresses(lane)(config.xLen - 1, lineOffsetWidth) + 1.U, 0.U(lineOffsetWidth.W))
     val lastLine = if (lineBytes == 4) {
       // Retain the old two-endpoint behavior even for reserved size=3 inputs.
-      val secondLine = Cat(pending.addresses(lane)(config.xLen - 1, lineOffsetWidth) + 2.U,
-        0.U(lineOffsetWidth.W))
+      val secondLine = Cat(pending.addresses(lane)(config.xLen - 1, lineOffsetWidth) + 2.U, 0.U(lineOffsetWidth.W))
       Mux(lastOffset >= 8.U, secondLine, nextLine)
     } else nextLine
     candidateValid(lane * 2) := pending.laneMask(lane)
@@ -118,7 +115,7 @@ class VectorMemoryCoalescer(
     } else {
       VecInit((0 until candidate).map { previous =>
         candidateValid(previous) &&
-          candidateAddress(previous) === candidateAddress(candidate)
+        candidateAddress(previous) === candidateAddress(candidate)
       }).asUInt.orR
     }
     uniqueCandidate(candidate) := candidateValid(candidate) && !duplicate
@@ -146,7 +143,7 @@ class VectorMemoryCoalescer(
   private val storeEnabled = (0 until config.lanes).map { lane =>
     (0 until 4).map { byte =>
       transaction.laneMask(lane) && byte.U < elementBytes &&
-        alignLine(storeAddresses(lane)(byte)) === selectedLineAddress
+      alignLine(storeAddresses(lane)(byte)) === selectedLineAddress
     }
   }
   for (offset <- 0 until lineBytes) {
@@ -157,7 +154,8 @@ class VectorMemoryCoalescer(
     }
     val laneHits = hits.map(_.reduce(_ || _))
     val selected = laneHits.indices.map { lane =>
-      val laterHit = if (lane + 1 == config.lanes) false.B
+      val laterHit =
+        if (lane + 1 == config.lanes) false.B
         else VecInit(laneHits.drop(lane + 1)).asUInt.orR
       laneHits(lane) && !laterHit
     }
@@ -233,8 +231,11 @@ class VectorMemoryCoalescer(
   for (lane <- 0 until config.lanes) {
     for (byte <- 0 until 4) {
       val address = transaction.addresses(lane) + byte.U
-      nextBytes(lane)(byte) := Mux(alignLine(address) === selectedLineAddress,
-        responseBytes(address(lineOffsetWidth - 1, 0)), collectedBytes(lane)(byte))
+      nextBytes(lane)(byte) := Mux(
+        alignLine(address) === selectedLineAddress,
+        responseBytes(address(lineOffsetWidth - 1, 0)),
+        collectedBytes(lane)(byte)
+      )
     }
     val first = alignLine(transaction.addresses(lane))
     val last = alignLine(transaction.addresses(lane) + elementBytes - 1.U)

@@ -28,19 +28,19 @@ class TileBinningRenderCoreSpec extends AnyFlatSpec {
     w.toSeq
   }
 
-  private def render(replay: Boolean, sampleMode: Int):
-      (Seq[Int], Seq[Int], Int) = {
+  private def render(replay: Boolean, sampleMode: Int): (Seq[Int], Seq[Int], Int) = {
     val samples = 1 << sampleMode
     val words = 32 * 16 * samples
-    val cfg = GraphicsConfig(screenWidth = 32, screenHeight = 16,
-      tileSize = 16, tileAttachments = true, tileBinning = replay)
+    val cfg =
+      GraphicsConfig(screenWidth = 32, screenHeight = 16, tileSize = 16, tileAttachments = true, tileBinning = replay)
     val cmdBase = 0x4000
     val colorBase = 0x8000
     val depthBase = 0x10000
     val command = Array.fill(1 << 16)(0)
     (record(red = true, depth = 0x10) ++
-      record(red = false, depth = 0x08, scissor = true))
-      .zipWithIndex.foreach { case (w, i) => command(cmdBase / 4 + i) = w }
+      record(red = false, depth = 0x08, scissor = true)).zipWithIndex.foreach { case (w, i) =>
+      command(cmdBase / 4 + i) = w
+    }
     var result = (Seq.empty[Int], Seq.empty[Int], 0)
     simulate(new RenderCore(cfg)) { dut =>
       val fb = Array.fill(1 << 17)(0)
@@ -111,25 +111,28 @@ class TileBinningRenderCoreSpec extends AnyFlatSpec {
         cycles += 1
       }
       assert(cycles < 100000, s"tile replay did not drain (replay=$replay)")
-      result = ((0 until words).map(i => fb(colorBase / 4 + i)),
-        (0 until words).map(i => fb(depthBase / 4 + i)), requests)
+      result =
+        ((0 until words).map(i => fb(colorBase / 4 + i)), (0 until words).map(i => fb(depthBase / 4 + i)), requests)
     }
     result
   }
 
   for (sampleMode <- Seq(0, 1, 2)) {
-  it should s"preserve both tiles and reduce framebuffer traffic in mode $sampleMode" in {
-    val samples = 1 << sampleMode
-    val baseline = render(replay = false, sampleMode = sampleMode)
-    val binned = render(replay = true, sampleMode = sampleMode)
-    assert(binned._1 == baseline._1, "tile-major replay changed color")
-    assert(binned._2 == baseline._2, "tile-major replay changed depth")
-    assert(binned._1.count(_ != 0) > 100)
-    assert(binned._1.slice((5 * 32 + 16) * samples,
-      (5 * 32 + 32) * samples).exists(_ != 0),
-      "the right-hand tile must be rendered")
-    assert(binned._3 < baseline._3,
-      s"tile-major replay must save framebuffer transactions: ${baseline._3} to ${binned._3}")
-  }
+    it should s"preserve both tiles and reduce framebuffer traffic in mode $sampleMode" in {
+      val samples = 1 << sampleMode
+      val baseline = render(replay = false, sampleMode = sampleMode)
+      val binned = render(replay = true, sampleMode = sampleMode)
+      assert(binned._1 == baseline._1, "tile-major replay changed color")
+      assert(binned._2 == baseline._2, "tile-major replay changed depth")
+      assert(binned._1.count(_ != 0) > 100)
+      assert(
+        binned._1.slice((5 * 32 + 16) * samples, (5 * 32 + 32) * samples).exists(_ != 0),
+        "the right-hand tile must be rendered"
+      )
+      assert(
+        binned._3 < baseline._3,
+        s"tile-major replay must save framebuffer transactions: ${baseline._3} to ${binned._3}"
+      )
+    }
   }
 }

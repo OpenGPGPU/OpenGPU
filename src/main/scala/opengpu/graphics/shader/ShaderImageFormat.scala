@@ -3,42 +3,56 @@ package opengpu.graphics
 import chisel3._
 import chisel3.util._
 
-/** GLES 3.1 tables 8.27/8.28, using the existing texture storage IDs.
-  * Image-unit eligibility is independent of attachment renderability and of
-  * sampler filtering. A descriptor owner must also check binding lifetime,
-  * target, level, access permissions and the shader variable's declared type.
+/** GLES 3.1 tables 8.27/8.28, using the existing texture storage IDs. Image-unit eligibility is independent of
+  * attachment renderability and of sampler filtering. A descriptor owner must also check binding lifetime, target,
+  * level, access permissions and the shader variable's declared type.
   */
 object ShaderImageFormat {
-  val names: Vector[String] = Vector("RGBA32F", "RGBA16F", "R32F",
-    "RGBA32UI", "RGBA16UI", "RGBA8UI", "R32UI",
-    "RGBA32I", "RGBA16I", "RGBA8I", "R32I", "RGBA8", "RGBA8_SNORM")
+  val names: Vector[String] = Vector(
+    "RGBA32F",
+    "RGBA16F",
+    "R32F",
+    "RGBA32UI",
+    "RGBA16UI",
+    "RGBA8UI",
+    "R32UI",
+    "RGBA32I",
+    "RGBA16I",
+    "RGBA8I",
+    "R32I",
+    "RGBA8",
+    "RGBA8_SNORM"
+  )
   val ids: Vector[Int] = names.map(TextureImageFormat.id)
   def valid(format: UInt): Bool = ids.map(format === _.U).reduce(_ || _)
 
-  /** GL-owned storage uses size compatibility. External storage may instead
-    * require the same component-count/width class; numeric kind may differ.
+  /** GL-owned storage uses size compatibility. External storage may instead require the same component-count/width
+    * class; numeric kind may differ.
     */
   def compatible(storage: UInt, image: UInt, bySize: Bool): Bool = {
-    val sameClass = (0 until 4).map(c =>
-      TextureImageFormat.componentWidth(storage, c.U) === TextureImageFormat.componentWidth(image, c.U)).reduce(_ && _)
+    val sameClass = (0 until 4)
+      .map(c => TextureImageFormat.componentWidth(storage, c.U) === TextureImageFormat.componentWidth(image, c.U))
+      .reduce(_ && _)
     valid(storage) && valid(image) && TextureImageFormat.bytes(storage) === TextureImageFormat.bytes(image) &&
-      (bySize || sameClass)
+    (bySize || sameClass)
   }
 
-  /** Buffer storage uses table8.18's30 formats. The image view still uses one
-    * of the13 load/store formats, with the same byte size or component class.
-    * Sampler eligibility alone never grants shader image write access.
+  /** Buffer storage uses table8.18's30 formats. The image view still uses one of the13 load/store formats, with the
+    * same byte size or component class. Sampler eligibility alone never grants shader image write access.
     */
   def compatibleBuffer(storage: UInt, image: UInt, bySize: Bool): Bool = {
-    val sameClass=(0 until 4).map(c=>TextureImageFormat.componentWidth(storage,c.U)===
-      TextureImageFormat.componentWidth(image,c.U)).reduce(_ && _)
+    val sameClass = (0 until 4)
+      .map(c =>
+        TextureImageFormat.componentWidth(storage, c.U) ===
+          TextureImageFormat.componentWidth(image, c.U)
+      )
+      .reduce(_ && _)
     TextureBufferFormat.valid(storage) && valid(image) &&
-      TextureImageFormat.bytes(storage)===TextureImageFormat.bytes(image) && (bySize || sameClass)
+    TextureImageFormat.bytes(storage) === TextureImageFormat.bytes(image) && (bySize || sameClass)
   }
 
-  /** Signed normalized byte conversion, with nearest/even rounding. NaNs map
-    * to zero; infinities saturate. Magnitude uses the exact existing rational
-    * UNORM conversion with seven magnitude bits, then restores the sign.
+  /** Signed normalized byte conversion, with nearest/even rounding. NaNs map to zero; infinities saturate. Magnitude
+    * uses the exact existing rational UNORM conversion with seven magnitude bits, then restores the sign.
     */
   def snorm8(raw: UInt): UInt = {
     val magnitude = TypedColorFormat.unorm(Cat(0.U(1.W), raw(30, 0)), 7.U)(7, 0)
@@ -58,13 +72,13 @@ class ShaderImageStoreEncodeResult extends Bundle {
   val byteMask = UInt(16.W)
   val bytes = UInt(5.W)
   val tag = UInt(32.W)
+
   /** 0 success, 1 unsupported image format, 2 shader component-type mismatch. */
   val status = UInt(2.W)
 }
 
-/** Converts one complete shader image texel. It performs no memory operation:
-  * the image owner must retain the result until all masked writes acknowledge.
-  * R-only formats consume R and never write the unused G/B/A inputs. Existing
+/** Converts one complete shader image texel. It performs no memory operation: the image owner must retain the result
+  * until all masked writes acknowledge. R-only formats consume R and never write the unused G/B/A inputs. Existing
   * attachment IDs and advertised capabilities are unchanged.
   */
 class ShaderImageStoreEncoder extends Module {
@@ -82,12 +96,15 @@ class ShaderImageStoreEncoder extends Module {
   private val offset = TextureImageFormat.componentOffset(request.format, component)
   private val encoding = TextureImageFormat.encoding(request.format)
   private val raw = request.rgba(component)
-  private val converted = MuxLookup(encoding, raw)(Seq(
-    0.U -> TypedColorFormat.unorm(raw, bits),
-    1.U -> TypedColorFormat.integer(raw, bits, false.B),
-    2.U -> TypedColorFormat.integer(raw, bits, true.B),
-    3.U -> TypedColorFormat.half(raw),
-    6.U -> ShaderImageFormat.snorm8(raw)))
+  private val converted = MuxLookup(encoding, raw)(
+    Seq(
+      0.U -> TypedColorFormat.unorm(raw, bits),
+      1.U -> TypedColorFormat.integer(raw, bits, false.B),
+      2.U -> TypedColorFormat.integer(raw, bits, true.B),
+      3.U -> TypedColorFormat.half(raw),
+      6.U -> ShaderImageFormat.snorm8(raw)
+    )
+  )
   io.in.ready := phase === State.idle
   io.out.valid := phase === State.complete
   io.out.bits := result

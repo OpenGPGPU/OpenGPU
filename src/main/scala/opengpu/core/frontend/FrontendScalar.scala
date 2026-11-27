@@ -10,16 +10,15 @@ import opengpu.core.memory.{InstructionLineRequest, InstructionLineResponse}
 
 /** FrontendICache closed through the scalar execute pipe.
   *
-  * Fetch, decode, RV32I execute, and warp redirect stay on-chip. IMEM refill
-  * stays at the DUT boundary. FPU/vector decode and scalar memory/atomics are
-  * tied off so the slice stays FlashSim-sized.
+  * Fetch, decode, RV32I execute, and warp redirect stay on-chip. IMEM refill stays at the DUT boundary. FPU/vector
+  * decode and scalar memory/atomics are tied off so the slice stays FlashSim-sized.
   */
 class FrontendScalar(
-  config: GpuConfig,
-  sets: Int,
-  ways: Int,
-  lineBytes: Int,
-  missEntries: Int
+    config: GpuConfig,
+    sets: Int,
+    ways: Int,
+    lineBytes: Int,
+    missEntries: Int
 ) extends Module {
   val io = IO(new Bundle {
     val launch = Flipped(Decoupled(new WarpLaunch(config)))
@@ -32,13 +31,11 @@ class FrontendScalar(
     val wawHazard = Output(Bool())
     val lowerRequest =
       Decoupled(new InstructionLineRequest(config, lineBytes, missEntries))
-    val lowerResponse = Flipped(
-      Decoupled(new InstructionLineResponse(lineBytes, missEntries)))
+    val lowerResponse = Flipped(Decoupled(new InstructionLineResponse(lineBytes, missEntries)))
     val invalidate = Input(Bool())
   })
 
-  private val fetch = Module(
-    new FrontendICache(config, sets, ways, lineBytes, missEntries))
+  private val fetch = Module(new FrontendICache(config, sets, ways, lineBytes, missEntries))
   private val scalar = Module(new ScalarBackend(config, useBlackBoxes = false))
 
   fetch.io.launch <> io.launch

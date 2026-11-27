@@ -9,7 +9,7 @@ import opengpu.core.backend.writeback.ScalarCommitRequest
 /** Internal CUSTOM-0 scalar geometry operations; not a public shader ABI. */
 object GeometryScalarOpcode {
   private def function(i: UInt, n: Int): Bool =
-    i(6,0) === "h0b".U && i(31,25) === n.U && i(14,12) === 0.U
+    i(6, 0) === "h0b".U && i(31, 25) === n.U && i(14, 12) === 0.U
   def input(i: UInt): Bool = function(i, 32)
   def output(i: UInt): Bool = function(i, 33)
   def layer(i: UInt): Bool = function(i, 34)
@@ -24,9 +24,8 @@ class GeometryScalarBinding(config: GpuConfig) extends Bundle {
   val warpId = UInt(config.warpIdWidth.W)
 }
 
-/** Task-owned scalar instruction adapter. Accepted emit/end offers are held
-  * until transferred, including during cancellation. The caller releases the
-  * binding only after the physical worker and all accepted instructions drain.
+/** Task-owned scalar instruction adapter. Accepted emit/end offers are held until transferred, including during
+  * cancellation. The caller releases the binding only after the physical worker and all accepted instructions drain.
   */
 class GeometryScalarWorker(config: GpuConfig = GpuConfig(), strictOwnership: Boolean = false) extends Module {
   require(config.xLen == 32)
@@ -71,7 +70,8 @@ class GeometryScalarWorker(config: GpuConfig = GpuConfig(), strictOwnership: Boo
   when(io.in.fire) {
     val d = io.in.bits.decode; val i = d.instruction
     val a = io.in.bits.rs1Data; val b = io.in.bits.rs2Data
-    val inputValid = a < 6.U && a < binding.invocation.inputVertices && b < 64.U && b < binding.invocation.inputComponents
+    val inputValid =
+      a < 6.U && a < binding.invocation.inputVertices && b < 64.U && b < binding.invocation.inputComponents
     val outputValid = a < 64.U && a < binding.invocation.outputComponents
     val infoValid = a < 6.U
     val valid = !io.cancel && !cancelled && GeometryScalarOpcode.legal(i) && d.warpId === binding.warpId &&
@@ -80,19 +80,25 @@ class GeometryScalarWorker(config: GpuConfig = GpuConfig(), strictOwnership: Boo
       (!GeometryScalarOpcode.layer(i) || binding.invocation.builtinOutputMask(0)) &&
       (!GeometryScalarOpcode.primitiveId(i) || binding.invocation.builtinOutputMask(1))
     result := 0.U.asTypeOf(result); result.warpId := d.warpId; result.nextPc := d.pc + 4.U
-    result.activeMask := d.activeMask; result.rd := i(11,7); result.writeRd := valid
+    result.activeMask := d.activeMask; result.rd := i(11, 7); result.writeRd := valid
     result.data := 0.U
     when(valid && GeometryScalarOpcode.input(i)) {
-      result.data := binding.invocation.vertices(a(2,0)).components(b(5,0))
+      result.data := binding.invocation.vertices(a(2, 0)).components(b(5, 0))
     }
-    when(valid && GeometryScalarOpcode.output(i)) { staged.components(a(5,0)) := b }
+    when(valid && GeometryScalarOpcode.output(i)) { staged.components(a(5, 0)) := b }
     when(valid && GeometryScalarOpcode.layer(i)) { staged.layer := a }
     when(valid && GeometryScalarOpcode.primitiveId(i)) { staged.shaderPrimitiveId := a }
     when(valid && GeometryScalarOpcode.info(i)) {
-      result.data := MuxLookup(a, 0.U)(Seq(
-        0.U -> binding.invocation.invocationId, 1.U -> binding.invocation.primitiveId,
-        2.U -> binding.invocation.inputVertices, 3.U -> binding.invocation.inputComponents,
-        4.U -> binding.invocation.outputComponents, 5.U -> binding.invocation.taskId))
+      result.data := MuxLookup(a, 0.U)(
+        Seq(
+          0.U -> binding.invocation.invocationId,
+          1.U -> binding.invocation.primitiveId,
+          2.U -> binding.invocation.inputVertices,
+          3.U -> binding.invocation.inputComponents,
+          4.U -> binding.invocation.outputComponents,
+          5.U -> binding.invocation.taskId
+        )
+      )
     }
     when(valid && (GeometryScalarOpcode.emit(i) || GeometryScalarOpcode.end(i))) {
       event := 0.U.asTypeOf(event)

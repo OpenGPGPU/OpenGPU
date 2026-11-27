@@ -8,8 +8,8 @@ import opengpu.core.frontend.decode.BranchOp
 
 /** Registered scalar control-flow resolver.
   *
-  * Conditional branches select `pc + immediate` only when their comparison is
-  * true. JALR clears target bit zero as required by the RISC-V ISA.
+  * Conditional branches select `pc + immediate` only when their comparison is true. JALR clears target bit zero as
+  * required by the RISC-V ISA.
   */
 class ScalarBranchResolver(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {
@@ -21,14 +21,16 @@ class ScalarBranchResolver(config: GpuConfig = GpuConfig()) extends Module {
   private val outBits = Reg(new ScalarBranchResult(config))
   private val canLoad = !outValid || io.out.ready
 
-  private val comparison = MuxLookup(io.in.bits.branchOp, false.B)(Seq(
-    BranchOp.eq -> (io.in.bits.lhs === io.in.bits.rhs),
-    BranchOp.ne -> (io.in.bits.lhs =/= io.in.bits.rhs),
-    BranchOp.lt -> (io.in.bits.lhs.asSInt < io.in.bits.rhs.asSInt),
-    BranchOp.ge -> (io.in.bits.lhs.asSInt >= io.in.bits.rhs.asSInt),
-    BranchOp.ltu -> (io.in.bits.lhs < io.in.bits.rhs),
-    BranchOp.geu -> (io.in.bits.lhs >= io.in.bits.rhs)
-  ))
+  private val comparison = MuxLookup(io.in.bits.branchOp, false.B)(
+    Seq(
+      BranchOp.eq -> (io.in.bits.lhs === io.in.bits.rhs),
+      BranchOp.ne -> (io.in.bits.lhs =/= io.in.bits.rhs),
+      BranchOp.lt -> (io.in.bits.lhs.asSInt < io.in.bits.rhs.asSInt),
+      BranchOp.ge -> (io.in.bits.lhs.asSInt >= io.in.bits.rhs.asSInt),
+      BranchOp.ltu -> (io.in.bits.lhs < io.in.bits.rhs),
+      BranchOp.geu -> (io.in.bits.lhs >= io.in.bits.rhs)
+    )
+  )
   private val conditionalTarget =
     Rv32CarrySelect(io.in.bits.pc, io.in.bits.immediate)
   private val jalrTarget =

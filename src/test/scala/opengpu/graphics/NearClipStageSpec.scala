@@ -11,9 +11,9 @@ class NearClipStageSpec extends AnyFlatSpec {
 
   // Poke a ClipVertexColor vertex and run the sequential seven-plane clip.
   private def clip(
-    dut: NearClipStage,
-    verts: Seq[(Int, Int, Int, Int, (Int, Int, Int))], // x,y,z,w, rgb
-    wNear: Int
+      dut: NearClipStage,
+      verts: Seq[(Int, Int, Int, Int, (Int, Int, Int))], // x,y,z,w, rgb
+      wNear: Int
   ): Unit = {
     dut.reset.poke(true.B)
     dut.clock.step()
@@ -59,11 +59,15 @@ class NearClipStageSpec extends AnyFlatSpec {
         assert(dut.io.out(i).w.peek().litValue.toInt == q(1.0))
       }
       // The cyclic rotation may start at any vertex; the colour set is R,G,B.
-      val colors = (0 until 3).map(i =>
-        (dut.io.out(i).color.r.peek().litValue.toInt,
-         dut.io.out(i).color.g.peek().litValue.toInt,
-         dut.io.out(i).color.b.peek().litValue.toInt)
-      ).toSet
+      val colors = (0 until 3)
+        .map(i =>
+          (
+            dut.io.out(i).color.r.peek().litValue.toInt,
+            dut.io.out(i).color.g.peek().litValue.toInt,
+            dut.io.out(i).color.b.peek().litValue.toInt
+          )
+        )
+        .toSet
       assert(colors == Set((255, 0, 0), (0, 255, 0), (0, 0, 255)))
       for (i <- 0 until 3)
         assert(dut.io.out(i).alpha.peek().litValue.toInt == 0x80)
@@ -108,36 +112,34 @@ class NearClipStageSpec extends AnyFlatSpec {
       }
       assert(hasV0)
       for (i <- 0 until 3)
-        assert(dut.io.out(i).alpha.peek().litValue.toInt == 0x80,
-          "clipped vertex dropped its alpha")
+        assert(dut.io.out(i).alpha.peek().litValue.toInt == 0x80, "clipped vertex dropped its alpha")
     }
   }
 
   it should "clip against every canonical frustum plane" in {
     val wNear = q(0.001)
-    val outside = Seq(
-      (-q(2.0), 0, 0), (q(2.0), 0, 0),
-      (0, -q(2.0), 0), (0, q(2.0), 0),
-      (0, 0, -q(2.0)), (0, 0, q(2.0)))
+    val outside = Seq((-q(2.0), 0, 0), (q(2.0), 0, 0), (0, -q(2.0), 0), (0, q(2.0), 0), (0, 0, -q(2.0)), (0, 0, q(2.0)))
 
     for (((x, y, z), plane) <- outside.zipWithIndex) {
       simulate(new NearClipStage(GraphicsConfig())) { dut =>
         val verts = Seq(
           (x, y, z, q(1.0), (255, 0, 0)),
           (q(0.25), -q(0.25), 0, q(1.0), (0, 255, 0)),
-          (-q(0.25), q(0.25), 0, q(1.0), (0, 0, 255)))
+          (-q(0.25), q(0.25), 0, q(1.0), (0, 0, 255))
+        )
         clip(dut, verts, wNear)
         val triangleCount = dut.io.outValid.peek().litValue.toInt
-        assert(triangleCount == 2,
-          s"plane $plane should turn one-outside triangle into a quad")
+        assert(triangleCount == 2, s"plane $plane should turn one-outside triangle into a quad")
         for (i <- 0 until triangleCount * 3) {
           val ox = dut.io.out(i).x.peek().litValue.toInt
           val oy = dut.io.out(i).y.peek().litValue.toInt
           val oz = dut.io.out(i).z.peek().litValue.toInt
           val ow = dut.io.out(i).w.peek().litValue.toInt
-          assert(ow >= wNear && ox >= -ow && ox <= ow &&
-            oy >= -ow && oy <= ow && oz >= -ow && oz <= ow,
-            s"plane $plane emitted an out-of-frustum vertex")
+          assert(
+            ow >= wNear && ox >= -ow && ox <= ow &&
+              oy >= -ow && oy <= ow && oz >= -ow && oz <= ow,
+            s"plane $plane emitted an out-of-frustum vertex"
+          )
         }
       }
     }
@@ -149,7 +151,8 @@ class NearClipStageSpec extends AnyFlatSpec {
       val verts = Seq(
         (q(1.5), -q(0.5), 0, q(1.0), (255, 0, 0)),
         (q(2.0), q(0.0), 0, q(1.0), (0, 255, 0)),
-        (q(1.5), q(0.5), 0, q(1.0), (0, 0, 255)))
+        (q(1.5), q(0.5), 0, q(1.0), (0, 0, 255))
+      )
       clip(dut, verts, wNear)
       assert(dut.io.outValid.peek().litValue.toInt == 0)
     }

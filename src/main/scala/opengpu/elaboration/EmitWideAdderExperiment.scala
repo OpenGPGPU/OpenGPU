@@ -3,8 +3,7 @@ package opengpu.elaboration
 import chisel3._
 import opengpu.util.BlockPrefixAdder
 
-/** Equal registered endpoints for native/prefix addition timing experiments.
-  * This fixture is not wired into the GPU.
+/** Equal registered endpoints for native/prefix addition timing experiments. This fixture is not wired into the GPU.
   */
 class WideAdderTiming(usePrefix: Boolean, width: Int = 64) extends Module {
   val io = IO(new Bundle {
@@ -26,8 +25,10 @@ class WideAdderTiming(usePrefix: Boolean, width: Int = 64) extends Module {
 
 object EmitWideAdderExperiment {
   def main(args: Array[String]): Unit = {
-    require(args.length == 2 && Set("native", "prefix")(args(0)),
-      "usage: EmitWideAdderExperiment <native|prefix> <target-dir>")
+    require(
+      args.length == 2 && Set("native", "prefix")(args(0)),
+      "usage: EmitWideAdderExperiment <native|prefix> <target-dir>"
+    )
     EmitRtl.emit(new WideAdderTiming(args(0) == "prefix"), args(1))
   }
 }

@@ -22,11 +22,13 @@ class TessellationQuadGeneratorSpec extends AnyFlatSpec {
     val c = math.max(lo, math.min(hi, f)).toFloat
     val ceil = math.ceil(c.toDouble).toInt
     val rounded = if (spacing == 1) (ceil + 1) & ~1 else if (spacing == 2) ceil | 1 else ceil
-    val n = if (promote) { if (spacing == 2) 3 else 2 } else rounded
+    val n = if (promote) { if (spacing == 2) 3 else 2 }
+    else rounded
     val bits = java.lang.Float.floatToRawIntBits(c)
     val fixed = BigInt((bits & 0x7fffff) | 0x800000) << (((bits >>> 23) & 255) - 127)
     (0 to n).map { i =>
-      if (i == 0) BigInt(0) else if (i == n) one
+      if (i == 0) BigInt(0)
+      else if (i == n) one
       else if (spacing == 0) roundEven(BigInt(i) * one, n)
       else roundEven((fixed + (BigInt(2 * i - n) << 23)) * one, fixed << 1)
     }.toVector
@@ -77,9 +79,12 @@ class TessellationQuadGeneratorSpec extends AnyFlatSpec {
         (Vector(4.0f, 3.0f, 2.0f, 1.0f), Vector(4.0f, 2.0f), 0),
         (Vector(2.25f, 3.0f, 1.5f, 4.125f), Vector(3.125f, 4.25f), 1),
         (Vector(2.0f, 1.0f, 1.0f, 1.0f), Vector(1.0f, 1.0f), 2),
-        (Vector.fill(4)(64.0f), Vector(64.0f, 64.0f), 0))
-      for (((outer, inner, spacing), which) <- cases.zipWithIndex; points <- Seq(false, true);
-        clockwise <- (if (points) Seq(false) else Seq(false, true))) {
+        (Vector.fill(4)(64.0f), Vector(64.0f, 64.0f), 0)
+      )
+      for (
+        ((outer, inner, spacing), which) <- cases.zipWithIndex; points <- Seq(false, true);
+        clockwise <- (if (points) Seq(false) else Seq(false, true))
+      ) {
         begin(outer, inner, spacing, points, clockwise)
         val (vertices, expectedTriangles, _) = reference(outer, inner, spacing)
         val want = if (points) vertices.size else expectedTriangles
@@ -106,19 +111,26 @@ class TessellationQuadGeneratorSpec extends AnyFlatSpec {
           val boundaryCount = outer.map(edge(_, spacing).size - 1).sum
           val boundary = vertices.take(boundaryCount)
           def hasEdge(a: Point, b: Point): Boolean = got.exists { t =>
-            (0 until 3).exists(i => (t(i) == a && t((i + 1) % 3) == b) ||
-              (t(i) == b && t((i + 1) % 3) == a))
+            (0 until 3).exists(i =>
+              (t(i) == a && t((i + 1) % 3) == b) ||
+                (t(i) == b && t((i + 1) % 3) == a)
+            )
           }
-          assert(boundary.indices.forall(i => hasEdge(boundary(i), boundary((i + 1) % boundary.size))),
-            s"outer-edge coverage case=$which")
+          assert(
+            boundary.indices.forall(i => hasEdge(boundary(i), boundary((i + 1) % boundary.size))),
+            s"outer-edge coverage case=$which"
+          )
           // Strictly interior samples avoid double-counting points on shared edges.
           if (which < cases.size - 1) for (y <- 1 until 11; x <- 1 until 11) {
             val sample = (one * x / 11, one * y / 11)
-            val signed = got.zip(areas).collect { case (t, area) if area != 0 =>
-              Vector(cross(t(0), t(1), sample), cross(t(1), t(2), sample), cross(t(2), t(0), sample))
+            val signed = got.zip(areas).collect {
+              case (t, area) if area != 0 =>
+                Vector(cross(t(0), t(1), sample), cross(t(1), t(2), sample), cross(t(2), t(0), sample))
             }
-            val onBoundary = signed.exists(a => a.contains(BigInt(0)) &&
-              (a.forall(_ >= 0) || a.forall(_ <= 0)))
+            val onBoundary = signed.exists(a =>
+              a.contains(BigInt(0)) &&
+                (a.forall(_ >= 0) || a.forall(_ <= 0))
+            )
             if (!onBoundary) {
               val count = signed.count(a => a.forall(_ > 0) || a.forall(_ < 0))
               assert(count == 1, s"coverage case=$which at $sample: $count")
@@ -153,7 +165,10 @@ class TessellationQuadGeneratorSpec extends AnyFlatSpec {
       finish(0, 0, discarded = true)
       begin(Vector.fill(4)(1.0f), Vector(1.0f, 1.0f), 3, points = false, clockwise = false); finish(1, 0)
       begin(Vector.fill(4)(1.0f), Vector(1.0f, 1.0f), 0, points = false, clockwise = false)
-      for (_ <- 0 until 2) { waitFor(d.io.out.valid.peek().litToBoolean); d.io.out.ready.poke(true.B); d.clock.step(); d.io.out.ready.poke(false.B) }
+      for (_ <- 0 until 2) {
+        waitFor(d.io.out.valid.peek().litToBoolean); d.io.out.ready.poke(true.B); d.clock.step();
+        d.io.out.ready.poke(false.B)
+      }
       finish(0, 2)
     }
   }
@@ -196,9 +211,11 @@ class TessellationQuadGeneratorSpec extends AnyFlatSpec {
       val rotate = (p: Point) => (p._2, one - p._1)
       val reflect = (p: Point) => (one - p._1, p._2)
       def key(t: Vector[Point]): String = t.map(p => s"${p._1},${p._2}").sorted.mkString("|")
-      val cases = Seq((Vector(3.0f, 2.0f, 5.0f, 4.0f), Vector(3.0f, 4.0f), 0),
+      val cases = Seq(
+        (Vector(3.0f, 2.0f, 5.0f, 4.0f), Vector(3.0f, 4.0f), 0),
         (Vector(2.25f, 3.0f, 1.5f, 4.125f), Vector(3.125f, 4.25f), 1),
-        (Vector(2.0f, 1.0f, 1.0f, 1.0f), Vector(1.0f, 1.0f), 2))
+        (Vector(2.0f, 1.0f, 1.0f, 1.0f), Vector(1.0f, 1.0f), 2)
+      )
       var casesChecked = 0
       for ((outer, inner, spacing) <- cases; points <- Seq(true, false)) {
         val base = run(outer, inner, spacing, points)
@@ -207,31 +224,47 @@ class TessellationQuadGeneratorSpec extends AnyFlatSpec {
           rotOuter = rotOuter.drop(1) :+ rotOuter.head; rotInner = rotInner.reverse
           mapped = mapped.map(t => t.map(rotate))
           val rotated = run(rotOuter, rotInner, spacing, points)
-          if (points) assert(rotated.map(_.head).toSet == mapped.map(_.head).toSet,
-            s"rotation point set differs outer=$outer inner=$inner spacing=$spacing")
+          if (points)
+            assert(
+              rotated.map(_.head).toSet == mapped.map(_.head).toSet,
+              s"rotation point set differs outer=$outer inner=$inner spacing=$spacing"
+            )
           else {
             // The interior diagonal choice is deterministic but not rotation-covariant.
-            assert(rotated.flatten.toSet == mapped.flatten.toSet,
-              s"rotation triangle vertices differ outer=$outer inner=$inner spacing=$spacing")
-            assert(rotated.map(t => cross(t(0), t(1), t(2))).sum == base.map(t => cross(t(0), t(1), t(2))).sum,
-              "rotation changed the signed area")
+            assert(
+              rotated.flatten.toSet == mapped.flatten.toSet,
+              s"rotation triangle vertices differ outer=$outer inner=$inner spacing=$spacing"
+            )
+            assert(
+              rotated.map(t => cross(t(0), t(1), t(2))).sum == base.map(t => cross(t(0), t(1), t(2))).sum,
+              "rotation changed the signed area"
+            )
           }
           casesChecked += 1
         }
         val mirrored = base.map(t => t.map(reflect))
         val reflected = run(Vector(outer(2), outer(1), outer(0), outer(3)), inner, spacing, points)
-        if (points) assert(reflected.map(_.head).toSet == mirrored.map(_.head).toSet,
-          s"reflection point set differs outer=$outer inner=$inner spacing=$spacing")
+        if (points)
+          assert(
+            reflected.map(_.head).toSet == mirrored.map(_.head).toSet,
+            s"reflection point set differs outer=$outer inner=$inner spacing=$spacing"
+          )
         else {
-          assert(reflected.flatten.toSet == mirrored.flatten.toSet,
-            s"reflection triangle vertices differ outer=$outer inner=$inner spacing=$spacing")
+          assert(
+            reflected.flatten.toSet == mirrored.flatten.toSet,
+            s"reflection triangle vertices differ outer=$outer inner=$inner spacing=$spacing"
+          )
           // Winding follows the explicit clockwise input, not the level order.
-          assert(reflected.map(t => cross(t(0), t(1), t(2))).sum == base.map(t => cross(t(0), t(1), t(2))).sum,
-            "reflection changed the emitted winding")
+          assert(
+            reflected.map(t => cross(t(0), t(1), t(2))).sum == base.map(t => cross(t(0), t(1), t(2))).sum,
+            "reflection changed the emitted winding"
+          )
         }
         casesChecked += 1
       }
-      info(s"TESSELLATION_QUAD_INVARIANCE cases=$casesChecked rotations270=true reflections=true pointsAndTriangles=true signedAreaInvariant=true")
+      info(
+        s"TESSELLATION_QUAD_INVARIANCE cases=$casesChecked rotations270=true reflections=true pointsAndTriangles=true signedAreaInvariant=true"
+      )
     }
   }
 }

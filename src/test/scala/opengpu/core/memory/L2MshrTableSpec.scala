@@ -76,8 +76,7 @@ class L2MshrTableSpec extends AnyFlatSpec {
       dut.io.fill.ready.poke(true.B)
       dut.io.response.ready.poke(false.B)
 
-      def allocate(line: Int, transaction: Int, cu: Int,
-                   set: Int = 0, way: Int = 0): (BigInt, Boolean) = {
+      def allocate(line: Int, transaction: Int, cu: Int, set: Int = 0, way: Int = 0): (BigInt, Boolean) = {
         dut.io.request.valid.poke(true.B)
         dut.io.request.bits.lineAddress.poke(line.U)
         dut.io.request.bits.transactionId.poke(transaction.U)
@@ -88,8 +87,7 @@ class L2MshrTableSpec extends AnyFlatSpec {
         dut.io.request.ready.expect(true.B)
         dut.clock.step(); dut.io.request.valid.poke(false.B)
         dut.io.allocation.valid.expect(true.B)
-        val result = (dut.io.allocation.bits.entryId.peek().litValue,
-          dut.io.allocation.bits.merged.peek().litToBoolean)
+        val result = (dut.io.allocation.bits.entryId.peek().litValue, dut.io.allocation.bits.merged.peek().litToBoolean)
         dut.clock.step()
         result
       }
@@ -140,8 +138,7 @@ class L2MshrTableSpec extends AnyFlatSpec {
   }
 
   it should "keep non-power-of-two waiter edges local through simultaneous allocation and retirement" in {
-    simulate(new L2MshrTable(GpuConfig(lanes = 4), entries = 4,
-      maxOutstanding = 17, numComputeUnits = 3)) { dut =>
+    simulate(new L2MshrTable(GpuConfig(lanes = 4), entries = 4, maxOutstanding = 17, numComputeUnits = 3)) { dut =>
       dut.io.request.valid.poke(false.B)
       dut.io.allocation.ready.poke(true.B)
       dut.io.refill.valid.poke(false.B)
@@ -340,8 +337,7 @@ class L2MissEngineSpec extends AnyFlatSpec {
         while (!dut.io.miss.ready.peek().litToBoolean && cycles < 12) {
           dut.clock.step(); cycles += 1
         }
-        assert(dut.io.miss.ready.peek().litToBoolean,
-          f"miss engine did not accept line 0x$line%x")
+        assert(dut.io.miss.ready.peek().litToBoolean, f"miss engine did not accept line 0x$line%x")
         dut.io.miss.valid.poke(true.B)
         dut.clock.step(); dut.io.miss.valid.poke(false.B)
       }

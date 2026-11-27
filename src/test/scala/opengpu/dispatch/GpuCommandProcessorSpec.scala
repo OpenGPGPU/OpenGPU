@@ -15,8 +15,7 @@ class GpuCommandProcessorSpec extends AnyFlatSpec {
     dut.io.completion.ready.poke(false.B)
     dut.io.dispatch.ready.poke(false.B)
     dut.io.dispatchCompletion.valid.poke(false.B)
-    dut.io.dispatchCompletion.bits.poke(
-      0.U.asTypeOf(dut.io.dispatchCompletion.bits))
+    dut.io.dispatchCompletion.bits.poke(0.U.asTypeOf(dut.io.dispatchCompletion.bits))
     dut.io.dmaCompletion.foreach { event =>
       event.valid.poke(false.B)
       event.bits.poke(0.U.asTypeOf(event.bits))
@@ -24,13 +23,17 @@ class GpuCommandProcessorSpec extends AnyFlatSpec {
     dut.io.pathReset.poke(false.B)
   }
 
-  private def driveCommand(dut: GpuCommandProcessor, id: Int,
-                           pc: Int = 0x1000, kernarg: Int = 0x8000,
-                           grid: Seq[Int] = Seq(1, 1, 1),
-                           local: Seq[Int] = Seq(1, 1, 1),
-                           waitForDma: Boolean = false,
-                           dmaSource: Int = 0,
-                           dmaDescriptorId: Int = 0): Unit = {
+  private def driveCommand(
+      dut: GpuCommandProcessor,
+      id: Int,
+      pc: Int = 0x1000,
+      kernarg: Int = 0x8000,
+      grid: Seq[Int] = Seq(1, 1, 1),
+      local: Seq[Int] = Seq(1, 1, 1),
+      waitForDma: Boolean = false,
+      dmaSource: Int = 0,
+      dmaDescriptorId: Int = 0
+  ): Unit = {
     dut.io.command.bits.commandId.poke(id.U)
     dut.io.command.bits.launch.invocations.helpers.poke(0xff.U)
     dut.io.command.bits.launch.invocations.privateBase.poke(0x9000.U)
@@ -47,8 +50,7 @@ class GpuCommandProcessorSpec extends AnyFlatSpec {
     dut.io.command.valid.poke(true.B)
   }
 
-  private def dmaEvent(dut: GpuCommandProcessor, source: Int, id: Int,
-                       success: Boolean): Unit = {
+  private def dmaEvent(dut: GpuCommandProcessor, source: Int, id: Int, success: Boolean): Unit = {
     dut.io.dmaCompletion(source).bits.source.poke(source.U)
     dut.io.dmaCompletion(source).bits.descriptorId.poke(id.U)
     dut.io.dmaCompletion(source).bits.success.poke(success.B)
@@ -64,8 +66,7 @@ class GpuCommandProcessorSpec extends AnyFlatSpec {
     }
   }
 
-  private def awaitCompletion(dut: GpuCommandProcessor,
-                              cycles: Int = 12): Unit = {
+  private def awaitCompletion(dut: GpuCommandProcessor, cycles: Int = 12): Unit = {
     var remaining = cycles
     while (!dut.io.completion.valid.peek().litToBoolean && remaining > 0) {
       dut.clock.step(); remaining -= 1
@@ -73,9 +74,14 @@ class GpuCommandProcessorSpec extends AnyFlatSpec {
   }
 
   it should "queue, dispatch, and reserve an ID until completion is consumed" in {
-    simulate(new GpuCommandProcessor(
-      GpuConfig(lanes = 4, warps = 2), commandIdWidth = 4,
-      commandQueueDepth = 2, completionQueueDepth = 2)) { dut =>
+    simulate(
+      new GpuCommandProcessor(
+        GpuConfig(lanes = 4, warps = 2),
+        commandIdWidth = 4,
+        commandQueueDepth = 2,
+        completionQueueDepth = 2
+      )
+    ) { dut =>
       initialize(dut)
       driveCommand(dut, id = 3)
       dut.io.command.ready.expect(true.B)
@@ -118,9 +124,14 @@ class GpuCommandProcessorSpec extends AnyFlatSpec {
   }
 
   it should "complete invalid descriptors locally without dispatching them" in {
-    simulate(new GpuCommandProcessor(
-      GpuConfig(lanes = 4, warps = 2), commandIdWidth = 4,
-      commandQueueDepth = 2, completionQueueDepth = 2)) { dut =>
+    simulate(
+      new GpuCommandProcessor(
+        GpuConfig(lanes = 4, warps = 2),
+        commandIdWidth = 4,
+        commandQueueDepth = 2,
+        completionQueueDepth = 2
+      )
+    ) { dut =>
       initialize(dut)
       dut.io.dispatch.ready.poke(true.B)
       driveCommand(dut, id = 5, pc = 0x1002)
@@ -130,8 +141,7 @@ class GpuCommandProcessorSpec extends AnyFlatSpec {
       dut.io.completion.valid.expect(true.B)
       dut.io.completion.bits.commandId.expect(5.U)
       dut.io.completion.bits.success.expect(false.B)
-      dut.io.completion.bits.status.expect(
-        KernelCommandStatus.invalidProgramCounter)
+      dut.io.completion.bits.status.expect(KernelCommandStatus.invalidProgramCounter)
 
       dut.io.completion.ready.poke(true.B)
       dut.clock.step()
@@ -145,9 +155,14 @@ class GpuCommandProcessorSpec extends AnyFlatSpec {
   }
 
   it should "retain queued commands across dispatch backpressure" in {
-    simulate(new GpuCommandProcessor(
-      GpuConfig(lanes = 4, warps = 2), commandIdWidth = 4,
-      commandQueueDepth = 2, completionQueueDepth = 2)) { dut =>
+    simulate(
+      new GpuCommandProcessor(
+        GpuConfig(lanes = 4, warps = 2),
+        commandIdWidth = 4,
+        commandQueueDepth = 2,
+        completionQueueDepth = 2
+      )
+    ) { dut =>
       initialize(dut)
       driveCommand(dut, id = 1, pc = 0x1000)
       dut.clock.step()
@@ -169,13 +184,17 @@ class GpuCommandProcessorSpec extends AnyFlatSpec {
   }
 
   it should "dispatch only after consuming the requested successful DMA event" in {
-    simulate(new GpuCommandProcessor(
-      GpuConfig(lanes = 4, warps = 2), commandIdWidth = 4,
-      commandQueueDepth = 2, completionQueueDepth = 2)) { dut =>
+    simulate(
+      new GpuCommandProcessor(
+        GpuConfig(lanes = 4, warps = 2),
+        commandIdWidth = 4,
+        commandQueueDepth = 2,
+        completionQueueDepth = 2
+      )
+    ) { dut =>
       initialize(dut)
       dut.io.dispatch.ready.poke(true.B)
-      driveCommand(dut, id = 8, waitForDma = true,
-        dmaSource = 1, dmaDescriptorId = 5)
+      driveCommand(dut, id = 8, waitForDma = true, dmaSource = 1, dmaDescriptorId = 5)
       dut.clock.step(); dut.io.command.valid.poke(false.B)
       dut.io.dispatch.valid.expect(false.B)
       dut.clock.step(2)
@@ -187,8 +206,7 @@ class GpuCommandProcessorSpec extends AnyFlatSpec {
       dut.clock.step()
 
       // Events are one-shot. Another command waiting on the same key blocks.
-      driveCommand(dut, id = 9, waitForDma = true,
-        dmaSource = 1, dmaDescriptorId = 5)
+      driveCommand(dut, id = 9, waitForDma = true, dmaSource = 1, dmaDescriptorId = 5)
       dut.clock.step(); dut.io.command.valid.poke(false.B)
       dut.clock.step(2)
       dut.io.dispatch.valid.expect(false.B)
@@ -196,28 +214,36 @@ class GpuCommandProcessorSpec extends AnyFlatSpec {
   }
 
   it should "complete a kernel locally when its DMA dependency failed" in {
-    simulate(new GpuCommandProcessor(
-      GpuConfig(lanes = 4, warps = 2), commandIdWidth = 4,
-      commandQueueDepth = 2, completionQueueDepth = 2)) { dut =>
+    simulate(
+      new GpuCommandProcessor(
+        GpuConfig(lanes = 4, warps = 2),
+        commandIdWidth = 4,
+        commandQueueDepth = 2,
+        completionQueueDepth = 2
+      )
+    ) { dut =>
       initialize(dut)
       dut.io.dispatch.ready.poke(true.B)
-      driveCommand(dut, id = 10, waitForDma = true,
-        dmaSource = 2, dmaDescriptorId = 6)
+      driveCommand(dut, id = 10, waitForDma = true, dmaSource = 2, dmaDescriptorId = 6)
       dut.clock.step(); dut.io.command.valid.poke(false.B)
       dmaEvent(dut, source = 2, id = 6, success = false)
       dut.io.dispatch.valid.expect(false.B)
       awaitCompletion(dut)
       dut.io.completion.valid.expect(true.B)
       dut.io.completion.bits.commandId.expect(10.U)
-      dut.io.completion.bits.status.expect(
-        KernelCommandStatus.dmaDependencyFailed)
+      dut.io.completion.bits.status.expect(KernelCommandStatus.dmaDependencyFailed)
     }
   }
 
   it should "flush queued commands and reservations on a path reset" in {
-    simulate(new GpuCommandProcessor(
-      GpuConfig(lanes = 4, warps = 2), commandIdWidth = 4,
-      commandQueueDepth = 2, completionQueueDepth = 2)) { dut =>
+    simulate(
+      new GpuCommandProcessor(
+        GpuConfig(lanes = 4, warps = 2),
+        commandIdWidth = 4,
+        commandQueueDepth = 2,
+        completionQueueDepth = 2
+      )
+    ) { dut =>
       initialize(dut)
       // Queue two kernels without ever dispatching them.
       driveCommand(dut, id = 5)

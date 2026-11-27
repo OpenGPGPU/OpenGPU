@@ -10,24 +10,27 @@ import opengpu.core.backend.{VectorCommitRequest, VectorTextureRequest}
 object TessellationControlVectorOperation {
   val parameters = 0; val load = 1; val store = 2
 }
+
 /** Internal CUSTOM-1 encodings; admission requires a task-owned patch. */
 object TessellationControlVectorOpcode {
-  private def function(i: UInt, n: Int): Bool = i(6,0) === "h2b".U && i(31,26) === n.U && i(14,12) === 0.U
-  def parameters(i: UInt): Bool = function(i,20) && i(11,7) === 0.U
-  def load(i: UInt): Bool = function(i,21)
-  def store(i: UInt): Bool = function(i,22) && i(11,7) === 0.U
+  private def function(i: UInt, n: Int): Bool = i(6, 0) === "h2b".U && i(31, 26) === n.U && i(14, 12) === 0.U
+  def parameters(i: UInt): Bool = function(i, 20) && i(11, 7) === 0.U
+  def load(i: UInt): Bool = function(i, 21)
+  def store(i: UInt): Bool = function(i, 22) && i(11, 7) === 0.U
   def legal(i: UInt): Bool = parameters(i) || load(i) || store(i)
-  def operation(i: UInt): UInt = Mux(load(i), TessellationControlVectorOperation.load.U,
-    Mux(store(i), TessellationControlVectorOperation.store.U, TessellationControlVectorOperation.parameters.U))
+  def operation(i: UInt): UInt = Mux(
+    load(i),
+    TessellationControlVectorOperation.load.U,
+    Mux(store(i), TessellationControlVectorOperation.store.U, TessellationControlVectorOperation.parameters.U)
+  )
 }
 class TessellationControlVectorRequest(config: GpuConfig) extends Bundle {
   val operation = UInt(2.W); val base = UInt(5.W)
   val vector = new VectorTextureRequest(config); val sideEffectMask = UInt(config.lanes.W)
 }
 
-/** Adapt one decoded vector instruction to the patch scheduler. The issuer
-  * owns task availability and warp-to-invocation mapping. Store parameters
-  * are private to a warp slot and invalidated when that slot is reused.
+/** Adapt one decoded vector instruction to the patch scheduler. The issuer owns task availability and
+  * warp-to-invocation mapping. Store parameters are private to a warp slot and invalidated when that slot is reused.
   */
 class TessellationControlVectorAccess(config: GpuConfig = GpuConfig()) extends Module {
   require(config.warps >= 2 && isPow2(config.warps) && config.lanes >= 1 && config.lanes <= 32)
@@ -38,6 +41,7 @@ class TessellationControlVectorAccess(config: GpuConfig = GpuConfig()) extends M
     val commit = Decoupled(new VectorCommitRequest(config))
     val kernelStart = Input(Bool()); val warpStart = Flipped(Valid(UInt(config.warpIdWidth.W)))
     val cancel = Input(Bool())
+
     /** The patch context has accepted an error result and will not accept new requests. */
     val terminal = Input(Bool()); val busy = Output(Bool()); val status = Output(UInt(2.W))
   })
@@ -63,14 +67,14 @@ class TessellationControlVectorAccess(config: GpuConfig = GpuConfig()) extends M
     val address = saved.vector.issued.vs2Data(i)
     val a = io.request.bits.access(i)
     a.output := address(0); a.perPatch := address(1); a.tessLevel := address(2)
-    a.write := isStore; a.vertex := saved.vector.issued.vs1Data(i)(5,0)
-    a.component := address(9,3); a.data := values(warp)(i)
+    a.write := isStore; a.vertex := saved.vector.issued.vs1Data(i)(5, 0)
+    a.component := address(9, 3); a.data := values(warp)(i)
   }
   io.result.ready := state === waitResult
   io.commit.valid := state === commit
   io.commit.bits := 0.U.asTypeOf(io.commit.bits)
   io.commit.bits.writeback.warpId := warp
-  io.commit.bits.writeback.vd := Mux(isLoad, saved.vector.issued.decode.instruction(11,7), 0.U)
+  io.commit.bits.writeback.vd := Mux(isLoad, saved.vector.issued.decode.instruction(11, 7), 0.U)
   io.commit.bits.writeback.data := Mux(status === 0.U, data, 0.U.asTypeOf(data))
   io.commit.bits.writesVd := status === 0.U && isLoad
   io.commit.bits.writesScalar := status === 0.U && (isParams || isStore)
@@ -87,18 +91,24 @@ class TessellationControlVectorAccess(config: GpuConfig = GpuConfig()) extends M
   when(state =/= idle && state =/= commit && (io.cancel || io.terminal)) { cancelled := true.B }
   when(io.in.fire) {
     val q = io.in.bits; val active = q.vector.executionMask & q.vector.issued.decode.activeMask
-    saved := q; selected := Mux(q.operation === TessellationControlVectorOperation.store.U, active & q.sideEffectMask, active)
+    saved := q;
+    selected := Mux(q.operation === TessellationControlVectorOperation.store.U, active & q.sideEffectMask, active)
     data := q.vector.issued.oldVdData; status := 0.U; cancelled := false.B; state := check
   }
   when(state === check) {
-    val malformed = (0 until config.lanes).map(i => selected(i) &&
-      (saved.vector.issued.vs1Data(i)(31,6).orR || saved.vector.issued.vs2Data(i)(31,10).orR)).reduce(_ || _)
+    val malformed = (0 until config.lanes)
+      .map(i =>
+        selected(i) &&
+          (saved.vector.issued.vs1Data(i)(31, 6).orR || saved.vector.issued.vs2Data(i)(31, 10).orR)
+      )
+      .reduce(_ || _)
     when(stopped) { status := 2.U; state := commit }
       .elsewhen(saved.operation > TessellationControlVectorOperation.store.U) { status := 1.U; state := commit }
       .elsewhen(isParams) {
         for (i <- 0 until config.lanes) { when(selected(i)) { values(warp)(i) := saved.vector.issued.vs1Data(i) } }
         valid(warp) := valid(warp) | selected; state := commit
-      }.elsewhen(malformed || (isStore && (selected & ~valid(warp)).orR)) { status := 1.U; state := commit }
+      }
+      .elsewhen(malformed || (isStore && (selected & ~valid(warp)).orR)) { status := 1.U; state := commit }
       .elsewhen(!selected.orR) { state := commit }
       .otherwise { state := offer }
   }

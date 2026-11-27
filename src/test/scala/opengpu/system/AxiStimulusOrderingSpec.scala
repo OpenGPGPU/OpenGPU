@@ -7,9 +7,10 @@ import opengpu.testutil.AxiTrafficCounters
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-/** Read/write sources whose next command becomes visible when the preceding
-  * response is driven. Unaccepted command channels remain asserted. */
-private class ResponseChainedMemoryMaster(readChain: Boolean,partialMasks: Boolean=false) extends RawModule {
+/** Read/write sources whose next command becomes visible when the preceding response is driven. Unaccepted command
+  * channels remain asserted.
+  */
+private class ResponseChainedMemoryMaster(readChain: Boolean, partialMasks: Boolean = false) extends RawModule {
   val io = IO(new Bundle {
     val s_axi_aclk = Input(Clock())
     val reset = Input(Bool())
@@ -90,17 +91,18 @@ private class ResponseChainedMemoryMaster(readChain: Boolean,partialMasks: Boole
       io.m_axi_wvalid := command && !wSent
       io.m_axi_awaddr := Mux(state === first, 0x1000.U, 0x1040.U)
       io.m_axi_awid := Mux(state === first, 0.U, 1.U)
-      io.m_axi_wdata := Mux(state === first,
-        "h1122334455667788".U, "h99aabbccddeeff00".U)
-      io.m_axi_wstrb := (if(partialMasks)Mux(state===first,0x81.U,0.U)else 255.U)
+      io.m_axi_wdata := Mux(state === first, "h1122334455667788".U, "h99aabbccddeeff00".U)
+      io.m_axi_wstrb := (if (partialMasks) Mux(state === first, 0x81.U, 0.U) else 255.U)
       io.m_axi_wlast := true.B
       io.m_axi_bready := state === response || state === secondResponse
       val awFire = io.m_axi_awvalid && io.m_axi_awready
       val wFire = io.m_axi_wvalid && io.m_axi_wready
       when(awFire) { awSent := true.B }
       when(wFire) { wSent := true.B }
-      when((state === first || state === response) &&
-          (awSent || awFire) && (wSent || wFire)) {
+      when(
+        (state === first || state === response) &&
+          (awSent || awFire) && (wSent || wFire)
+      ) {
         when(state === first) {
           state := response
           awSent := false.B
@@ -127,10 +129,20 @@ private class ResponseChainedMemoryMaster(readChain: Boolean,partialMasks: Boole
 
 class AxiStimulusOrderingSpec extends AnyFlatSpec with GpuHostTestSupport {
   behavior of "AXI memory stimulus"
-  for ((readChain,observed,partialMasks) <- Seq((false,false,false),(true,false,false),
-    (false,true,false),(true,true,false),(false,true,true))) {
-    it should s"observe a ${if (readChain) "read" else "write"} made visible by a response driven in the same cycle${if(partialMasks)" with masked traffic accounting"else if(observed)" with traffic accounting"else""}" in {
-      simulate(new ResponseChainedMemoryMaster(readChain,partialMasks)) { dut =>
+  for (
+    (readChain, observed, partialMasks) <- Seq(
+      (false, false, false),
+      (true, false, false),
+      (false, true, false),
+      (true, true, false),
+      (false, true, true)
+    )
+  ) {
+    it should s"observe a ${if (readChain) "read"
+      else "write"} made visible by a response driven in the same cycle${if (partialMasks) " with masked traffic accounting"
+      else if (observed) " with traffic accounting"
+      else ""}" in {
+      simulate(new ResponseChainedMemoryMaster(readChain, partialMasks)) { dut =>
         dut.io.m_axi_arready.poke(false.B)
         dut.io.m_axi_rvalid.poke(false.B)
         dut.io.m_axi_rlast.poke(false.B)
@@ -148,26 +160,33 @@ class AxiStimulusOrderingSpec extends AnyFlatSpec with GpuHostTestSupport {
         dut.io.reset.poke(false.B)
         val writes = mutable.ArrayBuffer.empty[(BigInt, BigInt, BigInt)]
         val reads = mutable.ArrayBuffer.empty[BigInt]
-        val traffic=if(observed)Some(new AxiTrafficCounters)else None
-        val observer=traffic.map(c=>new AxiTrafficObserver(dut.io,c))
-        var paused=0
-        serviceMemoryMasterPort(new AxiMemoryMasterPort(dut.io), addr => {
-          reads += addr
-          if (addr == 0x1000) BigInt("1122334455667788", 16)
-          else BigInt("99aabbccddeeff00", 16)
-        },
-          writeAckDelay = 1, maxCycles = 40, noProgressLimit = 20,
-          onPausedCycle=Some(()=>{
+        val traffic = if (observed) Some(new AxiTrafficCounters) else None
+        val observer = traffic.map(c => new AxiTrafficObserver(dut.io, c))
+        var paused = 0
+        serviceMemoryMasterPort(
+          new AxiMemoryMasterPort(dut.io),
+          addr => {
+            reads += addr
+            if (addr == 0x1000) BigInt("1122334455667788", 16)
+            else BigInt("99aabbccddeeff00", 16)
+          },
+          writeAckDelay = 1,
+          maxCycles = 40,
+          noProgressLimit = 20,
+          onPausedCycle = Some(() => {
             // These sources chain the next request directly from the previous
             // response. MMIO may advance clocks only after both real replies.
-            dut.io.done.expect(true.B);paused+=1
-            dut.io.m_axi_arready.expect(false.B);dut.io.m_axi_rvalid.expect(false.B)
-            dut.io.m_axi_awready.expect(false.B);dut.io.m_axi_wready.expect(false.B);dut.io.m_axi_bvalid.expect(false.B)
-            dut.io.s_axi_aclk.step(3);false
-          }),onCycle=()=>observer.foreach(_.sample())) { (addr, data, mask) =>
+            dut.io.done.expect(true.B); paused += 1
+            dut.io.m_axi_arready.expect(false.B); dut.io.m_axi_rvalid.expect(false.B)
+            dut.io.m_axi_awready.expect(false.B); dut.io.m_axi_wready.expect(false.B);
+            dut.io.m_axi_bvalid.expect(false.B)
+            dut.io.s_axi_aclk.step(3); false
+          }),
+          onCycle = () => observer.foreach(_.sample())
+        ) { (addr, data, mask) =>
           writes += ((addr, data, mask))
         } { dut.io.done.peek().litToBoolean }
-        assert(paused==1,"the one-shot MMIO hook did not run at the drained boundary")
+        assert(paused == 1, "the one-shot MMIO hook did not run at the drained boundary")
         // A caller can clock control MMIO after service returns. No memory
         // transfer may occur until a new service loop owns its bookkeeping.
         def expectPaused(): Unit = {
@@ -184,31 +203,45 @@ class AxiStimulusOrderingSpec extends AnyFlatSpec with GpuHostTestSupport {
         if (readChain) dut.io.m_axi_arvalid.expect(true.B)
         else { dut.io.m_axi_awvalid.expect(true.B); dut.io.m_axi_wvalid.expect(true.B) }
         expectPaused()
-        serviceMemoryMasterPort(new AxiMemoryMasterPort(dut.io), addr => {
-          reads += addr
-          if (addr == 0x1000) BigInt("1122334455667788", 16)
-          else BigInt("99aabbccddeeff00", 16)
-        }, writeAckDelay = 1, maxCycles = 40, noProgressLimit = 20, onCycle=()=>observer.foreach(_.sample())) {
-          (addr, data, mask) => writes += ((addr, data, mask))
+        serviceMemoryMasterPort(
+          new AxiMemoryMasterPort(dut.io),
+          addr => {
+            reads += addr
+            if (addr == 0x1000) BigInt("1122334455667788", 16)
+            else BigInt("99aabbccddeeff00", 16)
+          },
+          writeAckDelay = 1,
+          maxCycles = 40,
+          noProgressLimit = 20,
+          onCycle = () => observer.foreach(_.sample())
+        ) { (addr, data, mask) =>
+          writes += ((addr, data, mask))
         } { dut.io.done.peek().litToBoolean }
         expectPaused()
         traffic.foreach { counts =>
           counts.assertDrained()
-          val snapshot=counts.snapshot
-          assert(snapshot.readBusBytes==(if(readChain)32 else 0))
-          assert(snapshot.writeBusBytes==(if(readChain)0 else 32))
-          assert(snapshot.enabledWriteBytes==(if(readChain)0 else if(partialMasks)4 else 32))
-          assert(snapshot.readBursts==(if(readChain)4 else 0))
-          assert(snapshot.writeReplies==(if(readChain)0 else 4))
+          val snapshot = counts.snapshot
+          assert(snapshot.readBusBytes == (if (readChain) 32 else 0))
+          assert(snapshot.writeBusBytes == (if (readChain) 0 else 32))
+          assert(snapshot.enabledWriteBytes == (if (readChain) 0 else if (partialMasks) 4 else 32))
+          assert(snapshot.readBursts == (if (readChain) 4 else 0))
+          assert(snapshot.writeReplies == (if (readChain) 0 else 4))
         }
         if (readChain) {
           assert(reads.toSeq == Seq.fill(2)(Seq(BigInt(0x1000), BigInt(0x1040))).flatten)
           assert(writes.isEmpty)
         } else {
           assert(reads.isEmpty)
-          assert(writes.toSeq == Seq.fill(2)(Seq(
-            (BigInt(0x1000), BigInt("1122334455667788", 16), BigInt(if(partialMasks)0x81 else 255)),
-            (BigInt(0x1040), BigInt("99aabbccddeeff00", 16), BigInt(if(partialMasks)0 else 255)))).flatten)
+          assert(
+            writes.toSeq == Seq
+              .fill(2)(
+                Seq(
+                  (BigInt(0x1000), BigInt("1122334455667788", 16), BigInt(if (partialMasks) 0x81 else 255)),
+                  (BigInt(0x1040), BigInt("99aabbccddeeff00", 16), BigInt(if (partialMasks) 0 else 255))
+                )
+              )
+              .flatten
+          )
         }
       }
     }

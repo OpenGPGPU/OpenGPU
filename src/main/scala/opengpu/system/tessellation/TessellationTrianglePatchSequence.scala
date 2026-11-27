@@ -6,7 +6,8 @@ import chisel3.util._
 import opengpu.config.GpuConfig
 import opengpu.graphics._
 
-class TessellationTrianglePatchSequenceDescriptor(config: GpuConfig, p: VertexShaderStageConfig, idWidth: Int) extends Bundle {
+class TessellationTrianglePatchSequenceDescriptor(config: GpuConfig, p: VertexShaderStageConfig, idWidth: Int)
+    extends Bundle {
   val template = new TessellationSystemTriangleInputImageTask(config, p, idWidth)
   val count = UInt(32.W)
   val patchStride = UInt(32.W)
@@ -18,14 +19,11 @@ class TessellationTrianglePatchSequenceCompletion extends Bundle {
   val child = new TessellationSystemTriangleInputImageTaskCompletion
 }
 
-/** Issue a bounded series of input-backed patches to an already-open image frame.
-  * The enclosing frame owner retains allocations until both this sequence and
-  * the frame have drained. It forwards childCancel to the frame, rather than
-  * cancelling the frame before a held task offer has been accepted. A child
-  * offer remains stable through cancellation, and accepted work is retired
-  * before completion. A terminal frameStopped signal flushes an unaccepted
-  * offer; the frame must then be unable to accept it. Task IDs advance per
-  * patch; the draw token stays fixed.
+/** Issue a bounded series of input-backed patches to an already-open image frame. The enclosing frame owner retains
+  * allocations until both this sequence and the frame have drained. It forwards childCancel to the frame, rather than
+  * cancelling the frame before a held task offer has been accepted. A child offer remains stable through cancellation,
+  * and accepted work is retired before completion. A terminal frameStopped signal flushes an unaccepted offer; the
+  * frame must then be unable to accept it. Task IDs advance per patch; the draw token stays fixed.
   */
 class TessellationTrianglePatchSequence(config: GpuConfig, p: VertexShaderStageConfig, idWidth: Int) extends Module {
   val io = IO(new Bundle {
@@ -51,14 +49,15 @@ class TessellationTrianglePatchSequence(config: GpuConfig, p: VertexShaderStageC
     (patch.layout.inputComponents << 2).pad(65)
   private val lastId = patch.taskId +& (io.begin.bits.count - 1.U)
   private val activeInput = patch.layout.inputComponents =/= 0.U
-  private val legalInput = input.allocationBase(5,0) === 0.U && input.allocationLimit(5,0) === 0.U &&
+  private val legalInput = input.allocationBase(5, 0) === 0.U && input.allocationLimit(5, 0) === 0.U &&
     input.allocationLimit > input.allocationBase && input.allocationLimit <= (BigInt(1) << 32).U &&
     input.base >= input.allocationBase && input.limit >= input.base && input.limit <= input.allocationLimit &&
-    input.base(1,0) === 0.U && io.begin.bits.template.stride(1,0) === 0.U &&
-    io.begin.bits.patchStride(1,0) === 0.U && lastEnd <= input.limit && lastEnd <= (BigInt(1) << 32).U
-  private val legal = patch.layout.inputVertices >= 1.U && patch.layout.inputVertices <= TessellationLimits.maxPatchVertices.U &&
-    patch.layout.inputComponents <= 64.U && patch.layout.inputVertices * patch.layout.inputComponents <= TessellationLimits.maxControlOutputComponents.U &&
-    !lastId(32) && (!activeInput || legalInput) && lastBase < (BigInt(1) << 32).U
+    input.base(1, 0) === 0.U && io.begin.bits.template.stride(1, 0) === 0.U &&
+    io.begin.bits.patchStride(1, 0) === 0.U && lastEnd <= input.limit && lastEnd <= (BigInt(1) << 32).U
+  private val legal =
+    patch.layout.inputVertices >= 1.U && patch.layout.inputVertices <= TessellationLimits.maxPatchVertices.U &&
+      patch.layout.inputComponents <= 64.U && patch.layout.inputVertices * patch.layout.inputComponents <= TessellationLimits.maxControlOutputComponents.U &&
+      !lastId(32) && (!activeInput || legalInput) && lastBase < (BigInt(1) << 32).U
   io.begin.ready := state === State.idle && !io.cancel
   when(io.begin.fire) {
     task := io.begin.bits.template; count := io.begin.bits.count; stride := io.begin.bits.patchStride
@@ -77,13 +76,14 @@ class TessellationTrianglePatchSequence(config: GpuConfig, p: VertexShaderStageC
   io.taskCompletion.ready := state === State.waiting
   when(io.taskCompletion.fire) {
     result.child := io.taskCompletion.bits
-    val feedbackStatus=io.taskCompletion.bits.source.source.feedbackStatus
-    val feedbackFault=io.taskCompletion.bits.status===5.U && feedbackStatus=/=0.U && feedbackStatus=/=4.U
+    val feedbackStatus = io.taskCompletion.bits.source.source.feedbackStatus
+    val feedbackFault = io.taskCompletion.bits.status === 5.U && feedbackStatus =/= 0.U && feedbackStatus =/= 4.U
     when(feedbackFault) { result.status := 5.U; result.failedPatch := index; state := State.complete }
       .elsewhen(cancelled || io.cancel) { result.status := 4.U; result.failedPatch := index; state := State.complete }
       .elsewhen(io.taskCompletion.bits.status =/= 0.U) {
         result.status := io.taskCompletion.bits.status; result.failedPatch := index; state := State.complete
-      }.otherwise {
+      }
+      .otherwise {
         result.completed := result.completed + 1.U
         when(index +& 1.U === count) { state := State.complete }
           .otherwise {

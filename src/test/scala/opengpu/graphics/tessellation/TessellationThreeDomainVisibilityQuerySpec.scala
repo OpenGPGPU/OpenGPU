@@ -14,7 +14,7 @@ class TessellationThreeDomainVisibilityQueryHarness extends Module {
   val io = IO(chiselTypeOf(query.io))
   val domain = IO(new Bundle {
     val selected = Input(UInt(2.W))
-    val domains = Flipped(Vec(3,Decoupled(new TypedTilePixelQuadCompletion)))
+    val domains = Flipped(Vec(3, Decoupled(new TypedTilePixelQuadCompletion)))
     val ready = Input(Bool())
   })
   io <> query.io

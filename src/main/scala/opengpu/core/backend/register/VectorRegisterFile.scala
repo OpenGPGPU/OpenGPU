@@ -27,24 +27,20 @@ class VectorRegisterBankWrite(config: GpuConfig) extends Bundle {
 
 /** One warp-local 32 x VLEN vector register bank with four operand reads, a predicate read and one write.
   *
-  * The physical bank mirrors one 1RW macro set per read port and broadcasts
-  * writes to every copy. Macro reads return on the following cycle; the
-  * register manager retains the request and arbitrates same-warp writes.
-  * The manager uses synchronous behavioral reads with the same write priority.
-  * Standalone reference users can retain combinational reads and bypass.
+  * The physical bank mirrors one 1RW macro set per read port and broadcasts writes to every copy. Macro reads return on
+  * the following cycle; the register manager retains the request and arbitrates same-warp writes. The manager uses
+  * synchronous behavioral reads with the same write priority. Standalone reference users can retain combinational reads
+  * and bypass.
   *
-  * `predicateMask` is the architectural v0 mask: the low `lanes` bits of v0's
-  * flat data (lane 0's word), matching the packed layout mask-producing
-  * instructions write back.  It reads register v0 regardless of the
-  * instruction's vs1 field — for loads/stores that field encodes the scalar
-  * base register rs1, not a vector operand.
+  * `predicateMask` is the architectural v0 mask: the low `lanes` bits of v0's flat data (lane 0's word), matching the
+  * packed layout mask-producing instructions write back. It reads register v0 regardless of the instruction's vs1 field
+  * — for loads/stores that field encodes the scalar base register rs1, not a vector operand.
   */
 class VectorRegisterBank(
-  config: GpuConfig,
-  useBlackBox: Boolean = false,
-  synchronousReads: Boolean = false
-)
-    extends Module {
+    config: GpuConfig,
+    useBlackBox: Boolean = false,
+    synchronousReads: Boolean = false
+) extends Module {
   private val vectorWidth = config.lanes * config.xLen
   val io = IO(new Bundle {
     val vs1 = Input(UInt(5.W))
@@ -66,8 +62,10 @@ class VectorRegisterBank(
 
   if (useBlackBox) {
     val physicalWidth = if (vectorWidth <= 32) 32 else 64
-    require(vectorWidth % physicalWidth == 0,
-      s"ASAP7 vector RF macro mapping requires a multiple of $physicalWidth bits per register")
+    require(
+      vectorWidth % physicalWidth == 0,
+      s"ASAP7 vector RF macro mapping requires a multiple of $physicalWidth bits per register"
+    )
     val chunks = vectorWidth / physicalWidth
     val packedWriteData = io.write.bits.data.asUInt
 
@@ -136,7 +134,8 @@ class VectorRegisterBank(
       storage.write(io.write.bits.vd, io.write.bits.data.asUInt)
     }
     def readPort(address: UInt): Vec[UInt] =
-      storage.read(address, !io.write.valid)
+      storage
+        .read(address, !io.write.valid)
         .asTypeOf(Vec(config.lanes, UInt(config.xLen.W)))
 
     io.vs1Data := readPort(io.vs1)
@@ -166,9 +165,9 @@ class VectorRegisterBank(
 
 /** Per-warp vector RF. Unlike the scalar RF, v0 is ordinary writable state. */
 class VectorRegisterFile(
-  config: GpuConfig = GpuConfig(),
-  useBlackBox: Boolean = false,
-  synchronousReads: Boolean = false
+    config: GpuConfig = GpuConfig(),
+    useBlackBox: Boolean = false,
+    synchronousReads: Boolean = false
 ) extends Module {
   val io = IO(new Bundle {
     val read = Input(new VectorRegisterRead(config))

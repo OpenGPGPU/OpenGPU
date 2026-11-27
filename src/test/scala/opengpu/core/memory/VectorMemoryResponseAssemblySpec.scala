@@ -27,8 +27,10 @@ class VectorMemoryResponseAssemblySpec extends AnyFlatSpec {
 
       def run(trial: Int, addresses: Seq[Long], mask: Int, size: Int, store: Boolean): Unit = {
         val bytes = 1 << size
-        val requested = addresses.zipWithIndex.filter { case (_, lane) => (mask & (1 << lane)) != 0 }
-          .flatMap { case (a, _) => Seq(line(a), line(a + bytes - 1)) }.distinct
+        val requested = addresses.zipWithIndex
+          .filter { case (_, lane) => (mask & (1 << lane)) != 0 }
+          .flatMap { case (a, _) => Seq(line(a), line(a + bytes - 1)) }
+          .distinct
         def value(a: Long): Int = ((wrap(a) * 37 + (wrap(a) >>> 9) + trial * 23) & 255).toInt
         def fault(index: Int): Boolean = (index + trial) % 5 == 1
         // A pageFault flag without fault must never create a public page fault.
@@ -100,9 +102,11 @@ class VectorMemoryResponseAssemblySpec extends AnyFlatSpec {
             BigInt(if (requested.contains(line(a))) value(a) else 0) << (8 * b)
           }.sum
           d.io.out.bits.readData(l).expect(word.U)
-          if ((mask & (1 << l)) != 0 && requested.zipWithIndex.exists { case (base, i) =>
-            (base == line(addresses(l)) || base == line(addresses(l) + bytes - 1)) && fault(i)
-          }) expectedFaultMask |= 1 << l
+          if (
+            (mask & (1 << l)) != 0 && requested.zipWithIndex.exists { case (base, i) =>
+              (base == line(addresses(l)) || base == line(addresses(l) + bytes - 1)) && fault(i)
+            }
+          ) expectedFaultMask |= 1 << l
         }
         d.io.out.valid.expect(true.B); d.io.out.bits.faultMask.expect(expectedFaultMask.U)
         d.io.out.bits.pageFault.expect(requested.indices.exists(i => fault(i) && pageFault(i)).B)

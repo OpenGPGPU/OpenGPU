@@ -3,65 +3,113 @@ package opengpu.dispatch
 import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
-import opengpu.graphics.{ShaderPayloadConfig,ShaderPayloadPin}
+import opengpu.graphics.{ShaderPayloadConfig, ShaderPayloadPin}
 import opengpu.core.memory.ShaderPayloadBinding
 
 /** Two independent task producers sharing the same physical CUs.
   *
-  * Tags belong to their producer's namespace: compute command 7 and graphics
-  * batch 7 may execute together. Ownership is retained until the CU's
-  * completion is stored in its owner's queue. The two completion queues
-  * prevent a stalled graphics consumer from blocking compute retirement.
-  * This dispatches already-partitioned tasks; it does not split a draw or
-  * distribute the workgroups of one KernelLaunch between CUs.
+  * Tags belong to their producer's namespace: compute command 7 and graphics batch 7 may execute together. Ownership is
+  * retained until the CU's completion is stored in its owner's queue. The two completion queues prevent a stalled
+  * graphics consumer from blocking compute retirement. This dispatches already-partitioned tasks; it does not split a
+  * draw or distribute the workgroups of one KernelLaunch between CUs.
   */
 class SharedCuKernelDispatcher(
-  config: GpuConfig = GpuConfig(),
-  numComputeUnits: Int = 2,
-  commandIdWidth: Int = 8,
-  shaderPayload: Option[ShaderPayloadConfig] = None,
-  imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false
+    config: GpuConfig = GpuConfig(),
+    numComputeUnits: Int = 2,
+    commandIdWidth: Int = 8,
+    shaderPayload: Option[ShaderPayloadConfig] = None,
+    imageAvailable: Boolean = false,
+    storageAvailable: Boolean = false,
+    computeUniformAvailable: Boolean = false,
+    computeTextureAvailable: Boolean = false,
+    atomicCounterAvailable: Boolean = false
 ) extends Module {
   require(numComputeUnits > 0)
   require(commandIdWidth > 0)
 
   val io = IO(new Bundle {
-    val launch = Flipped(Decoupled(new TaggedKernelLaunch(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable, atomicCounterAvailable)))
+    val launch = Flipped(
+      Decoupled(
+        new TaggedKernelLaunch(
+          config,
+          commandIdWidth,
+          imageAvailable,
+          storageAvailable,
+          computeUniformAvailable,
+          computeTextureAvailable,
+          atomicCounterAvailable
+        )
+      )
+    )
     val completion = Decoupled(new TaggedKernelCompletion(commandIdWidth))
-    val graphicsLaunch = Flipped(Decoupled(new TaggedKernelLaunch(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable, atomicCounterAvailable)))
+    val graphicsLaunch = Flipped(
+      Decoupled(
+        new TaggedKernelLaunch(
+          config,
+          commandIdWidth,
+          imageAvailable,
+          storageAvailable,
+          computeUniformAvailable,
+          computeTextureAvailable,
+          atomicCounterAvailable
+        )
+      )
+    )
     val graphicsCompletion = Decoupled(new TaggedKernelCompletion(commandIdWidth))
-    val cuImages = if(imageAvailable) Some(Output(Vec(numComputeUnits, new opengpu.graphics.ShaderImageTask))) else None
-    val cuStorage = if(storageAvailable) Some(Output(Vec(numComputeUnits, new opengpu.core.memory.StorageTask))) else None
-    val cuComputeUniform = if(computeUniformAvailable) Some(Output(Vec(numComputeUnits, new opengpu.core.memory.ComputeUniformTask))) else None
-    val cuComputeTexture = if(computeTextureAvailable) Some(Output(Vec(numComputeUnits, new opengpu.core.memory.ComputeTextureTask))) else None
-    val cuAtomicCounter = if(atomicCounterAvailable) Some(Output(Vec(numComputeUnits, new opengpu.core.memory.AtomicCounterTask))) else None
+    val cuImages =
+      if (imageAvailable) Some(Output(Vec(numComputeUnits, new opengpu.graphics.ShaderImageTask))) else None
+    val cuStorage =
+      if (storageAvailable) Some(Output(Vec(numComputeUnits, new opengpu.core.memory.StorageTask))) else None
+    val cuComputeUniform =
+      if (computeUniformAvailable) Some(Output(Vec(numComputeUnits, new opengpu.core.memory.ComputeUniformTask)))
+      else None
+    val cuComputeTexture =
+      if (computeTextureAvailable) Some(Output(Vec(numComputeUnits, new opengpu.core.memory.ComputeTextureTask)))
+      else None
+    val cuAtomicCounter =
+      if (atomicCounterAvailable) Some(Output(Vec(numComputeUnits, new opengpu.core.memory.AtomicCounterTask)))
+      else None
     val cuLaunch = Vec(numComputeUnits, Decoupled(new KernelLaunch(config)))
     val cuCompletion = Vec(numComputeUnits, Flipped(Decoupled(new KernelCompletion)))
     val busy = Output(UInt(numComputeUnits.W))
     val graphicsOwner = Output(UInt(numComputeUnits.W))
     val taskIds = Output(Vec(numComputeUnits, UInt(commandIdWidth.W)))
-    /** Sampled atomically with graphicsLaunch.fire; a false valid selects
-      * the existing memory-backed graphics transport for that task.
+
+    /** Sampled atomically with graphicsLaunch.fire; a false valid selects the existing memory-backed graphics transport
+      * for that task.
       */
-    val graphicsPayload=shaderPayload.map(p=>Input(Valid(new ShaderPayloadBinding(config,p))))
-    val cuPayload=shaderPayload.map(p=>Output(Vec(numComputeUnits,Valid(new ShaderPayloadBinding(config,p)))))
-    val cuPayloadDrained=shaderPayload.map(_=>Input(Vec(numComputeUnits,Bool())))
-    /** Accepted tasks remain pinned through producer completion consumption;
-      * the extra entry covers the currently offered graphics launch.
+    val graphicsPayload = shaderPayload.map(p => Input(Valid(new ShaderPayloadBinding(config, p))))
+    val cuPayload = shaderPayload.map(p => Output(Vec(numComputeUnits, Valid(new ShaderPayloadBinding(config, p)))))
+    val cuPayloadDrained = shaderPayload.map(_ => Input(Vec(numComputeUnits, Bool())))
+
+    /** Accepted tasks remain pinned through producer completion consumption; the extra entry covers the currently
+      * offered graphics launch.
       */
-    val payloadPins=shaderPayload.map(p=>Output(Vec(numComputeUnits+1,Valid(new ShaderPayloadPin(p)))))
+    val payloadPins = shaderPayload.map(p => Output(Vec(numComputeUnits + 1, Valid(new ShaderPayloadPin(p)))))
   })
 
   private val occupied = RegInit(VecInit(Seq.fill(numComputeUnits)(false.B)))
   private val graphics = RegInit(VecInit(Seq.fill(numComputeUnits)(false.B)))
   private val tags = Reg(Vec(numComputeUnits, UInt(commandIdWidth.W)))
-  private val payloadTasks=shaderPayload.map(p=>Reg(Vec(numComputeUnits,new ShaderPayloadBinding(config,p))))
-  private val payloadActive=shaderPayload.map(_=>RegInit(VecInit(Seq.fill(numComputeUnits)(false.B))))
-  private val pinnedActive=shaderPayload.map(_=>RegInit(VecInit(Seq.fill(numComputeUnits)(false.B))))
-  private val pinnedTags=shaderPayload.map(_=>Reg(Vec(numComputeUnits,UInt(commandIdWidth.W))))
-  private val pinnedLeases=shaderPayload.map(p=>Reg(Vec(numComputeUnits,new ShaderPayloadPin(p))))
-  private val launches = Module(new RRArbiter(
-    new TaggedKernelLaunch(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable, atomicCounterAvailable), 2))
+  private val payloadTasks = shaderPayload.map(p => Reg(Vec(numComputeUnits, new ShaderPayloadBinding(config, p))))
+  private val payloadActive = shaderPayload.map(_ => RegInit(VecInit(Seq.fill(numComputeUnits)(false.B))))
+  private val pinnedActive = shaderPayload.map(_ => RegInit(VecInit(Seq.fill(numComputeUnits)(false.B))))
+  private val pinnedTags = shaderPayload.map(_ => Reg(Vec(numComputeUnits, UInt(commandIdWidth.W))))
+  private val pinnedLeases = shaderPayload.map(p => Reg(Vec(numComputeUnits, new ShaderPayloadPin(p))))
+  private val launches = Module(
+    new RRArbiter(
+      new TaggedKernelLaunch(
+        config,
+        commandIdWidth,
+        imageAvailable,
+        storageAvailable,
+        computeUniformAvailable,
+        computeTextureAvailable,
+        atomicCounterAvailable
+      ),
+      2
+    )
+  )
   // Reserve completion storage before admitting work. Without these credits,
   // a producer with a full completion queue could occupy every CU with tasks
   // that cannot retire, indirectly starving the other producer.
@@ -70,11 +118,11 @@ class SharedCuKernelDispatcher(
     val credit = outstanding(owner) < numComputeUnits.U
     launches.io.in(owner).valid := port.valid && credit
     launches.io.in(owner).bits := port.bits
-    if(owner==0) {
-      launches.io.in(owner).bits.launch.invocations:=0.U.asTypeOf(launches.io.in(owner).bits.launch.invocations)
+    if (owner == 0) {
+      launches.io.in(owner).bits.launch.invocations := 0.U.asTypeOf(launches.io.in(owner).bits.launch.invocations)
       // Compute callers cannot borrow graphics-stage image permissions, and
       // older direct callers do not need to initialize the new stage field.
-      if(imageAvailable) launches.io.in(owner).bits.images.get.stage:=opengpu.graphics.GraphicsStage.compute.U
+      if (imageAvailable) launches.io.in(owner).bits.images.get.stage := opengpu.graphics.GraphicsStage.compute.U
     }
     port.ready := launches.io.in(owner).ready && credit
   }
@@ -91,28 +139,29 @@ class SharedCuKernelDispatcher(
     io.cuLaunch(cu).bits := launches.io.out.bits.launch
     // A CU captures this sideband on the very same kernel.fire. Registered
     // taskIds/graphicsOwner still describe the preceding task at that edge.
-    if(imageAvailable) { io.cuImages.get(cu) := launches.io.out.bits.images.get }
-    if(storageAvailable) { io.cuStorage.get(cu) := launches.io.out.bits.storage.get }
-    if(computeUniformAvailable) { io.cuComputeUniform.get(cu) := launches.io.out.bits.computeUniform.get }
-    if(computeTextureAvailable) { io.cuComputeTexture.get(cu) := launches.io.out.bits.computeTexture.get }
-    if(atomicCounterAvailable) { io.cuAtomicCounter.get(cu) := launches.io.out.bits.atomicCounter.get }
+    if (imageAvailable) { io.cuImages.get(cu) := launches.io.out.bits.images.get }
+    if (storageAvailable) { io.cuStorage.get(cu) := launches.io.out.bits.storage.get }
+    if (computeUniformAvailable) { io.cuComputeUniform.get(cu) := launches.io.out.bits.computeUniform.get }
+    if (computeTextureAvailable) { io.cuComputeTexture.get(cu) := launches.io.out.bits.computeTexture.get }
+    if (atomicCounterAvailable) { io.cuAtomicCounter.get(cu) := launches.io.out.bits.atomicCounter.get }
     when(io.cuLaunch(cu).fire) {
       occupied(cu) := true.B
       graphics(cu) := launches.io.chosen === 1.U
       tags(cu) := launches.io.out.bits.commandId
-      shaderPayload.foreach { _=>
-        payloadTasks.get(cu):=io.graphicsPayload.get.bits
-        payloadActive.get(cu):=launches.io.chosen===1.U && io.graphicsPayload.get.valid
+      shaderPayload.foreach { _ =>
+        payloadTasks.get(cu) := io.graphicsPayload.get.bits
+        payloadActive.get(cu) := launches.io.chosen === 1.U && io.graphicsPayload.get.valid
       }
     }
-    shaderPayload.foreach { _=>
-      io.cuPayload.get(cu).valid:=occupied(cu) && graphics(cu) && payloadActive.get(cu)
-      io.cuPayload.get(cu).bits:=payloadTasks.get(cu)
+    shaderPayload.foreach { _ =>
+      io.cuPayload.get(cu).valid := occupied(cu) && graphics(cu) && payloadActive.get(cu)
+      io.cuPayload.get(cu).bits := payloadTasks.get(cu)
     }
   }
 
-  private val transportDrained=VecInit((0 until numComputeUnits).map(cu=>
-    io.cuPayloadDrained.map(_(cu)).getOrElse(true.B)))
+  private val transportDrained = VecInit(
+    (0 until numComputeUnits).map(cu => io.cuPayloadDrained.map(_(cu)).getOrElse(true.B))
+  )
 
   private val completions = Seq.fill(2) {
     Module(new RRArbiter(new TaggedKernelCompletion(commandIdWidth), numComputeUnits))
@@ -131,30 +180,38 @@ class SharedCuKernelDispatcher(
   }
   io.completion <> queues(0).io.deq
   io.graphicsCompletion <> queues(1).io.deq
-  shaderPayload.foreach { p=>
+  shaderPayload.foreach { p =>
     val free = ~pinnedActive.get.asUInt
-    val slot=if(numComputeUnits==1)0.U else PriorityEncoder(free)
-    val incoming=io.graphicsPayload.get
-    def assign(pin: ShaderPayloadPin): Unit={
-      pin.handle:=incoming.bits.handle;pin.generation:=incoming.bits.generation
-      pin.context:=incoming.bits.context;pin.owner:=incoming.bits.owner
+    val slot = if (numComputeUnits == 1) 0.U else PriorityEncoder(free)
+    val incoming = io.graphicsPayload.get
+    def assign(pin: ShaderPayloadPin): Unit = {
+      pin.handle := incoming.bits.handle; pin.generation := incoming.bits.generation
+      pin.context := incoming.bits.context; pin.owner := incoming.bits.owner
     }
-    for(i <- 0 until numComputeUnits) {
-      io.payloadPins.get(i).valid:=pinnedActive.get(i)
-      io.payloadPins.get(i).bits:=pinnedLeases.get(i)
-      when(io.graphicsCompletion.fire && pinnedActive.get(i) &&
-          pinnedTags.get(i)===io.graphicsCompletion.bits.commandId) {pinnedActive.get(i):=false.B}
+    for (i <- 0 until numComputeUnits) {
+      io.payloadPins.get(i).valid := pinnedActive.get(i)
+      io.payloadPins.get(i).bits := pinnedLeases.get(i)
+      when(
+        io.graphicsCompletion.fire && pinnedActive.get(i) &&
+          pinnedTags.get(i) === io.graphicsCompletion.bits.commandId
+      ) { pinnedActive.get(i) := false.B }
     }
-    io.payloadPins.get(numComputeUnits).valid:=io.graphicsLaunch.valid && incoming.valid
+    io.payloadPins.get(numComputeUnits).valid := io.graphicsLaunch.valid && incoming.valid
     assign(io.payloadPins.get(numComputeUnits).bits)
     when(io.graphicsLaunch.fire && incoming.valid) {
-      assert(free.orR,"graphics payload admission exceeded reserved completion capacity")
-      val retiring=io.graphicsCompletion.fire &&
-        io.graphicsCompletion.bits.commandId===io.graphicsLaunch.bits.commandId
-      assert(retiring || !VecInit((0 until numComputeUnits).map(i=>pinnedActive.get(i) &&
-        pinnedTags.get(i)===io.graphicsLaunch.bits.commandId)).asUInt.orR,
-        "concurrent graphics payload tasks require distinct producer tags")
-      pinnedActive.get(slot):=true.B;pinnedTags.get(slot):=io.graphicsLaunch.bits.commandId
+      assert(free.orR, "graphics payload admission exceeded reserved completion capacity")
+      val retiring = io.graphicsCompletion.fire &&
+        io.graphicsCompletion.bits.commandId === io.graphicsLaunch.bits.commandId
+      assert(
+        retiring || !VecInit(
+          (0 until numComputeUnits).map(i =>
+            pinnedActive.get(i) &&
+              pinnedTags.get(i) === io.graphicsLaunch.bits.commandId
+          )
+        ).asUInt.orR,
+        "concurrent graphics payload tasks require distinct producer tags"
+      )
+      pinnedActive.get(slot) := true.B; pinnedTags.get(slot) := io.graphicsLaunch.bits.commandId
       assign(pinnedLeases.get(slot))
     }
   }
@@ -163,13 +220,15 @@ class SharedCuKernelDispatcher(
     when(admitted =/= port.fire) {
       outstanding(owner) := Mux(admitted, outstanding(owner) + 1.U, outstanding(owner) - 1.U)
     }
-    assert(outstanding(owner) <= numComputeUnits.U,
-      "shared-CU completion reservations exceeded queue capacity")
+    assert(outstanding(owner) <= numComputeUnits.U, "shared-CU completion reservations exceeded queue capacity")
   }
 
   for (cu <- 0 until numComputeUnits) {
-    io.cuCompletion(cu).ready := occupied(cu) && transportDrained(cu) && Mux(graphics(cu),
-      completions(1).io.in(cu).ready, completions(0).io.in(cu).ready)
+    io.cuCompletion(cu).ready := occupied(cu) && transportDrained(cu) && Mux(
+      graphics(cu),
+      completions(1).io.in(cu).ready,
+      completions(0).io.in(cu).ready
+    )
     when(io.cuCompletion(cu).fire) { occupied(cu) := false.B }
     when(io.cuCompletion(cu).valid) {
       assert(occupied(cu), "an idle shared CU cannot complete a task")

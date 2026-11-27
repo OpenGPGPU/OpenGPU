@@ -14,28 +14,27 @@ import opengpu.core.memory.{
   SharedAtomicResponse
 }
 
-/** Unified render descriptor fetch, launch, retirement and host register bank.
-  * Command/framebuffer/shader ports attach to the shared GPU memory hierarchy.
-  * Legacy render START is inert; dedicated DMA and scanout registers remain.
+/** Unified render descriptor fetch, launch, retirement and host register bank. Command/framebuffer/shader ports attach
+  * to the shared GPU memory hierarchy. Legacy render START is inert; dedicated DMA and scanout registers remain.
   */
 class RenderHost(
-  config: GraphicsConfig = GraphicsConfig(),
-  gpuConfig: GpuConfig = GpuConfig(),
-  fragCore: Boolean = false,
-  vertCore: Boolean = false,
-  deviceId: Int = 0x4755, // 'GU'
-  version: Int = 0x0001,
-  unifiedCommands: Boolean = false,
-  textureFaultReporting: Boolean = false,
-  commandIdWidth: Int = 8,
-  computeScalarFpu: Boolean = false,
-  graphicsScalarFpu: Boolean = true,
-  sharedShader: Option[SharedCuShaderConfig] = None,
-  protectedVmState: Boolean = false,
-  persistentAttachments: Boolean = false,
-  tileStoreCredits: Int = opengpu.config.MobileGpuConfig().attachmentStoreCredits,
-  useTileSramBlackBoxes: Boolean = false,
-  externalBinnedRender: Boolean = false
+    config: GraphicsConfig = GraphicsConfig(),
+    gpuConfig: GpuConfig = GpuConfig(),
+    fragCore: Boolean = false,
+    vertCore: Boolean = false,
+    deviceId: Int = 0x4755, // 'GU'
+    version: Int = 0x0001,
+    unifiedCommands: Boolean = false,
+    textureFaultReporting: Boolean = false,
+    commandIdWidth: Int = 8,
+    computeScalarFpu: Boolean = false,
+    graphicsScalarFpu: Boolean = true,
+    sharedShader: Option[SharedCuShaderConfig] = None,
+    protectedVmState: Boolean = false,
+    persistentAttachments: Boolean = false,
+    tileStoreCredits: Int = opengpu.config.MobileGpuConfig().attachmentStoreCredits,
+    useTileSramBlackBoxes: Boolean = false,
+    externalBinnedRender: Boolean = false
 ) extends Module {
   require(!persistentAttachments || (unifiedCommands && config.tileAttachments && !vertCore && !config.tileBinning))
   require(!externalBinnedRender || (unifiedCommands && !persistentAttachments))
@@ -45,20 +44,24 @@ class RenderHost(
   private val kernelWordTransactions = SharedCuShaderConfig.kernelWordTransactions(sharedShader)
 
   val io = IO(new Bundle {
-    val shared = sharedShader.filter(_ => !externalBinnedRender).map(pool => Flipped(new SharedCuGraphicsPort(
-      gpuConfig, pool.taskIdWidth, pool.numComputeUnits)))
+    val shared = sharedShader
+      .filter(_ => !externalBinnedRender)
+      .map(pool => Flipped(new SharedCuGraphicsPort(gpuConfig, pool.taskIdWidth, pool.numComputeUnits)))
     val reg = new Bundle {
       val req = Flipped(Decoupled(new RenderHostRegRequest))
       val resp = Decoupled(new RenderHostRegResponse)
     }
+
     /** Graphics/unified completion interrupt; IRQ.PENDING && IRQ.ENABLE. */
     val irq = Output(Bool())
+
     /** Completion event from an integrated compute/command subsystem. */
     val externalCompletion = Input(Bool())
     val instructionSatp = Input(UInt(32.W))
     val instructionTlbFlush = Flipped(Valid(new opengpu.core.memory.VectorTlbFlush(gpuConfig)))
     val vectorSatp = Input(UInt(32.W))
     val vectorTlbFlush = Flipped(Valid(new opengpu.core.memory.VectorTlbFlush(gpuConfig)))
+
     /** Pulse when a failed texture response is consumed by the renderer. */
     val textureFault = if (textureFaultReporting) Some(Input(Bool())) else None
     val commandFault = if (persistentAttachments) Some(Input(Bool())) else None
@@ -78,8 +81,10 @@ class RenderHost(
     }
     val kernelMemReq = Decoupled(new ComputeMemoryRequest(gpuConfig))
     val kernelMemResp = Flipped(Decoupled(new ComputeMemoryResponse()))
-    val kernelWordMemReq = Decoupled(new ComputeMemoryRequest(gpuConfig, 64, SharedCuShaderConfig.kernelWordTransactions(sharedShader)))
-    val kernelWordMemResp = Flipped(Decoupled(new ComputeMemoryResponse(64, SharedCuShaderConfig.kernelWordTransactions(sharedShader))))
+    val kernelWordMemReq =
+      Decoupled(new ComputeMemoryRequest(gpuConfig, 64, SharedCuShaderConfig.kernelWordTransactions(sharedShader)))
+    val kernelWordMemResp =
+      Flipped(Decoupled(new ComputeMemoryResponse(64, SharedCuShaderConfig.kernelWordTransactions(sharedShader))))
     val kernelL1Invalidate = Flipped(Decoupled(new CacheLineInvalidate(gpuConfig)))
     val kernelL1InvalidateDone = Decoupled(new CacheLineInvalidate(gpuConfig))
     val kernelGlobalAtomicRequest = Decoupled(new SharedAtomicRequest(gpuConfig))
@@ -89,20 +94,40 @@ class RenderHost(
       val req = Decoupled(new OmMemoryRequest)
       val resp = Flipped(Decoupled(new OmMemoryResponse))
     }
-    /** VM descriptor binding: legacy word fetch or bounded persistent line
-      * fetch, selected explicitly by the elaborated host profile. */
-    val renderCommand = Flipped(Decoupled(
-      new RenderDescriptor(gpuConfig, commandIdWidth, persistentAttachments)))
+
+    /** VM descriptor binding: legacy word fetch or bounded persistent line fetch, selected explicitly by the elaborated
+      * host profile.
+      */
+    val renderCommand = Flipped(Decoupled(new RenderDescriptor(gpuConfig, commandIdWidth, persistentAttachments)))
     val renderCompletion = Decoupled(new RenderCompletion(commandIdWidth))
+
     /** Includes descriptor fetch, launch, execution and unconsumed completion. */
     val externalRenderBusy = if (externalBinnedRender) Some(Input(Bool())) else None
     val drained = Output(Bool())
     val performance = Output(new GraphicsPerformanceEvents)
   })
 
-  private val core = if (externalBinnedRender) None else Some(Module(new RenderCore(
-    config, gpuConfig, fragCore, vertCore, graphicsScalarFpu, sharedShader,
-    persistentAttachments, tileStoreCredits, useTileSramBlackBoxes, constantBlend = vertCore && version >= 9, biasedClamp = vertCore && version >= 10, mirroredRepeat = vertCore && version >= 11)))
+  private val core =
+    if (externalBinnedRender) None
+    else
+      Some(
+        Module(
+          new RenderCore(
+            config,
+            gpuConfig,
+            fragCore,
+            vertCore,
+            graphicsScalarFpu,
+            sharedShader,
+            persistentAttachments,
+            tileStoreCredits,
+            useTileSramBlackBoxes,
+            constantBlend = vertCore && version >= 9,
+            biasedClamp = vertCore && version >= 10,
+            mirroredRepeat = vertCore && version >= 11
+          )
+        )
+      )
   private val coreIO = core.map(_.io).getOrElse {
     // External native rendering owns its own vertex/raster/fragment pipeline.
     // There is no legal legacy launch or persistent-tile submission here.
@@ -135,8 +160,14 @@ class RenderHost(
     idle.done := true.B
     idle
   }
-  private val tileHost = if (persistentAttachments) Some(Module(new TileJobDescriptorReader(
-    gpuConfig, config, commandIdWidth, kernelWordTransactions, stagingTransactions))) else None
+  private val tileHost =
+    if (persistentAttachments)
+      Some(
+        Module(
+          new TileJobDescriptorReader(gpuConfig, config, commandIdWidth, kernelWordTransactions, stagingTransactions)
+        )
+      )
+    else None
   sharedShader.filter(_ => !externalBinnedRender).foreach(_ => coreIO.shared.get <> io.shared.get)
   coreIO.instructionSatp := io.instructionSatp
   coreIO.instructionTlbFlush := io.instructionTlbFlush
@@ -158,12 +189,20 @@ class RenderHost(
   // staging/sampler bridge. Responses are routed by transaction-ID range:
   // The core owns the CU-scaled staging range; the DMA engines share the
   // following four IDs and descriptor admission makes them mutually exclusive.
-  private val fill = Module(new FillEngine(gpuConfig, maxOutstanding = kernelWordTransactions,
-    transactionIdBase = stagingTransactions))
-  private val blit = Module(new CopyEngine(gpuConfig, maxOutstanding = kernelWordTransactions,
-    lineSlots = 2, transactionIdBase = stagingTransactions))
-  private val strided = Module(new StridedCopyEngine(gpuConfig,
-    maxOutstanding = kernelWordTransactions, transactionIdBase = stagingTransactions))
+  private val fill = Module(
+    new FillEngine(gpuConfig, maxOutstanding = kernelWordTransactions, transactionIdBase = stagingTransactions)
+  )
+  private val blit = Module(
+    new CopyEngine(
+      gpuConfig,
+      maxOutstanding = kernelWordTransactions,
+      lineSlots = 2,
+      transactionIdBase = stagingTransactions
+    )
+  )
+  private val strided = Module(
+    new StridedCopyEngine(gpuConfig, maxOutstanding = kernelWordTransactions, transactionIdBase = stagingTransactions)
+  )
   private val dmaIdle :: dmaFill :: dmaBlit :: dmaStrided :: Nil = Enum(4)
   private val dmaOwner = RegInit(dmaIdle)
   // Hardware clear (FillEngine) programming.
@@ -184,15 +223,21 @@ class RenderHost(
   private val descriptorRequest = tileHost.map(_.io.memoryRequest)
   io.kernelWordMemReq.valid := descriptorRequest.map(_.valid).getOrElse(false.B) ||
     fill.io.memoryRequest.valid || blit.io.memoryRequest.valid ||
-      strided.io.memoryRequest.valid ||
-      coreIO.kernelWordMemReq.valid
-  private val coreWordRequest=Wire(new ComputeMemoryRequest(gpuConfig,64,kernelWordTransactions))
-  coreWordRequest:=coreIO.kernelWordMemReq.bits
-  private val regularWordRequest = Mux(fill.io.memoryRequest.valid,
-    fill.io.memoryRequest.bits, Mux(blit.io.memoryRequest.valid,
-      blit.io.memoryRequest.bits, Mux(strided.io.memoryRequest.valid,
-        strided.io.memoryRequest.bits, coreWordRequest)))
-  io.kernelWordMemReq.bits := descriptorRequest.map(r => Mux(r.valid, r.bits, regularWordRequest))
+    strided.io.memoryRequest.valid ||
+    coreIO.kernelWordMemReq.valid
+  private val coreWordRequest = Wire(new ComputeMemoryRequest(gpuConfig, 64, kernelWordTransactions))
+  coreWordRequest := coreIO.kernelWordMemReq.bits
+  private val regularWordRequest = Mux(
+    fill.io.memoryRequest.valid,
+    fill.io.memoryRequest.bits,
+    Mux(
+      blit.io.memoryRequest.valid,
+      blit.io.memoryRequest.bits,
+      Mux(strided.io.memoryRequest.valid, strided.io.memoryRequest.bits, coreWordRequest)
+    )
+  )
+  io.kernelWordMemReq.bits := descriptorRequest
+    .map(r => Mux(r.valid, r.bits, regularWordRequest))
     .getOrElse(regularWordRequest)
   descriptorRequest.foreach(_.ready := io.kernelWordMemReq.ready)
   private val descriptorOffered = descriptorRequest.map(_.valid).getOrElse(false.B)
@@ -231,12 +276,17 @@ class RenderHost(
       !wordRespIsStrided && !wordRespIsTile
   coreIO.kernelWordMemResp.bits := io.kernelWordMemResp.bits
   private val regularWordResponseReady =
-    Mux(wordRespIsStrided, strided.io.memoryResponse.ready,
-      Mux(wordRespIsBlit, blit.io.memoryResponse.ready,
-      Mux(wordRespIsFill, fill.io.memoryResponse.ready,
-        coreIO.kernelWordMemResp.ready)))
-  io.kernelWordMemResp.ready := tileHost.map(h =>
-    Mux(wordRespIsTile, h.io.memoryResponse.ready, regularWordResponseReady))
+    Mux(
+      wordRespIsStrided,
+      strided.io.memoryResponse.ready,
+      Mux(
+        wordRespIsBlit,
+        blit.io.memoryResponse.ready,
+        Mux(wordRespIsFill, fill.io.memoryResponse.ready, coreIO.kernelWordMemResp.ready)
+      )
+    )
+  io.kernelWordMemResp.ready := tileHost
+    .map(h => Mux(wordRespIsTile, h.io.memoryResponse.ready, regularWordResponseReady))
     .getOrElse(regularWordResponseReady)
 
   fill.io.descriptor.bits.descriptorId := 0.U
@@ -282,9 +332,10 @@ class RenderHost(
   private val scanoutStrideReg = RegInit(0.U(32.W))
   private val scanoutWidthReg = RegInit(0.U(32.W))
   private val scanoutHeightReg = RegInit(0.U(32.W))
-  /** Render viewport. A non-zero scanout size latches it; clearing scanout
-    * (disable) leaves the last mode in place. Reset matches the elaborated
-    * maximum, so an unprogrammed device keeps the previous contract. */
+
+  /** Render viewport. A non-zero scanout size latches it; clearing scanout (disable) leaves the last mode in place.
+    * Reset matches the elaborated maximum, so an unprogrammed device keeps the previous contract.
+    */
   private val viewportW = RegInit(config.screenWidth.U(16.W))
   private val viewportH = RegInit(config.screenHeight.U(16.W))
   private val scanoutFormatReg = RegInit(0.U(32.W))
@@ -301,6 +352,7 @@ class RenderHost(
   private val irqPending = RegInit(false.B)
   private val vblankPending = RegInit(false.B)
   private val sawBusy = RegInit(false.B)
+
   /** True while the running job was launched by a unified render command. */
   private val ownerUnified = RegInit(false.B)
 
@@ -348,9 +400,11 @@ class RenderHost(
   // DMA clears/copies can address the same attachments. While a tile is
   // resident, those words are newer than external memory, so serialize these
   // operations with render jobs in the opt-in tile-store configuration.
-  private val tileDmaAllowed = if (config.tileAttachments)
-    !busy && !renderFetching && !renderLaunch && !renderDonePending && !tileHostBusy && !io.externalRenderBusy.getOrElse(false.B)
-  else !io.externalRenderBusy.getOrElse(false.B)
+  private val tileDmaAllowed =
+    if (config.tileAttachments)
+      !busy && !renderFetching && !renderLaunch && !renderDonePending && !tileHostBusy && !io.externalRenderBusy
+        .getOrElse(false.B)
+    else !io.externalRenderBusy.getOrElse(false.B)
   fill.io.descriptor.valid := clearStartWrite && dmaOwner === dmaIdle &&
     !blitStartWrite && !stridedStartWrite && tileDmaAllowed
   blit.io.descriptor.valid := blitStartWrite && dmaOwner === dmaIdle &&
@@ -360,8 +414,10 @@ class RenderHost(
   when(fill.io.descriptor.fire) { dmaOwner := dmaFill }
   when(blit.io.descriptor.fire) { dmaOwner := dmaBlit }
   when(strided.io.descriptor.fire) { dmaOwner := dmaStrided }
-  when(fill.io.completion.fire || blit.io.completion.fire ||
-      strided.io.completion.fire) {
+  when(
+    fill.io.completion.fire || blit.io.completion.fire ||
+      strided.io.completion.fire
+  ) {
     dmaOwner := dmaIdle
   }
 
@@ -369,8 +425,7 @@ class RenderHost(
   // (The job ring is retired; no queue launches occur.)
 
   private val statusBits =
-    Cat(0.U(26.W), strided.io.busy, blit.io.busy, fill.io.busy,
-      error, done, busy)
+    Cat(0.U(26.W), strided.io.busy, blit.io.busy, fill.io.busy, error, done, busy)
   private val irqBits = Cat(0.U(29.W), vblankPending, irqPending, irqEnable)
   private val scanoutActive = scanoutControlReg(0) &&
     scanoutBaseReg.orR && scanoutStrideReg.orR &&
@@ -398,7 +453,8 @@ class RenderHost(
       (maxSampleMode << GpuCapabilities.MsaaMaxModeShift) |
       (if (unifiedCommands) (1 << GpuCapabilities.UnifiedReset) else 0) |
       (1 << GpuCapabilities.PersistentDepth) |
-      (if (unifiedCommands && !persistentAttachments && !externalBinnedRender) (1 << GpuCapabilities.UnifiedRender) else 0) |
+      (if (unifiedCommands && !persistentAttachments && !externalBinnedRender) (1 << GpuCapabilities.UnifiedRender)
+       else 0) |
       (if (persistentAttachments) (1 << GpuCapabilities.PersistentTileJobs) else 0) |
       (if (persistentAttachments) (1L << GpuCapabilities.TypedTileCommands) else 0L) |
       (1 << GpuCapabilities.HwVblank) |
@@ -406,54 +462,57 @@ class RenderHost(
       // graphics validators only when the shader CU carries the FP
       // backend too, so both halves have to be present.
       (if (computeScalarFpu && graphicsScalarFpu)
-        (1 << GpuCapabilities.ComputeScalarFpu) else 0) |
+         (1 << GpuCapabilities.ComputeScalarFpu)
+       else 0) |
       (gpuConfig.warps * gpuConfig.lanes << GpuCapabilities.FragmentBatchShift))
       .U(32.W)
 
   private def readReg: UInt =
-    MuxLookup(rAddr, 0.U(32.W))(Seq(
-      RenderHostRegs.ID.U -> id,
-      RenderHostRegs.STATUS.U -> statusBits,
-      RenderHostRegs.IRQ.U -> irqBits,
-      RenderHostRegs.CMD_BASE.U -> cmdBaseReg,
-      RenderHostRegs.CMD_COUNT.U -> cmdCountReg,
-      RenderHostRegs.COLOR_BASE.U -> colorBaseReg,
-      RenderHostRegs.DEPTH_BASE.U -> depthBaseReg,
-      RenderHostRegs.STRIDE.U -> strideReg,
-      RenderHostRegs.DEPTH_TEST_ENABLE.U -> depthTestEnableReg,
-      RenderHostRegs.DEPTH_FUNC.U -> depthFuncReg,
-      RenderHostRegs.DEPTH_WRITE_ENABLE.U -> depthWriteEnableReg,
-      RenderHostRegs.CULL_MODE.U -> cullModeReg,
-      RenderHostRegs.TEX_BASE.U -> texBaseReg,
-      RenderHostRegs.TEX_WIDTH.U -> texWidthReg,
-      RenderHostRegs.TEX_HEIGHT.U -> texHeightReg,
-      RenderHostRegs.TEX_CONFIG.U -> texConfigReg,
-      RenderHostRegs.MSAA_CONFIG.U -> msaaConfigReg,
-      RenderHostRegs.STENCIL_CONFIG.U -> stencilConfigReg,
-      RenderHostRegs.STENCIL_REF_MASKS.U -> stencilRefMasksReg,
-      RenderHostRegs.BLEND_CONFIG.U -> blendConfigReg,
-      RenderHostRegs.SCANOUT_BASE.U -> scanoutBaseReg,
-      RenderHostRegs.SCANOUT_STRIDE.U -> scanoutStrideReg,
-      RenderHostRegs.SCANOUT_WIDTH.U -> scanoutWidthReg,
-      RenderHostRegs.SCANOUT_HEIGHT.U -> scanoutHeightReg,
-      RenderHostRegs.SCANOUT_FORMAT.U -> scanoutFormatReg,
-      RenderHostRegs.SCANOUT_CONTROL.U -> scanoutControlReg,
-      RenderHostRegs.SCANOUT_STATUS.U -> scanoutStatusBits,
-      RenderHostRegs.CAPABILITIES.U -> capabilityBits,
-      RenderHostRegs.SCANOUT_PERIOD.U -> scanoutPeriodReg,
-      RenderHostRegs.CLEAR_BASE.U -> clearBaseReg,
-      RenderHostRegs.CLEAR_BYTES.U -> clearBytesReg,
-      RenderHostRegs.CLEAR_PATTERN.U -> clearPatternReg,
-      RenderHostRegs.BLIT_SRC_BASE.U -> blitSrcBaseReg,
-      RenderHostRegs.BLIT_DST_BASE.U -> blitDstBaseReg,
-      RenderHostRegs.BLIT_BYTES.U -> blitBytesReg,
-      RenderHostRegs.STRIDED_SRC_BASE.U -> stridedSrcBaseReg,
-      RenderHostRegs.STRIDED_DST_BASE.U -> stridedDstBaseReg,
-      RenderHostRegs.STRIDED_WIDTH.U -> stridedWidthReg,
-      RenderHostRegs.STRIDED_HEIGHT.U -> stridedHeightReg,
-      RenderHostRegs.STRIDED_SRC_STRIDE.U -> stridedSrcStrideReg,
-      RenderHostRegs.STRIDED_DST_STRIDE.U -> stridedDstStrideReg
-    ))
+    MuxLookup(rAddr, 0.U(32.W))(
+      Seq(
+        RenderHostRegs.ID.U -> id,
+        RenderHostRegs.STATUS.U -> statusBits,
+        RenderHostRegs.IRQ.U -> irqBits,
+        RenderHostRegs.CMD_BASE.U -> cmdBaseReg,
+        RenderHostRegs.CMD_COUNT.U -> cmdCountReg,
+        RenderHostRegs.COLOR_BASE.U -> colorBaseReg,
+        RenderHostRegs.DEPTH_BASE.U -> depthBaseReg,
+        RenderHostRegs.STRIDE.U -> strideReg,
+        RenderHostRegs.DEPTH_TEST_ENABLE.U -> depthTestEnableReg,
+        RenderHostRegs.DEPTH_FUNC.U -> depthFuncReg,
+        RenderHostRegs.DEPTH_WRITE_ENABLE.U -> depthWriteEnableReg,
+        RenderHostRegs.CULL_MODE.U -> cullModeReg,
+        RenderHostRegs.TEX_BASE.U -> texBaseReg,
+        RenderHostRegs.TEX_WIDTH.U -> texWidthReg,
+        RenderHostRegs.TEX_HEIGHT.U -> texHeightReg,
+        RenderHostRegs.TEX_CONFIG.U -> texConfigReg,
+        RenderHostRegs.MSAA_CONFIG.U -> msaaConfigReg,
+        RenderHostRegs.STENCIL_CONFIG.U -> stencilConfigReg,
+        RenderHostRegs.STENCIL_REF_MASKS.U -> stencilRefMasksReg,
+        RenderHostRegs.BLEND_CONFIG.U -> blendConfigReg,
+        RenderHostRegs.SCANOUT_BASE.U -> scanoutBaseReg,
+        RenderHostRegs.SCANOUT_STRIDE.U -> scanoutStrideReg,
+        RenderHostRegs.SCANOUT_WIDTH.U -> scanoutWidthReg,
+        RenderHostRegs.SCANOUT_HEIGHT.U -> scanoutHeightReg,
+        RenderHostRegs.SCANOUT_FORMAT.U -> scanoutFormatReg,
+        RenderHostRegs.SCANOUT_CONTROL.U -> scanoutControlReg,
+        RenderHostRegs.SCANOUT_STATUS.U -> scanoutStatusBits,
+        RenderHostRegs.CAPABILITIES.U -> capabilityBits,
+        RenderHostRegs.SCANOUT_PERIOD.U -> scanoutPeriodReg,
+        RenderHostRegs.CLEAR_BASE.U -> clearBaseReg,
+        RenderHostRegs.CLEAR_BYTES.U -> clearBytesReg,
+        RenderHostRegs.CLEAR_PATTERN.U -> clearPatternReg,
+        RenderHostRegs.BLIT_SRC_BASE.U -> blitSrcBaseReg,
+        RenderHostRegs.BLIT_DST_BASE.U -> blitDstBaseReg,
+        RenderHostRegs.BLIT_BYTES.U -> blitBytesReg,
+        RenderHostRegs.STRIDED_SRC_BASE.U -> stridedSrcBaseReg,
+        RenderHostRegs.STRIDED_DST_BASE.U -> stridedDstBaseReg,
+        RenderHostRegs.STRIDED_WIDTH.U -> stridedWidthReg,
+        RenderHostRegs.STRIDED_HEIGHT.U -> stridedHeightReg,
+        RenderHostRegs.STRIDED_SRC_STRIDE.U -> stridedSrcStrideReg,
+        RenderHostRegs.STRIDED_DST_STRIDE.U -> stridedDstStrideReg
+      )
+    )
 
   // Merge a byte-masked write into a 32-bit register (partial-word writes with
   // a Strobe pattern, matching a host bus that can write sub-words).
@@ -483,15 +542,13 @@ class RenderHost(
         strideReg := merge(strideReg, io.reg.req.bits.data, io.reg.req.bits.strb)
       }
       is(RenderHostRegs.DEPTH_TEST_ENABLE.U) {
-        depthTestEnableReg := merge(
-          depthTestEnableReg, io.reg.req.bits.data, io.reg.req.bits.strb)
+        depthTestEnableReg := merge(depthTestEnableReg, io.reg.req.bits.data, io.reg.req.bits.strb)
       }
       is(RenderHostRegs.DEPTH_FUNC.U) {
         depthFuncReg := merge(depthFuncReg, io.reg.req.bits.data, io.reg.req.bits.strb)
       }
       is(RenderHostRegs.DEPTH_WRITE_ENABLE.U) {
-        depthWriteEnableReg := merge(
-          depthWriteEnableReg, io.reg.req.bits.data, io.reg.req.bits.strb)
+        depthWriteEnableReg := merge(depthWriteEnableReg, io.reg.req.bits.data, io.reg.req.bits.strb)
       }
       is(RenderHostRegs.CULL_MODE.U) {
         cullModeReg := merge(cullModeReg, io.reg.req.bits.data, io.reg.req.bits.strb)
@@ -532,12 +589,10 @@ class RenderHost(
         scanoutFormatReg := merge(scanoutFormatReg, io.reg.req.bits.data, io.reg.req.bits.strb)
       }
       is(RenderHostRegs.SCANOUT_CONTROL.U) {
-        scanoutControlReg := merge(
-          scanoutControlReg, io.reg.req.bits.data, io.reg.req.bits.strb)
+        scanoutControlReg := merge(scanoutControlReg, io.reg.req.bits.data, io.reg.req.bits.strb)
       }
       is(RenderHostRegs.SCANOUT_PERIOD.U) {
-        scanoutPeriodReg := merge(
-          scanoutPeriodReg, io.reg.req.bits.data, io.reg.req.bits.strb)
+        scanoutPeriodReg := merge(scanoutPeriodReg, io.reg.req.bits.data, io.reg.req.bits.strb)
       }
       is(RenderHostRegs.STATUS.U) {
         when(io.reg.req.bits.data(1)) { done := false.B }
@@ -558,56 +613,43 @@ class RenderHost(
         clearPatternReg := merge(clearPatternReg, io.reg.req.bits.data, io.reg.req.bits.strb)
       }
       is(RenderHostRegs.BLIT_SRC_BASE.U) {
-        blitSrcBaseReg := merge(blitSrcBaseReg,
-          io.reg.req.bits.data, io.reg.req.bits.strb)
+        blitSrcBaseReg := merge(blitSrcBaseReg, io.reg.req.bits.data, io.reg.req.bits.strb)
       }
       is(RenderHostRegs.BLIT_DST_BASE.U) {
-        blitDstBaseReg := merge(blitDstBaseReg,
-          io.reg.req.bits.data, io.reg.req.bits.strb)
+        blitDstBaseReg := merge(blitDstBaseReg, io.reg.req.bits.data, io.reg.req.bits.strb)
       }
       is(RenderHostRegs.BLIT_BYTES.U) {
-        blitBytesReg := merge(blitBytesReg,
-          io.reg.req.bits.data, io.reg.req.bits.strb)
+        blitBytesReg := merge(blitBytesReg, io.reg.req.bits.data, io.reg.req.bits.strb)
       }
       is(RenderHostRegs.STRIDED_SRC_BASE.U) {
-        stridedSrcBaseReg := merge(stridedSrcBaseReg,
-          io.reg.req.bits.data, io.reg.req.bits.strb)
+        stridedSrcBaseReg := merge(stridedSrcBaseReg, io.reg.req.bits.data, io.reg.req.bits.strb)
       }
       is(RenderHostRegs.STRIDED_DST_BASE.U) {
-        stridedDstBaseReg := merge(stridedDstBaseReg,
-          io.reg.req.bits.data, io.reg.req.bits.strb)
+        stridedDstBaseReg := merge(stridedDstBaseReg, io.reg.req.bits.data, io.reg.req.bits.strb)
       }
       is(RenderHostRegs.STRIDED_WIDTH.U) {
-        stridedWidthReg := merge(stridedWidthReg,
-          io.reg.req.bits.data, io.reg.req.bits.strb)
+        stridedWidthReg := merge(stridedWidthReg, io.reg.req.bits.data, io.reg.req.bits.strb)
       }
       is(RenderHostRegs.STRIDED_HEIGHT.U) {
-        stridedHeightReg := merge(stridedHeightReg,
-          io.reg.req.bits.data, io.reg.req.bits.strb)
+        stridedHeightReg := merge(stridedHeightReg, io.reg.req.bits.data, io.reg.req.bits.strb)
       }
       is(RenderHostRegs.STRIDED_SRC_STRIDE.U) {
-        stridedSrcStrideReg := merge(stridedSrcStrideReg,
-          io.reg.req.bits.data, io.reg.req.bits.strb)
+        stridedSrcStrideReg := merge(stridedSrcStrideReg, io.reg.req.bits.data, io.reg.req.bits.strb)
       }
       is(RenderHostRegs.STRIDED_DST_STRIDE.U) {
-        stridedDstStrideReg := merge(stridedDstStrideReg,
-          io.reg.req.bits.data, io.reg.req.bits.strb)
+        stridedDstStrideReg := merge(stridedDstStrideReg, io.reg.req.bits.data, io.reg.req.bits.strb)
       }
       is(RenderHostRegs.MSAA_CONFIG.U) {
-        msaaConfigReg := merge(msaaConfigReg,
-          io.reg.req.bits.data, io.reg.req.bits.strb)
+        msaaConfigReg := merge(msaaConfigReg, io.reg.req.bits.data, io.reg.req.bits.strb)
       }
       is(RenderHostRegs.STENCIL_CONFIG.U) {
-        stencilConfigReg := merge(stencilConfigReg,
-          io.reg.req.bits.data, io.reg.req.bits.strb)
+        stencilConfigReg := merge(stencilConfigReg, io.reg.req.bits.data, io.reg.req.bits.strb)
       }
       is(RenderHostRegs.STENCIL_REF_MASKS.U) {
-        stencilRefMasksReg := merge(stencilRefMasksReg,
-          io.reg.req.bits.data, io.reg.req.bits.strb)
+        stencilRefMasksReg := merge(stencilRefMasksReg, io.reg.req.bits.data, io.reg.req.bits.strb)
       }
       is(RenderHostRegs.BLEND_CONFIG.U) {
-        blendConfigReg := merge(blendConfigReg,
-          io.reg.req.bits.data, io.reg.req.bits.strb)
+        blendConfigReg := merge(blendConfigReg, io.reg.req.bits.data, io.reg.req.bits.strb)
       }
     }
   }
@@ -615,19 +657,25 @@ class RenderHost(
   // Only the unified render command launches the engine; the legacy register
   // START snapshot was retired.
 
-  when(blitStartWrite &&
+  when(
+    blitStartWrite &&
       (dmaOwner =/= dmaIdle || clearStartWrite || stridedStartWrite ||
-        !tileDmaAllowed)) {
+        !tileDmaAllowed)
+  ) {
     error := true.B
   }
-  when(clearStartWrite &&
+  when(
+    clearStartWrite &&
       (dmaOwner =/= dmaIdle || blitStartWrite || stridedStartWrite ||
-        !tileDmaAllowed)) {
+        !tileDmaAllowed)
+  ) {
     error := true.B
   }
-  when(stridedStartWrite &&
+  when(
+    stridedStartWrite &&
       (dmaOwner =/= dmaIdle || clearStartWrite || blitStartWrite ||
-        !tileDmaAllowed)) {
+        !tileDmaAllowed)
+  ) {
     error := true.B
   }
   when(blit.io.completion.fire && !blit.io.completion.bits.success) {
@@ -663,8 +711,9 @@ class RenderHost(
     renderLaunch := false.B
     io.renderCommand.ready := !renderFetching && !renderLaunch && !busy &&
       !renderDonePending && (if (config.tileAttachments)
-        dmaOwner === dmaIdle && !clearStartWrite && !blitStartWrite &&
-          !stridedStartWrite else true.B)
+                               dmaOwner === dmaIdle && !clearStartWrite && !blitStartWrite &&
+                               !stridedStartWrite
+                             else true.B)
     when(io.renderCommand.fire) {
       renderFetching := true.B
       memoryFaulted := false.B
@@ -713,10 +762,8 @@ class RenderHost(
       // Snapshot the viewport per job. Offscreen targets must not inherit the
       // display size or change the scanout registers. Zero preserves the older
       // descriptor ABI, including the last mode while scanout is disabled.
-      unifiedCfg.screenW := Mux(renderWords(14) === 0.U, viewportW,
-        ScreenLimit(renderWords(14), config.screenWidth))
-      unifiedCfg.screenH := Mux(renderWords(15) === 0.U, viewportH,
-        ScreenLimit(renderWords(15), config.screenHeight))
+      unifiedCfg.screenW := Mux(renderWords(14) === 0.U, viewportW, ScreenLimit(renderWords(14), config.screenWidth))
+      unifiedCfg.screenH := Mux(renderWords(15) === 0.U, viewportH, ScreenLimit(renderWords(15), config.screenHeight))
       unifiedCfg.depthTestEnable := renderWords(5)(0)
       unifiedCfg.depthFunc := renderWords(5)(6, 4)
       unifiedCfg.depthWriteEnable := renderWords(5)(7)
@@ -806,8 +853,11 @@ class RenderHost(
     io.renderCompletion.valid := renderDonePending
     io.renderCompletion.bits.descriptorId := renderId
     io.renderCompletion.bits.status :=
-      Mux(memoryFaulted, RenderStatus.memoryFault,
-        Mux(invalidSampleMode, RenderStatus.invalidSampleMode, RenderStatus.success))
+      Mux(
+        memoryFaulted,
+        RenderStatus.memoryFault,
+        Mux(invalidSampleMode, RenderStatus.invalidSampleMode, RenderStatus.success)
+      )
     io.renderCompletion.bits.success := !memoryFaulted && !invalidSampleMode
     io.renderCompletion.bits.bytesProcessed := renderBytes
     when(io.renderCompletion.fire) { renderDonePending := false.B }
@@ -847,7 +897,8 @@ class RenderHost(
   coreIO.sampleMode := unifiedCfg.sampleMode
   coreIO.screenW := unifiedCfg.screenW
   coreIO.screenH := unifiedCfg.screenH
-  coreIO.start := (if (persistentAttachments || externalBinnedRender) false.B else renderLaunch && validRenderMode && !busy)
+  coreIO.start := (if (persistentAttachments || externalBinnedRender) false.B
+                   else renderLaunch && validRenderMode && !busy)
 
   // Separate word ports.  The engine's command stage (draw records) and the
   // job queue's admin agent (descriptor fetches, IH record writes) are distinct

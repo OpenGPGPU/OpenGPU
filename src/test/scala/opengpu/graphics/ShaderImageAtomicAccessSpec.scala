@@ -16,10 +16,18 @@ class ShaderImageAtomicAccessSpec extends AnyFlatSpec {
         var n = 0; while (!condition && n < 100) { d.clock.step(); n += 1 }
         assert(condition, label)
       }
-      def begin(format: String = "R32UI", operation: Int = 1,
-          readable: Boolean = true, writable: Boolean = true, x: BigInt = 2,
-          qualifier: Boolean = true, bound: Boolean = true, base: Int = 0x1000, sizeQuery: Boolean = false,
-          operand: BigInt = 7): Unit = {
+      def begin(
+          format: String = "R32UI",
+          operation: Int = 1,
+          readable: Boolean = true,
+          writable: Boolean = true,
+          x: BigInt = 2,
+          qualifier: Boolean = true,
+          bound: Boolean = true,
+          base: Int = 0x1000,
+          sizeQuery: Boolean = false,
+          operand: BigInt = 7
+      ): Unit = {
         d.io.in.ready.expect(true.B); val q = d.io.in.bits; zero(q); tag += 1
         val a = q.access; identity(a.identity); identity(a.imageBinding.identity)
         a.tag.poke(tag.U); a.unitIndex.poke(1.U); a.stage.poke(GraphicsStage.compute.U)
@@ -46,8 +54,13 @@ class ShaderImageAtomicAccessSpec extends AnyFlatSpec {
         val held = r.peek().litValue; d.clock.step(2); assert(r.peek().litValue == held)
         d.io.out.ready.poke(true.B); d.clock.step(); d.io.out.ready.poke(false.B)
       }
-      def atomic(expected: BigInt, cancel: Boolean = false, fault: Boolean = false,
-          operand: BigInt = 7, old: BigInt = 123): Unit = {
+      def atomic(
+          expected: BigInt,
+          cancel: Boolean = false,
+          fault: Boolean = false,
+          operand: BigInt = 7,
+          old: BigInt = 123
+      ): Unit = {
         until("atomic request") { d.io.atomicRequest.valid.peek().litToBoolean }
         val q = d.io.atomicRequest.bits; q.address.expect(0x1048.U); q.warpId.expect(1.U)
         q.operation.expect(expected.U); q.operand.expect(operand.U); q.compareValue.expect(11.U)
@@ -62,28 +75,43 @@ class ShaderImageAtomicAccessSpec extends AnyFlatSpec {
         until("atomic response") { d.io.atomicResponse.ready.peek().litToBoolean }
         d.clock.step(); d.io.atomicResponse.valid.poke(false.B); d.io.cancel.poke(false.B)
       }
-      val ops = Seq(AtomicMemoryOp.swap, AtomicMemoryOp.add, AtomicMemoryOp.xor, AtomicMemoryOp.or,
-        AtomicMemoryOp.and, AtomicMemoryOp.minu, AtomicMemoryOp.maxu, AtomicMemoryOp.compareSwap)
+      val ops = Seq(
+        AtomicMemoryOp.swap,
+        AtomicMemoryOp.add,
+        AtomicMemoryOp.xor,
+        AtomicMemoryOp.or,
+        AtomicMemoryOp.and,
+        AtomicMemoryOp.minu,
+        AtomicMemoryOp.maxu,
+        AtomicMemoryOp.compareSwap
+      )
       for ((op, n) <- ops.zipWithIndex) { begin(operation = n); atomic(op.litValue); result(0, 123) }
       for ((op, n) <- Seq(AtomicMemoryOp.min -> 5, AtomicMemoryOp.max -> 6)) {
         begin(format = "R32I", operation = n); atomic(op.litValue); result(0, 123)
       }
-      for ((bits, old) <- Seq("80000000" -> "7fc12345", "00000001" -> "80000000",
-          "7f800000" -> "00000001", "ff800000" -> "7f800000")) {
-        val operand = BigInt(bits,16); val previous = BigInt(old,16)
-        begin(format="R32F",operation=0,operand=operand)
-        atomic(AtomicMemoryOp.swap.litValue,operand=operand,old=previous); result(0,previous)
+      for (
+        (bits, old) <- Seq(
+          "80000000" -> "7fc12345",
+          "00000001" -> "80000000",
+          "7f800000" -> "00000001",
+          "ff800000" -> "7f800000"
+        )
+      ) {
+        val operand = BigInt(bits, 16); val previous = BigInt(old, 16)
+        begin(format = "R32F", operation = 0, operand = operand)
+        atomic(AtomicMemoryOp.swap.litValue, operand = operand, old = previous); result(0, previous)
       }
       for (operation <- 1 to 7) {
-        begin(format="R32F",operation=operation); result(ShaderImageAccessStatus.shaderType)
+        begin(format = "R32F", operation = operation); result(ShaderImageAccessStatus.shaderType)
         d.io.atomicRequest.valid.expect(false.B)
       }
-      begin(format="R32F",operation=0,readable=false); result(ShaderImageAccessStatus.permission)
-      begin(format="R32F",operation=0,qualifier=false); result(ShaderImageAccessStatus.shaderType)
-      begin(format="R32F",operation=0); atomic(AtomicMemoryOp.swap.litValue,cancel=true)
+      begin(format = "R32F", operation = 0, readable = false); result(ShaderImageAccessStatus.permission)
+      begin(format = "R32F", operation = 0, qualifier = false); result(ShaderImageAccessStatus.shaderType)
+      begin(format = "R32F", operation = 0); atomic(AtomicMemoryOp.swap.litValue, cancel = true)
       result(ShaderImageAccessStatus.cancelled)
       for (sizeQuery <- Seq(false, true); (readable, writable) <- Seq(false -> true, true -> false, false -> false)) {
-        begin(readable = readable, writable = writable, sizeQuery = sizeQuery); result(ShaderImageAccessStatus.permission)
+        begin(readable = readable, writable = writable, sizeQuery = sizeQuery);
+        result(ShaderImageAccessStatus.permission)
         d.io.atomicRequest.valid.expect(false.B)
       }
       begin(format = "RGBA32UI"); result(ShaderImageAccessStatus.shaderType)
@@ -92,7 +120,8 @@ class ShaderImageAtomicAccessSpec extends AnyFlatSpec {
       begin(base = 0x1001); result(ShaderImageAccessStatus.bounds); d.io.atomicRequest.valid.expect(false.B)
       begin(x = BigInt("ffffffff", 16)); result(0); d.io.atomicRequest.valid.expect(false.B)
       begin(); atomic(AtomicMemoryOp.add.litValue, cancel = true); result(ShaderImageAccessStatus.cancelled)
-      begin(); atomic(AtomicMemoryOp.add.litValue, cancel = true, fault = true); result(ShaderImageAccessStatus.memory, fault = true)
+      begin(); atomic(AtomicMemoryOp.add.litValue, cancel = true, fault = true);
+      result(ShaderImageAccessStatus.memory, fault = true)
       begin(); atomic(AtomicMemoryOp.add.litValue); result(0, 123)
     }
   }

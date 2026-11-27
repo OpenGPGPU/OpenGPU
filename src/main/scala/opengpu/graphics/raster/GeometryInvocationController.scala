@@ -3,8 +3,8 @@ package opengpu.graphics
 import chisel3._
 import chisel3.util._
 
-/** One input primitive and its immutable vertex payload. Input counts encode
-  * point, line, triangle, line adjacency and triangle adjacency respectively.
+/** One input primitive and its immutable vertex payload. Input counts encode point, line, triangle, line adjacency and
+  * triangle adjacency respectively.
   */
 class GeometryInvocationTask extends Bundle {
   val taskId = UInt(32.W)
@@ -48,10 +48,9 @@ object GeometryInvocationStatus {
   val workerFault = 3.U(2.W)
 }
 
-/** Retains one primitive until every ordered invocation and emitted primitive
-  * drains. A worker must stop producing commands before its completion; on
-  * abort it must acknowledge termination even if a command is still offered.
-  * This internal interface does not yet launch a physical shader CU.
+/** Retains one primitive until every ordered invocation and emitted primitive drains. A worker must stop producing
+  * commands before its completion; on abort it must acknowledge termination even if a command is still offered. This
+  * internal interface does not yet launch a physical shader CU.
   */
 class GeometryInvocationController extends Module {
   val io = IO(new Bundle {
@@ -64,7 +63,9 @@ class GeometryInvocationController extends Module {
     val completion = Decoupled(new GeometryInvocationResult)
     val cancel = Input(Bool())
   })
-  private object State extends ChiselEnum { val idle, prepare, launch, run, finishOffer, waitAssembler, stop, complete = Value }
+  private object State extends ChiselEnum {
+    val idle, prepare, launch, run, finishOffer, waitAssembler, stop, complete = Value
+  }
   private val state = RegInit(State.idle)
   private val task = Reg(new GeometryInvocationTask)
   private val invocation = RegInit(0.U(6.W))
@@ -73,7 +74,7 @@ class GeometryInvocationController extends Module {
   private val assemblerEnded = RegInit(true.B)
   private val status = RegInit(GeometryInvocationStatus.success)
   private val assembler = Module(new GeometryOutputAssembler)
-  private val inputCountValid = Seq(1,2,3,4,6).map(n => io.task.bits.inputVertices === n.U).reduce(_ || _)
+  private val inputCountValid = Seq(1, 2, 3, 4, 6).map(n => io.task.bits.inputVertices === n.U).reduce(_ || _)
   private val totalComponents = io.task.bits.outputComponents +& PopCount(io.task.bits.builtinOutputMask)
   private val product = io.task.bits.maxVertices * totalComponents
   private val validTask = inputCountValid && io.task.bits.inputComponents <= 64.U &&
@@ -87,7 +88,8 @@ class GeometryInvocationController extends Module {
   io.launch.bits.invocationId := invocation
   io.launch.bits.inputVertices := task.inputVertices; io.launch.bits.inputComponents := task.inputComponents
   io.launch.bits.vertices := task.vertices
-  io.launch.bits.maxVertices := task.maxVertices; io.launch.bits.outputComponents := task.outputComponents; io.launch.bits.builtinOutputMask := task.builtinOutputMask
+  io.launch.bits.maxVertices := task.maxVertices; io.launch.bits.outputComponents := task.outputComponents;
+  io.launch.bits.builtinOutputMask := task.builtinOutputMask
   io.abort := state === State.stop && workerLive
   io.workerCompletion.ready := workerLive &&
     (state === State.stop || (state === State.run && !io.command.valid))
@@ -107,7 +109,9 @@ class GeometryInvocationController extends Module {
   assembler.io.task.valid := state === State.prepare && !io.cancel
   assembler.io.task.bits.taskId := task.taskId; assembler.io.task.bits.primitiveId := task.primitiveId
   assembler.io.task.bits.invocationId := invocation; assembler.io.task.bits.topology := task.topology
-  assembler.io.task.bits.maxVertices := task.maxVertices; assembler.io.task.bits.outputComponents := task.outputComponents; assembler.io.task.bits.builtinOutputMask := task.builtinOutputMask
+  assembler.io.task.bits.maxVertices := task.maxVertices;
+  assembler.io.task.bits.outputComponents := task.outputComponents;
+  assembler.io.task.bits.builtinOutputMask := task.builtinOutputMask
   assembler.io.cancel := state === State.stop ||
     (io.cancel && (state === State.launch || state === State.run || state === State.finishOffer || state === State.waitAssembler))
   assembler.io.completion.ready := state === State.run || state === State.waitAssembler || state === State.stop
@@ -117,8 +121,11 @@ class GeometryInvocationController extends Module {
   io.completion.bits.completedInvocations := completed; io.completion.bits.status := status
 
   when(io.workerCompletion.fire) {
-    assert(io.workerCompletion.bits.taskId === task.taskId && io.workerCompletion.bits.primitiveId === task.primitiveId &&
-      io.workerCompletion.bits.invocationId === invocation, "geometry worker completion must match its owner")
+    assert(
+      io.workerCompletion.bits.taskId === task.taskId && io.workerCompletion.bits.primitiveId === task.primitiveId &&
+        io.workerCompletion.bits.invocationId === invocation,
+      "geometry worker completion must match its owner"
+    )
     workerLive := false.B
   }
   when(assembler.io.completion.fire) { assemblerEnded := true.B }
@@ -141,7 +148,8 @@ class GeometryInvocationController extends Module {
       when(io.cancel) { status := GeometryInvocationStatus.cancelled; state := State.stop }
         .elsewhen(assembler.io.completion.fire) {
           status := GeometryInvocationStatus.invalid; state := State.stop
-        }.elsewhen(io.workerCompletion.fire) {
+        }
+        .elsewhen(io.workerCompletion.fire) {
           when(io.workerCompletion.bits.success) { state := State.finishOffer }
             .otherwise { status := GeometryInvocationStatus.workerFault; state := State.stop }
         }

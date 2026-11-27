@@ -27,13 +27,15 @@ class ShaderImageAccessResult extends Bundle {
   val faultAddress = UInt(32.W)
 }
 
-/** One immutable image operation from binding/coordinate validation through
-  * typed memory acknowledgement. The task parent still owns GPU descriptor
-  * provenance, VM and coherence leases until this public result retires.
-  * No memory request can bypass permission, format or full-width address checks.
+/** One immutable image operation from binding/coordinate validation through typed memory acknowledgement. The task
+  * parent still owns GPU descriptor provenance, VM and coherence leases until this public result retires. No memory
+  * request can bypass permission, format or full-width address checks.
   */
-class ShaderImageAccess(config: GpuConfig = GpuConfig(),
-    p: TextureImageAddressConfig = TextureImageAddressConfig(), imageUnits: Int = 4) extends Module {
+class ShaderImageAccess(
+    config: GpuConfig = GpuConfig(),
+    p: TextureImageAddressConfig = TextureImageAddressConfig(),
+    imageUnits: Int = 4
+) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new ShaderImageAccessRequest))
     val out = Decoupled(new ShaderImageAccessResult)
@@ -100,7 +102,9 @@ class ShaderImageAccess(config: GpuConfig = GpuConfig(),
     is(State.waitAddress) {
       when(address.io.out.fire) {
         assert(address.io.out.bits.identity.asUInt === request.access.identity.asUInt)
-        assert(address.io.out.bits.tag === request.access.tag && address.io.out.bits.unitIndex === request.access.unitIndex)
+        assert(
+          address.io.out.bits.tag === request.access.tag && address.io.out.bits.unitIndex === request.access.unitIndex
+        )
         addressOwned := false.B; resolved := address.io.out.bits
         when(address.io.out.bits.status =/= 0.U) {
           status := address.io.out.bits.status; phase := State.finish
@@ -122,12 +126,15 @@ class ShaderImageAccess(config: GpuConfig = GpuConfig(),
         memoryOwned := false.B
         val childStatus = memory.io.out.bits.status
         when(childStatus =/= 0.U) {
-          status := MuxLookup(childStatus, ShaderImageAccessStatus.descriptor.U)(Seq(
-            ShaderImageMemoryStatus.invalid.U -> ShaderImageAccessStatus.descriptor.U,
-            ShaderImageMemoryStatus.bounds.U -> ShaderImageAccessStatus.bounds.U,
-            ShaderImageMemoryStatus.memory.U -> ShaderImageAccessStatus.memory.U,
-            ShaderImageMemoryStatus.cancelled.U -> ShaderImageAccessStatus.cancelled.U,
-            ShaderImageMemoryStatus.componentType.U -> ShaderImageAccessStatus.shaderType.U))
+          status := MuxLookup(childStatus, ShaderImageAccessStatus.descriptor.U)(
+            Seq(
+              ShaderImageMemoryStatus.invalid.U -> ShaderImageAccessStatus.descriptor.U,
+              ShaderImageMemoryStatus.bounds.U -> ShaderImageAccessStatus.bounds.U,
+              ShaderImageMemoryStatus.memory.U -> ShaderImageAccessStatus.memory.U,
+              ShaderImageMemoryStatus.cancelled.U -> ShaderImageAccessStatus.cancelled.U,
+              ShaderImageMemoryStatus.componentType.U -> ShaderImageAccessStatus.shaderType.U
+            )
+          )
         }.elsewhen(!stop) { result.rgba := memory.io.out.bits.rgba }
         result.faultAddressValid := memory.io.out.bits.faultAddressValid
         result.faultAddress := memory.io.out.bits.faultAddress
@@ -135,8 +142,10 @@ class ShaderImageAccess(config: GpuConfig = GpuConfig(),
       }
     }
     is(State.finish) {
-      assert(!addressOwned && !memoryOwned && !address.io.busy && !memory.io.busy,
-        "image operation retired before its address and memory children drained")
+      assert(
+        !addressOwned && !memoryOwned && !address.io.busy && !memory.io.busy,
+        "image operation retired before its address and memory children drained"
+      )
       result.status := Mux(io.cancel && status === 0.U, ShaderImageAccessStatus.cancelled.U, status)
       when(stop) { result.rgba := 0.U.asTypeOf(result.rgba) }
       phase := State.complete

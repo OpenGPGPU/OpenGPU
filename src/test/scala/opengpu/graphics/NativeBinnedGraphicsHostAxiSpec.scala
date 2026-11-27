@@ -4,1504 +4,2833 @@ import opengpu.graphics.tessellation._
 import chisel3._
 import opengpu.command.GpuCommandOpcode
 import opengpu.config.GpuConfig
-import opengpu.system.{GpuHostSystemAxi,GpuHostTestSupport}
+import opengpu.system.{GpuHostSystemAxi, GpuHostTestSupport}
 import opengpu.testutil.GraphicsTestResolution
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
 abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHostTestSupport {
-  protected def shaderRunningReset: Boolean=false
-  protected def shaderReconvergenceFaults: Boolean=false
-  protected def shaderStructuredSimt: Boolean=false
-  protected def shaderExecutionLimits: Boolean=false
-  protected def shaderAvailabilityFaults: Boolean=false
-  protected def visibilityQueries: Boolean=false
-  protected def combinedTessellationFeedbackQuery: Boolean=false
-  protected def transformFeedback: Boolean=false
-  protected def primitiveQueries: Boolean=false
-  protected def primitiveQueryExtended: Boolean=false
-  protected def virtualImages: Boolean=false
-  protected def groupedTexture: Boolean=false
-  protected def sharedTextureReset: Boolean=false
-  protected def tessellationHostCompatibility: Boolean=false
-  protected def fragmentImagesWithTessellation: Boolean=false
-  import TypedColorReference.{fp,format,encode}
-  private val gpu=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2)
-  private val graphics=GraphicsConfig(screenWidth=math.min(17,GraphicsTestResolution.width),screenHeight=math.min(9,GraphicsTestResolution.height))
-  private val p=VertexShaderStageConfig(VertexInputFetchConfig(2,2),2);private val f=FragmentShaderConfig(2,4)
-  private def profile(local: Boolean)=NativeBinnedGraphicsConfig(p,f,engines=2,pageBytes=128,writeCredits=2,tileSlots=1,pagedCapacity=8,
-    payload=if(local)Some(ShaderPayloadConfig(capacityBytes=4096,maxPayloadBytes=1024,owners=3,ports=if(groupedTexture)8 else 6))else None,
-    translateImageViews=virtualImages,groupedTexture=groupedTexture,transformFeedback=transformFeedback)
-  private def host(local: Boolean, fragmentImages: Boolean=false)=new GpuHostSystemAxi(graphics,gpu,numComputeUnits=if(groupedTexture)4 else 2,
-    transactionsPerCu=if(fragmentImages)8 else 4, imageAvailable=fragmentImages, nativeFragmentImages=fragmentImages,
-    fragCore=true,sharedGraphics=true,parallelGraphics=true,
-    memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
-    exposePerformance=true,nativeBinnedGraphics=Some(profile(local)),visibilityQueries=visibilityQueries,primitiveQueries=primitiveQueries,
-    tessellationNative=tessellationHostCompatibility)
-  private def parkMemory(d: GpuHostSystemAxi): Unit={
+  protected def shaderRunningReset: Boolean = false
+  protected def shaderReconvergenceFaults: Boolean = false
+  protected def shaderStructuredSimt: Boolean = false
+  protected def shaderExecutionLimits: Boolean = false
+  protected def shaderAvailabilityFaults: Boolean = false
+  protected def visibilityQueries: Boolean = false
+  protected def combinedTessellationFeedbackQuery: Boolean = false
+  protected def transformFeedback: Boolean = false
+  protected def primitiveQueries: Boolean = false
+  protected def primitiveQueryExtended: Boolean = false
+  protected def virtualImages: Boolean = false
+  protected def groupedTexture: Boolean = false
+  protected def sharedTextureReset: Boolean = false
+  protected def tessellationHostCompatibility: Boolean = false
+  protected def fragmentImagesWithTessellation: Boolean = false
+  import TypedColorReference.{fp, format, encode}
+  private val gpu = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
+  private val graphics = GraphicsConfig(
+    screenWidth = math.min(17, GraphicsTestResolution.width),
+    screenHeight = math.min(9, GraphicsTestResolution.height)
+  )
+  private val p = VertexShaderStageConfig(VertexInputFetchConfig(2, 2), 2); private val f = FragmentShaderConfig(2, 4)
+  private def profile(local: Boolean) = NativeBinnedGraphicsConfig(
+    p,
+    f,
+    engines = 2,
+    pageBytes = 128,
+    writeCredits = 2,
+    tileSlots = 1,
+    pagedCapacity = 8,
+    payload =
+      if (local)
+        Some(
+          ShaderPayloadConfig(
+            capacityBytes = 4096,
+            maxPayloadBytes = 1024,
+            owners = 3,
+            ports = if (groupedTexture) 8 else 6
+          )
+        )
+      else None,
+    translateImageViews = virtualImages,
+    groupedTexture = groupedTexture,
+    transformFeedback = transformFeedback
+  )
+  private def host(local: Boolean, fragmentImages: Boolean = false) = new GpuHostSystemAxi(
+    graphics,
+    gpu,
+    numComputeUnits = if (groupedTexture) 4 else 2,
+    transactionsPerCu = if (fragmentImages) 8 else 4,
+    imageAvailable = fragmentImages,
+    nativeFragmentImages = fragmentImages,
+    fragCore = true,
+    sharedGraphics = true,
+    parallelGraphics = true,
+    memoryAxiDataBytes = 32,
+    instructionCacheSets = 4,
+    instructionCacheWays = 1,
+    vectorCacheSets = 4,
+    vectorCacheWays = 1,
+    exposePerformance = true,
+    nativeBinnedGraphics = Some(profile(local)),
+    visibilityQueries = visibilityQueries,
+    primitiveQueries = primitiveQueries,
+    tessellationNative = tessellationHostCompatibility
+  )
+  private def parkMemory(d: GpuHostSystemAxi): Unit = {
     // MMIO can advance the DUT between driver calls. Accept no memory request
     // until serviceMemoryMaster owns and records every AXI handshake.
-    d.io.m_axi_arready.poke(false.B);d.io.m_axi_awready.poke(false.B);d.io.m_axi_wready.poke(false.B)
-    d.io.m_axi_rvalid.poke(false.B);d.io.m_axi_bvalid.poke(false.B)
+    d.io.m_axi_arready.poke(false.B); d.io.m_axi_awready.poke(false.B); d.io.m_axi_wready.poke(false.B)
+    d.io.m_axi_rvalid.poke(false.B); d.io.m_axi_bvalid.poke(false.B)
   }
-  private def addi(rd: Int,rs: Int,n: Int): BigInt=(BigInt(n&4095)<<20)|(BigInt(rs)<<15)|(BigInt(rd)<<7)|0x13
-  private def vm(base: Int,v: Int,write: Boolean): BigInt=(BigInt(1)<<25)|(BigInt(base)<<15)|(BigInt(6)<<12)|(BigInt(v)<<7)|(if(write)0x27 else 7)
-  private val startup=Vector[BigInt](BigInt("00241393",16),BigInt("007083b3",16),BigInt("c1027057",16))
-  private val vertexProgram=startup++(0 until 4).flatMap(i=>Seq(addi(5,7,i*32),vm(5,1,false),addi(6,7,(7+i)*32),vm(6,1,true)))++Seq(BigInt("30500073",16))
-  private val fragmentProgram={val code=mutable.ArrayBuffer.empty[BigInt];code++=startup
-    def scalar(offset: Int,array: Int): Unit=code++=Seq(addi(13,1,offset),(BigInt(13)<<15)|(BigInt(2)<<12)|(BigInt(13)<<7)|3,
-      (BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(13)<<15)|(BigInt(4)<<12)|(BigInt(1)<<7)|0x57,addi(6,7,array*32),vm(6,1,true))
-    for(i<-0 until 4;c<-0 until 4)scalar(896+i*16+c*4,10+i*4+c)
-    scalar(960,27);scalar(964,26);code+=BigInt("30500073",16);code.toVector}
-  private val centroidVertexProgram=startup++
-    ((0 until 4).map(i=>(i,11+i))++(0 until 4).map(i=>(4+i,15+i))).flatMap{case(in,out)=>
-      Seq(addi(5,7,in*32),vm(5,1,false),addi(6,7,out*32),vm(6,1,true))}++Seq(BigInt("30500073",16))
-  private def centroidFragmentProgram(version: Int,depthColor: Boolean=false): Vector[BigInt]={
-    val inputs=if(version==4)12 else 10;val prefix=(inputs+18)*32
-    val code=mutable.ArrayBuffer.empty[BigInt];code++=startup
-    for(location<-0 until 4;c<-0 until 4)
-      code++=Seq(addi(5,7,(if(depthColor && c==0)2 else 6+c)*32),vm(5,1,false),addi(6,7,(inputs+4*location+c)*32),vm(6,1,true))
-    for((offset,array)<-Seq((prefix+64,inputs+17),(prefix+68,inputs+16)))
-      code++=Seq(addi(13,1,offset),(BigInt(13)<<15)|(BigInt(2)<<12)|(BigInt(13)<<7)|3,
-        (BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(13)<<15)|(BigInt(4)<<12)|(BigInt(1)<<7)|0x57,
-        addi(6,7,array*32),vm(6,1,true))
-    (code.toVector:+BigInt("30500073",16))
+  private def addi(rd: Int, rs: Int, n: Int): BigInt =
+    (BigInt(n & 4095) << 20) | (BigInt(rs) << 15) | (BigInt(rd) << 7) | 0x13
+  private def vm(base: Int, v: Int, write: Boolean): BigInt =
+    (BigInt(1) << 25) | (BigInt(base) << 15) | (BigInt(6) << 12) | (BigInt(v) << 7) | (if (write) 0x27 else 7)
+  private val startup = Vector[BigInt](BigInt("00241393", 16), BigInt("007083b3", 16), BigInt("c1027057", 16))
+  private val vertexProgram = startup ++ (0 until 4).flatMap(i =>
+    Seq(addi(5, 7, i * 32), vm(5, 1, false), addi(6, 7, (7 + i) * 32), vm(6, 1, true))
+  ) ++ Seq(BigInt("30500073", 16))
+  private val fragmentProgram = {
+    val code = mutable.ArrayBuffer.empty[BigInt]; code ++= startup
+    def scalar(offset: Int, array: Int): Unit = code ++= Seq(
+      addi(13, 1, offset),
+      (BigInt(13) << 15) | (BigInt(2) << 12) | (BigInt(13) << 7) | 3,
+      (BigInt(0x17) << 26) | (BigInt(1) << 25) | (BigInt(13) << 15) | (BigInt(4) << 12) | (BigInt(1) << 7) | 0x57,
+      addi(6, 7, array * 32),
+      vm(6, 1, true)
+    )
+    for (i <- 0 until 4; c <- 0 until 4) scalar(896 + i * 16 + c * 4, 10 + i * 4 + c)
+    scalar(960, 27); scalar(964, 26); code += BigInt("30500073", 16); code.toVector
   }
-  private class Image(val d: GpuHostSystemAxi){
-    val memory=mutable.Map.empty[BigInt,Int];val initial=mutable.Map.empty[BigInt,Int]
-    val reads=mutable.ArrayBuffer.empty[BigInt];val writes=mutable.ArrayBuffer.empty[BigInt]
-    var serial=0;var region=BigInt(0x400000);var imageBase=BigInt(0x4000000);var imageVaBase=BigInt(0x40000000)
-    var generation=9;var mode=0;var instances=1;var drawCount=2;var centroidVersion=0
-    var polygonOffset=false;var polygonSign=1;var overrideSecond=false
-    var expectedSampledRed: Option[BigInt]=None
-    def expectedRgba(h: Int): Vector[BigInt]=expectedSampledRed.map(red=>rgba(h).updated(0,red)).getOrElse(rgba(h))
-    def centroid: Boolean=centroidVersion!=0
-    def fragmentPrefix: Int=if(centroidVersion==4)960 else 896
-    def centroidMask(h: Int): BigInt=if(h==0)5 else 3
-    def gradient(h: Int,vertex: Int): Vector[BigInt]=Vector.tabulate(4){c=>
-      fp(if(c==3){if(h==0)1.0 else 0.5}else ((vertex+1)*(c+1)+h)/16.0)}
-    val names=Vector("RGBA8","RGB8","RGBA16F","SRGB8_ALPHA8");val clear=Vector(0.1,0.2,0.3,0.4).map(fp)
-    case class Backing(location: Int,base: BigInt,pitch: Int,bytes: Int,resolve: Boolean)
-    val backings=mutable.ArrayBuffer.empty[Backing]
-    def pa(va: BigInt): BigInt=va+0x400000
-    def word(a: BigInt,v: BigInt): Unit=for(b<-0 until 4)memory(a+b)=((v>>(b*8))&255).toInt
-    private val header=Map[String,BigInt]("header.attributes"->16,"header.bindings"->16,"header.varyings"->16,"header.colors"->4,"header.engineViews"->4)
-    def identity(prefix: String): Map[String,BigInt]=Map(prefix+"context"->BigInt(7),prefix+"pass"->BigInt(8),prefix+"generation"->BigInt(generation))
-    def record(base: BigInt,words: Int,magic: BigInt,fields: Seq[NativeTypedGraphicsLayout.Field],values: Map[String,BigInt]): Unit={
-      if(centroid)require(values.keySet.subsetOf(fields.map(_.name).toSet),s"unknown centroid record fields: ${values.keySet--fields.map(_.name)}")
-      for(i<-0 until words)word(pa(base+i*4),0)
-      word(pa(base),magic);word(pa(base+4),words*4);word(pa(base+8),1)
-      val all=header++values
-      for(field<-fields){val raw=all.getOrElse(field.name,BigInt(0))&((BigInt(1)<<(field.words*32))-1)
-        for(i<-0 until field.words)word(pa(base+(field.word+i)*4),(raw>>(i*32))&0xffffffffL)}
+  private val centroidVertexProgram = startup ++
+    ((0 until 4).map(i => (i, 11 + i)) ++ (0 until 4).map(i => (4 + i, 15 + i))).flatMap { case (in, out) =>
+      Seq(addi(5, 7, in * 32), vm(5, 1, false), addi(6, 7, out * 32), vm(6, 1, true))
+    } ++ Seq(BigInt("30500073", 16))
+  private def centroidFragmentProgram(version: Int, depthColor: Boolean = false): Vector[BigInt] = {
+    val inputs = if (version == 4) 12 else 10; val prefix = (inputs + 18) * 32
+    val code = mutable.ArrayBuffer.empty[BigInt]; code ++= startup
+    for (location <- 0 until 4; c <- 0 until 4)
+      code ++= Seq(
+        addi(5, 7, (if (depthColor && c == 0) 2 else 6 + c) * 32),
+        vm(5, 1, false),
+        addi(6, 7, (inputs + 4 * location + c) * 32),
+        vm(6, 1, true)
+      )
+    for ((offset, array) <- Seq((prefix + 64, inputs + 17), (prefix + 68, inputs + 16)))
+      code ++= Seq(
+        addi(13, 1, offset),
+        (BigInt(13) << 15) | (BigInt(2) << 12) | (BigInt(13) << 7) | 3,
+        (BigInt(0x17) << 26) | (BigInt(1) << 25) | (BigInt(13) << 15) | (BigInt(4) << 12) | (BigInt(1) << 7) | 0x57,
+        addi(6, 7, array * 32),
+        vm(6, 1, true)
+      )
+    (code.toVector :+ BigInt("30500073", 16))
+  }
+  private class Image(val d: GpuHostSystemAxi) {
+    val memory = mutable.Map.empty[BigInt, Int]; val initial = mutable.Map.empty[BigInt, Int]
+    val reads = mutable.ArrayBuffer.empty[BigInt]; val writes = mutable.ArrayBuffer.empty[BigInt]
+    var serial = 0; var region = BigInt(0x400000); var imageBase = BigInt(0x4000000);
+    var imageVaBase = BigInt(0x40000000)
+    var generation = 9; var mode = 0; var instances = 1; var drawCount = 2; var centroidVersion = 0
+    var polygonOffset = false; var polygonSign = 1; var overrideSecond = false
+    var expectedSampledRed: Option[BigInt] = None
+    def expectedRgba(h: Int): Vector[BigInt] = expectedSampledRed.map(red => rgba(h).updated(0, red)).getOrElse(rgba(h))
+    def centroid: Boolean = centroidVersion != 0
+    def fragmentPrefix: Int = if (centroidVersion == 4) 960 else 896
+    def centroidMask(h: Int): BigInt = if (h == 0) 5 else 3
+    def gradient(h: Int, vertex: Int): Vector[BigInt] = Vector.tabulate(4) { c =>
+      fp(if (c == 3) {
+        if (h == 0) 1.0 else 0.5
+      } else ((vertex + 1) * (c + 1) + h) / 16.0)
     }
-    vertexProgram.zipWithIndex.foreach{case(w,i)=>word(pa(0x401000+4*i),w)}
-    fragmentProgram.zipWithIndex.foreach{case(w,i)=>word(pa(0x402000+4*i),w)}
-    Seq(BigInt("0000a283",16),BigInt("0040a303",16),BigInt("0002a383",16),BigInt("00732023",16),BigInt("30500073",16))
-      .zipWithIndex.foreach{case(w,i)=>word(pa(0x403000+4*i),w)}
-    for((v,i)<-Vector(Vector(-1.0,-1.0,0.0,1.0),Vector(1.0,-1.0,0.0,1.0),Vector(-1.0,1.0,0.0,1.0)).zipWithIndex;c<-0 until 4)
-      word(pa(0x421000+i*16+c*4),fp(v(c)))
-    word(0x30004,((BigInt(0x800000)>>12)<<10)|0xcf)
-    def rgba(h: Int): Vector[BigInt]=(if(h==0)Vector(0.25,0.5,0.75,1.0)else Vector(0.75,0.25,0.5,0.5)).map(fp)
-    def patchRecord(va: BigInt,fields: Seq[NativeTypedGraphicsLayout.Field],name: String,value: BigInt): Unit={
-      val f=fields.find(_.name==name).get
-      for(i<-0 until f.words)word(pa(va+(f.word+i)*4),(value>>(i*32))&0xffffffffL)
-    }
-    def patchFrame(name: String,value: BigInt): Unit=patchRecord(region+0x11000,
-      NativeBinnedGraphicsLayout.frameFields(new NativeBinnedGraphicsFrameRecord),name,value)
-    def patchDraw(name: String,value: BigInt): Unit=patchRecord(region+0x12000,
-      NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord),name,value)
-    def setup(sampleMode: Int=0,indexedInstances: Int=1,empty: Boolean=false,badShader: Boolean=false,loadImages: Boolean=false,
-        vertexFormat: Int=VertexInputFormat.float32,fragmentVersion: Int=0,
-        polygon: Boolean=false,sign: Int=1,shaderOverride: Boolean=false): Unit={
-      require(fragmentVersion==0 || fragmentVersion==3 || fragmentVersion==4)
-      centroidVersion=fragmentVersion
-      require(!polygon || (centroid && Set(-1,1)(sign)))
-      polygonOffset=polygon;polygonSign=sign;overrideSecond=shaderOverride
-      region=BigInt(0x400000)+BigInt(serial)*0x400000;imageBase=BigInt(0x4000000)+BigInt(serial)*0x1000000
-      imageVaBase=BigInt(0x40000000)+BigInt(serial)*0x400000
-      generation=9+serial;serial+=1;mode=sampleMode;instances=indexedInstances;drawCount=if(empty)0 else 2
-      initial.clear();reads.clear();writes.clear();backings.clear()
-      word(0x30000+(region>>22)*4,((pa(region)>>12)<<10)|0xcf)
-      val converted=vertexFormat!=VertexInputFormat.float32
-      val vertexBase=if(converted || centroid)region+0x23000 else BigInt(0x421000)
-      val vertexStride=if(!converted)16 else if(vertexFormat==VertexInputFormat.float16)8 else 4
-      if(centroid){
-        require(!converted && !badShader && !empty && instances==1)
-        centroidVertexProgram.zipWithIndex.foreach{case(w,i)=>word(pa(region+0x24000+4*i),w)}
-        centroidFragmentProgram(centroidVersion,depthColor=polygonOffset).zipWithIndex.foreach{case(w,i)=>word(pa(region+0x25000+4*i),w)}
-        val zs=if(polygonOffset)Vector(-0.5,0.5,0.0)else Vector.fill(3)(0.0)
-        for((v,i)<-Vector(Vector(-1.0,-1.0,zs(0),1.0),Vector(1.0,-1.0,zs(1),1.0),Vector(-1.0,1.0,zs(2),1.0)).zipWithIndex;c<-0 until 4)
-          word(pa(vertexBase+i*16+c*4),fp(v(c)))
-        for(h<-0 until 2;i<-0 until 3;c<-0 until 4)word(pa(region+0x26000+h*64+i*16+c*4),gradient(h,i)(c))
+    val names = Vector("RGBA8", "RGB8", "RGBA16F", "SRGB8_ALPHA8"); val clear = Vector(0.1, 0.2, 0.3, 0.4).map(fp)
+    case class Backing(location: Int, base: BigInt, pitch: Int, bytes: Int, resolve: Boolean)
+    val backings = mutable.ArrayBuffer.empty[Backing]
+    def pa(va: BigInt): BigInt = va + 0x400000
+    def word(a: BigInt, v: BigInt): Unit = for (b <- 0 until 4) memory(a + b) = ((v >> (b * 8)) & 255).toInt
+    private val header = Map[String, BigInt](
+      "header.attributes" -> 16,
+      "header.bindings" -> 16,
+      "header.varyings" -> 16,
+      "header.colors" -> 4,
+      "header.engineViews" -> 4
+    )
+    def identity(prefix: String): Map[String, BigInt] =
+      Map(prefix + "context" -> BigInt(7), prefix + "pass" -> BigInt(8), prefix + "generation" -> BigInt(generation))
+    def record(
+        base: BigInt,
+        words: Int,
+        magic: BigInt,
+        fields: Seq[NativeTypedGraphicsLayout.Field],
+        values: Map[String, BigInt]
+    ): Unit = {
+      if (centroid)
+        require(
+          values.keySet.subsetOf(fields.map(_.name).toSet),
+          s"unknown centroid record fields: ${values.keySet -- fields.map(_.name)}"
+        )
+      for (i <- 0 until words) word(pa(base + i * 4), 0)
+      word(pa(base), magic); word(pa(base + 4), words * 4); word(pa(base + 8), 1)
+      val all = header ++ values
+      for (field <- fields) {
+        val raw = all.getOrElse(field.name, BigInt(0)) & ((BigInt(1) << (field.words * 32)) - 1)
+        for (i <- 0 until field.words) word(pa(base + (field.word + i) * 4), (raw >> (i * 32)) & 0xffffffffL)
       }
-      if(converted){
-        require(Set(VertexInputFormat.float16,VertexInputFormat.snorm2101010)(vertexFormat))
-        for((v,i)<-Vector(Vector(-1,-1,0,1),Vector(1,-1,0,1),Vector(-1,1,0,1)).zipWithIndex){
-          val raw=v.zipWithIndex.foldLeft(BigInt(0)){case(bits,(n,c))=>
-            val value=if(vertexFormat==VertexInputFormat.float16){if(n<0)0xbc00 else if(n>0)0x3c00 else 0}
-              else if(c==3)1 else if(n<0)512 else if(n>0)511 else 0
-            bits|(BigInt(value)<<(c*(if(vertexFormat==VertexInputFormat.float16)16 else 10)))}
-          for(b<-0 until vertexStride)memory(pa(vertexBase)+i*vertexStride+b)=((raw>>(b*8))&255).toInt
+    }
+    vertexProgram.zipWithIndex.foreach { case (w, i) => word(pa(0x401000 + 4 * i), w) }
+    fragmentProgram.zipWithIndex.foreach { case (w, i) => word(pa(0x402000 + 4 * i), w) }
+    Seq(
+      BigInt("0000a283", 16),
+      BigInt("0040a303", 16),
+      BigInt("0002a383", 16),
+      BigInt("00732023", 16),
+      BigInt("30500073", 16)
+    ).zipWithIndex.foreach { case (w, i) => word(pa(0x403000 + 4 * i), w) }
+    for (
+      (v, i) <- Vector(
+        Vector(-1.0, -1.0, 0.0, 1.0),
+        Vector(1.0, -1.0, 0.0, 1.0),
+        Vector(-1.0, 1.0, 0.0, 1.0)
+      ).zipWithIndex;
+      c <- 0 until 4
+    )
+      word(pa(0x421000 + i * 16 + c * 4), fp(v(c)))
+    word(0x30004, ((BigInt(0x800000) >> 12) << 10) | 0xcf)
+    def rgba(h: Int): Vector[BigInt] =
+      (if (h == 0) Vector(0.25, 0.5, 0.75, 1.0) else Vector(0.75, 0.25, 0.5, 0.5)).map(fp)
+    def patchRecord(va: BigInt, fields: Seq[NativeTypedGraphicsLayout.Field], name: String, value: BigInt): Unit = {
+      val f = fields.find(_.name == name).get
+      for (i <- 0 until f.words) word(pa(va + (f.word + i) * 4), (value >> (i * 32)) & 0xffffffffL)
+    }
+    def patchFrame(name: String, value: BigInt): Unit = patchRecord(
+      region + 0x11000,
+      NativeBinnedGraphicsLayout.frameFields(new NativeBinnedGraphicsFrameRecord),
+      name,
+      value
+    )
+    def patchDraw(name: String, value: BigInt): Unit = patchRecord(
+      region + 0x12000,
+      NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord),
+      name,
+      value
+    )
+    def setup(
+        sampleMode: Int = 0,
+        indexedInstances: Int = 1,
+        empty: Boolean = false,
+        badShader: Boolean = false,
+        loadImages: Boolean = false,
+        vertexFormat: Int = VertexInputFormat.float32,
+        fragmentVersion: Int = 0,
+        polygon: Boolean = false,
+        sign: Int = 1,
+        shaderOverride: Boolean = false
+    ): Unit = {
+      require(fragmentVersion == 0 || fragmentVersion == 3 || fragmentVersion == 4)
+      centroidVersion = fragmentVersion
+      require(!polygon || (centroid && Set(-1, 1)(sign)))
+      polygonOffset = polygon; polygonSign = sign; overrideSecond = shaderOverride
+      region = BigInt(0x400000) + BigInt(serial) * 0x400000; imageBase = BigInt(0x4000000) + BigInt(serial) * 0x1000000
+      imageVaBase = BigInt(0x40000000) + BigInt(serial) * 0x400000
+      generation = 9 + serial; serial += 1; mode = sampleMode; instances = indexedInstances;
+      drawCount = if (empty) 0 else 2
+      initial.clear(); reads.clear(); writes.clear(); backings.clear()
+      word(0x30000 + (region >> 22) * 4, ((pa(region) >> 12) << 10) | 0xcf)
+      val converted = vertexFormat != VertexInputFormat.float32
+      val vertexBase = if (converted || centroid) region + 0x23000 else BigInt(0x421000)
+      val vertexStride = if (!converted) 16 else if (vertexFormat == VertexInputFormat.float16) 8 else 4
+      if (centroid) {
+        require(!converted && !badShader && !empty && instances == 1)
+        centroidVertexProgram.zipWithIndex.foreach { case (w, i) => word(pa(region + 0x24000 + 4 * i), w) }
+        centroidFragmentProgram(centroidVersion, depthColor = polygonOffset).zipWithIndex.foreach { case (w, i) =>
+          word(pa(region + 0x25000 + 4 * i), w)
+        }
+        val zs = if (polygonOffset) Vector(-0.5, 0.5, 0.0) else Vector.fill(3)(0.0)
+        for (
+          (v, i) <- Vector(
+            Vector(-1.0, -1.0, zs(0), 1.0),
+            Vector(1.0, -1.0, zs(1), 1.0),
+            Vector(-1.0, 1.0, zs(2), 1.0)
+          ).zipWithIndex;
+          c <- 0 until 4
+        )
+          word(pa(vertexBase + i * 16 + c * 4), fp(v(c)))
+        for (h <- 0 until 2; i <- 0 until 3; c <- 0 until 4)
+          word(pa(region + 0x26000 + h * 64 + i * 16 + c * 4), gradient(h, i)(c))
+      }
+      if (converted) {
+        require(Set(VertexInputFormat.float16, VertexInputFormat.snorm2101010)(vertexFormat))
+        for ((v, i) <- Vector(Vector(-1, -1, 0, 1), Vector(1, -1, 0, 1), Vector(-1, 1, 0, 1)).zipWithIndex) {
+          val raw = v.zipWithIndex.foldLeft(BigInt(0)) { case (bits, (n, c)) =>
+            val value = if (vertexFormat == VertexInputFormat.float16) {
+              if (n < 0) 0xbc00 else if (n > 0) 0x3c00 else 0
+            } else if (c == 3) 1
+            else if (n < 0) 512
+            else if (n > 0) 511
+            else 0
+            bits | (BigInt(value) << (c * (if (vertexFormat == VertexInputFormat.float16) 16 else 10)))
+          }
+          for (b <- 0 until vertexStride) memory(pa(vertexBase) + i * vertexStride + b) = ((raw >> (b * 8)) & 255).toInt
         }
       }
-      word(0x30400,((imageBase>>12)<<10)|0xcf)
-      if(virtualImages)word(0x30000+(imageVaBase>>22)*4,((imageBase>>12)<<10)|0xcf)
-      word(pa(region+0x130000),0x4000003c);word(pa(region+0x130004),region+0x130040)
-      val sf=TypedFragmentStateLayout.fields(new TypedFragmentState(f))
-      for(h<-0 until 2){val base=region+0x20000+h*512;for(i<-0 until 128)word(pa(base+i*4),0)
-        for((x,i)<-Vector[BigInt](TypedFragmentStateLayout.magic,512,1,4,7,8,generation,h).zipWithIndex)word(pa(base+i*4),x)
-        val a=region+0x40000+h*4096;val b=region+0x50000+h*4096
-        val used=fragmentPrefix+72;val allocation=(used+63)& ~63
-        val v=Map[String,BigInt]("version"->1,"engineCount"->2,"fragment.version"->(if(centroid)centroidVersion else 1),
-          "fragment.centroidMask"->(if(centroid)centroidMask(h)else BigInt(0)),
-          "fragment.shaderPc"->(if(centroid)region+0x25000 else if(badShader && h==1)BigInt(0x404000)else BigInt(0x402000)),
-          "fragment.varyingSlots"->1,"fragment.colorSlots"->4,"fragment.colorMask"->15,"fragment.sampleMode"->mode,
-          "fragment.allowDepthOverride"->(if(polygonOffset && overrideSecond && h==1)1 else 0),
-          "fragment.sampler.texWidth"->1,"fragment.sampler.texHeight"->1,"fragment.scratch.base"->a,"fragment.scratch.limit"->(a+used),
-          "fragment.scratch.allocationBase"->a,"fragment.scratch.allocationLimit"->(a+allocation),"scratch[0].base"->b,"scratch[0].limit"->(b+used),
-          "scratch[0].allocationBase"->b,"scratch[0].allocationLimit"->(b+allocation),"tests.version"->1,"tests.depthEnable"->1,"tests.depthWrite"->1,
-          "tests.depthFunction"->1,"tests.front.function"->6,"tests.back.function"->6,"blend.version"->1,"blend.enable"->h,
-          "blend.srcRGB"->4,"blend.dstRGB"->5,"blend.srcAlpha"->1)++identity("fragment.identity.")
-        if(centroid)require(v.keySet.subsetOf(sf.map(_.name).toSet),s"unknown centroid state fields: ${v.keySet--sf.map(_.name)}")
-        for(field<-sf){val raw=v.getOrElse(field.name,BigInt(0))&((BigInt(1)<<(field.words*32))-1)
-          for(i<-0 until field.words)word(pa(base+(field.word+i)*4),(raw>>(i*32))&0xffffffffL)}
-        for(s<-Seq(a,b)){for(i<-0 until 4;c<-0 until 4)word(pa(s+fragmentPrefix+i*16+c*4),rgba(h)(c))
-          word(pa(s+fragmentPrefix+64),if(polygonOffset && overrideSecond && h==1)63 else 61)
-          word(pa(s+fragmentPrefix+68),fp(if(polygonOffset)0.125 else 0.5))}
-      }
-      word(pa(0x404000),0)
-      var frame=Map[String,BigInt]("frame.version"->1,"frame.bins.producer.version"->1,"frame.bins.producer.arena.version"->1,
-        "frame.bins.producer.arena.base"->(region+0x60000),"frame.bins.producer.arena.limit"->(region+0x80000),
-        "frame.bins.producer.screenWidth"->17,"frame.bins.producer.screenHeight"->9,"frame.bins.producer.tileLog2"->3,
-        "frame.bins.bins.version"->3,"frame.bins.bins.tileCount"->6,"frame.bins.bins.directoryBase"->(region+0x120000),
-        "frame.bins.bins.directoryLimit"->(region+0x120180),"frame.bins.bins.pool.version"->1,"frame.bins.bins.pool.base"->(region+0x100000),
-        "frame.bins.bins.pool.limit"->(region+0x110000),"frame.bins.bins.pool.pageSizeLog2"->7,"frame.states.version"->1,
-        "frame.states.base"->(region+0x20000),"frame.states.limit"->(region+0x20400),"frame.scratchStride"->4096,
-        "frame.scratch[0].base"->(region+0x40000),"frame.scratch[0].limit"->(region+0x42000),
-        "frame.scratch[1].base"->(region+0x50000),"frame.scratch[1].limit"->(region+0x52000),
-        "frame.image.version"->1,"frame.image.pixels.version"->1,"frame.image.pixels.colors.version"->1,
-        "frame.image.pixels.colors.tileLog2"->3,"frame.image.pixels.colors.tileWidth"->8,"frame.image.pixels.colors.tileHeight"->8,
-        "frame.image.pixels.colors.sampleMode"->mode,"frame.image.pixels.colors.reservedBytes"->4096,
-        "frame.image.pixels.depth.format"->TypedDepthFormat.d32f,"frame.image.pixels.depth.loadOp"->1,"frame.image.pixels.depth.clearDepth"->fp(1))++
-        identity("frame.bins.producer.arena.identity.")++identity("frame.bins.bins.pool.identity.")++identity("frame.states.identity.")++identity("frame.image.pixels.colors.identity.")
-      var offset=4096
-      for(i<-0 until 4){val k=s"frame.image.pixels.colors.colors[$i].";frame++=Map[String,BigInt](k+"enabled"->1,k+"format"->TypedColorFormat.id(names(i)),
-        k+"offset"->offset,k+"channelMask"->15,k+"loadOp"->(if(loadImages)0 else 1))++clear.zipWithIndex.map{case(v,c)=>(k+s"clear[$c]",v)}
-        offset+=((64*(1<<mode)*format(names(i)).bytes+63)& ~63)}
-      for(resolve<-Seq(false,true);i<-0 until 5){val bytes=if(i==4)4 else format(names(i)).bytes;val samples=if(resolve)1 else 1<<mode
-        val alloc=imageBase+(if(resolve)0x80000 else 0)+i*0x10000;val base=alloc+(if(resolve)59 else 61);val pitch=17*samples*bytes+7
-        val end=(base+9*pitch+63)& ~BigInt(63);val k=if(resolve)s"frame.image.resolves[$i].destination."else s"frame.image.views[$i]."
-        if(resolve)frame+=(s"frame.image.resolves[$i].enable"->BigInt(1))
-        val delta=if(virtualImages)imageVaBase-imageBase else BigInt(0)
-        frame++=Map[String,BigInt](k+"base"->(base+delta),k+"limit"->(base+delta+8*pitch+17*samples*bytes),k+"allocationBase"->(alloc+delta),k+"allocationLimit"->(end+delta),
-          k+"imageWidth"->17,k+"imageHeight"->9,k+"rowPitch"->pitch,k+"readable"->(if(resolve)0 else 1),k+"writable"->1,k+"store"->1)
-        for(a<-alloc until end){memory(a)=0xa7;initial(a)=0xa7};backings+=Backing(i,base,pitch,bytes,resolve)}
-      record(region+0x11000,NativeBinnedGraphicsLayout.frameWords,NativeBinnedGraphicsLayout.frameMagic,
-        NativeBinnedGraphicsLayout.frameFields(new NativeBinnedGraphicsFrameRecord),frame)
-      for(h<-0 until drawCount){var draw=Map[String,BigInt]("draw.version"->1,"draw.state"->h,"draw.token"->(0xa0000000L+h),
-        "draw.vertex.viewport.version"->1,"draw.vertex.viewport.extentX"->17,"draw.vertex.viewport.extentY"->9,"draw.vertex.viewport.farDepth"->fp(1),
-        "draw.vertex.geometry.topology"->4,"draw.vertex.geometry.vertex.version"->1,
-        "draw.vertex.geometry.vertex.shaderPc"->(if(centroid)region+0x24000 else BigInt(0x401000)),
-        "draw.vertex.geometry.vertex.attributeSlots"->(if(centroid)2 else 1),"draw.vertex.geometry.vertex.varyingSlots"->1,
-        "draw.vertex.geometry.vertex.varyingMask"->(if(centroid)15 else 0),
-        "draw.vertex.geometry.vertex.sampler.texWidth"->1,"draw.vertex.geometry.vertex.sampler.texHeight"->1,
-        "draw.vertex.geometry.vertex.scratch.base"->(region+0x30000),"draw.vertex.geometry.vertex.scratch.limit"->(region+(if(centroid)0x30260 else 0x301e0)),
-        "draw.vertex.geometry.vertex.scratch.allocationBase"->(region+0x30000),"draw.vertex.geometry.vertex.scratch.allocationLimit"->(region+(if(centroid)0x30280 else 0x30200)),
-        "draw.vertex.geometry.vertex.input.version"->(if(converted)2 else 1),"draw.vertex.geometry.vertex.input.count"->3,"draw.vertex.geometry.vertex.input.instances"->instances,
-        "draw.vertex.geometry.vertex.input.attributes[0].enabled"->1,"draw.vertex.geometry.vertex.input.attributes[0].components"->4,
-        "draw.vertex.geometry.vertex.input.attributes[0].format"->vertexFormat,
-        "draw.vertex.geometry.vertex.input.bindings[0].base"->vertexBase,"draw.vertex.geometry.vertex.input.bindings[0].limit"->(vertexBase+3*vertexStride),
-        "draw.vertex.geometry.vertex.input.bindings[0].allocationBase"->vertexBase,"draw.vertex.geometry.vertex.input.bindings[0].allocationLimit"->(vertexBase+64),
-        "draw.vertex.geometry.vertex.input.bindings[0].stride"->vertexStride,"draw.raster.version"->1,"draw.raster.screenW"->17,"draw.raster.screenH"->9,
-        "draw.raster.sampleMode"->mode,"draw.raster.frontFaceCCW"->1,"draw.vertex.geometry.flatMask"->(if(centroid)8 else 0))++identity("draw.vertex.geometry.vertex.input.identity.")
-        if(polygonOffset){val sign=polygonSign*(if(h==0)1 else -1)
-          draw++=Map[String,BigInt]("draw.raster.version"->2,"draw.raster.polygonOffsetEnable"->1,
-            "draw.raster.polygonOffsetFactor"->fp(sign*2),"draw.raster.polygonOffsetUnits"->fp(sign*3))}
-        if(centroid){val k="draw.vertex.geometry.vertex.input.";val colorBase=region+0x26000+h*64
-          draw++=Map[String,BigInt](k+"attributes[1].enabled"->1,k+"attributes[1].components"->4,k+"attributes[1].bindingIndex"->1,
-            k+"bindings[1].base"->colorBase,k+"bindings[1].limit"->(colorBase+48),k+"bindings[1].allocationBase"->colorBase,
-            k+"bindings[1].allocationLimit"->(colorBase+64),k+"bindings[1].stride"->16)}
-        if(instances>1){for(i<-0 until 3)memory(pa(region+0x22000+i))=i
-          val k="draw.vertex.geometry.vertex.input."
-          draw++=Map[String,BigInt](k+"indexFormat"->1,k+"indices.base"->(region+0x22000),k+"indices.limit"->(region+0x22003),
-            k+"indices.allocationBase"->(region+0x22000),k+"indices.allocationLimit"->(region+0x22040))}
-        record(region+0x12000+h*4096,NativeBinnedGraphicsLayout.drawWords,NativeBinnedGraphicsLayout.drawMagic,
-          NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord),draw)}
-      record(region+0x10000,NativeBinnedGraphicsLayout.jobWords,NativeBinnedGraphicsLayout.jobMagic,
-        NativeBinnedGraphicsLayout.jobFields(new NativeBinnedGraphicsJobRecord),identity("job.identity.")++Map[String,BigInt](
-          "job.frameBase"->(region+0x11000),"job.frameLimit"->(region+0x11800),"job.drawBase"->(region+0x12000),
-          "job.drawLimit"->(region+0x12000+(drawCount-1).max(0)*4096+2048),"job.drawCount"->drawCount,"job.drawStride"->4096))
-    }
-    def expectedBytes: Map[BigInt,Int]={
-      val data=FragmentInterpolationReference.Data(Vector.fill(3)(Fp32ViewportReference.decode(fp(1))),
-        if(polygonOffset)Vector(0.25,0.75,0.5).map(fp)else Vector.fill(3)(fp(0.5)),Vector.fill(3)(Vector.fill(8)(BigInt(0))),0,1)
-      val tri=TriangleRasterReference.Triangle(Vector((BigInt(0),BigInt(0)),(BigInt(17*256),BigInt(0)),(BigInt(0),BigInt(9*256))),data)
-      val coverage=TriangleRasterReference.raster(tri,TriangleRasterReference.Settings(width=17,height=9,mode=mode),graphics)
-        .flatMap(_.samples.flatMap(p=>(0 until(1<<mode)).filter(s=>(p.mask&(1<<s))!=0).map(s=>(p.x,p.y,s)))).toSet
-      val shades=Vector.tabulate(2){h=>
-        val values=data.copy(flat=8,values=Vector.tabulate(3)(i=>gradient(h,i).padTo(8,BigInt(0))))
-        val triangle=tri.copy(values=values)
-        val pixels=mutable.Map.empty[(Int,Int),Vector[BigInt]]
-        if(centroid)for(raw<-TriangleRasterReference.raster(triangle,TriangleRasterReference.Settings(width=17,height=9,mode=mode),graphics)){
-          val q=CentroidRasterReference(triangle,2,raw,mode,centroidMask(h),graphics)
-          for((p,l)<-q.samples.zip(q.lanes) if p.mask!=0)pixels((p.x,p.y))=l.values.take(4)
+      word(0x30400, ((imageBase >> 12) << 10) | 0xcf)
+      if (virtualImages) word(0x30000 + (imageVaBase >> 22) * 4, ((imageBase >> 12) << 10) | 0xcf)
+      word(pa(region + 0x130000), 0x4000003c); word(pa(region + 0x130004), region + 0x130040)
+      val sf = TypedFragmentStateLayout.fields(new TypedFragmentState(f))
+      for (h <- 0 until 2) {
+        val base = region + 0x20000 + h * 512; for (i <- 0 until 128) word(pa(base + i * 4), 0)
+        for ((x, i) <- Vector[BigInt](TypedFragmentStateLayout.magic, 512, 1, 4, 7, 8, generation, h).zipWithIndex)
+          word(pa(base + i * 4), x)
+        val a = region + 0x40000 + h * 4096; val b = region + 0x50000 + h * 4096
+        val used = fragmentPrefix + 72; val allocation = (used + 63) & ~63
+        val v = Map[String, BigInt](
+          "version" -> 1,
+          "engineCount" -> 2,
+          "fragment.version" -> (if (centroid) centroidVersion else 1),
+          "fragment.centroidMask" -> (if (centroid) centroidMask(h) else BigInt(0)),
+          "fragment.shaderPc" -> (if (centroid) region + 0x25000
+                                  else if (badShader && h == 1) BigInt(0x404000)
+                                  else BigInt(0x402000)),
+          "fragment.varyingSlots" -> 1,
+          "fragment.colorSlots" -> 4,
+          "fragment.colorMask" -> 15,
+          "fragment.sampleMode" -> mode,
+          "fragment.allowDepthOverride" -> (if (polygonOffset && overrideSecond && h == 1) 1 else 0),
+          "fragment.sampler.texWidth" -> 1,
+          "fragment.sampler.texHeight" -> 1,
+          "fragment.scratch.base" -> a,
+          "fragment.scratch.limit" -> (a + used),
+          "fragment.scratch.allocationBase" -> a,
+          "fragment.scratch.allocationLimit" -> (a + allocation),
+          "scratch[0].base" -> b,
+          "scratch[0].limit" -> (b + used),
+          "scratch[0].allocationBase" -> b,
+          "scratch[0].allocationLimit" -> (b + allocation),
+          "tests.version" -> 1,
+          "tests.depthEnable" -> 1,
+          "tests.depthWrite" -> 1,
+          "tests.depthFunction" -> 1,
+          "tests.front.function" -> 6,
+          "tests.back.function" -> 6,
+          "blend.version" -> 1,
+          "blend.enable" -> h,
+          "blend.srcRGB" -> 4,
+          "blend.dstRGB" -> 5,
+          "blend.srcAlpha" -> 1
+        ) ++ identity("fragment.identity.")
+        if (centroid)
+          require(
+            v.keySet.subsetOf(sf.map(_.name).toSet),
+            s"unknown centroid state fields: ${v.keySet -- sf.map(_.name)}"
+          )
+        for (field <- sf) {
+          val raw = v.getOrElse(field.name, BigInt(0)) & ((BigInt(1) << (field.words * 32)) - 1)
+          for (i <- 0 until field.words) word(pa(base + (field.word + i) * 4), (raw >> (i * 32)) & 0xffffffffL)
         }
+        for (s <- Seq(a, b)) {
+          for (i <- 0 until 4; c <- 0 until 4) word(pa(s + fragmentPrefix + i * 16 + c * 4), rgba(h)(c))
+          word(pa(s + fragmentPrefix + 64), if (polygonOffset && overrideSecond && h == 1) 63 else 61)
+          word(pa(s + fragmentPrefix + 68), fp(if (polygonOffset) 0.125 else 0.5))
+        }
+      }
+      word(pa(0x404000), 0)
+      var frame = Map[String, BigInt](
+        "frame.version" -> 1,
+        "frame.bins.producer.version" -> 1,
+        "frame.bins.producer.arena.version" -> 1,
+        "frame.bins.producer.arena.base" -> (region + 0x60000),
+        "frame.bins.producer.arena.limit" -> (region + 0x80000),
+        "frame.bins.producer.screenWidth" -> 17,
+        "frame.bins.producer.screenHeight" -> 9,
+        "frame.bins.producer.tileLog2" -> 3,
+        "frame.bins.bins.version" -> 3,
+        "frame.bins.bins.tileCount" -> 6,
+        "frame.bins.bins.directoryBase" -> (region + 0x120000),
+        "frame.bins.bins.directoryLimit" -> (region + 0x120180),
+        "frame.bins.bins.pool.version" -> 1,
+        "frame.bins.bins.pool.base" -> (region + 0x100000),
+        "frame.bins.bins.pool.limit" -> (region + 0x110000),
+        "frame.bins.bins.pool.pageSizeLog2" -> 7,
+        "frame.states.version" -> 1,
+        "frame.states.base" -> (region + 0x20000),
+        "frame.states.limit" -> (region + 0x20400),
+        "frame.scratchStride" -> 4096,
+        "frame.scratch[0].base" -> (region + 0x40000),
+        "frame.scratch[0].limit" -> (region + 0x42000),
+        "frame.scratch[1].base" -> (region + 0x50000),
+        "frame.scratch[1].limit" -> (region + 0x52000),
+        "frame.image.version" -> 1,
+        "frame.image.pixels.version" -> 1,
+        "frame.image.pixels.colors.version" -> 1,
+        "frame.image.pixels.colors.tileLog2" -> 3,
+        "frame.image.pixels.colors.tileWidth" -> 8,
+        "frame.image.pixels.colors.tileHeight" -> 8,
+        "frame.image.pixels.colors.sampleMode" -> mode,
+        "frame.image.pixels.colors.reservedBytes" -> 4096,
+        "frame.image.pixels.depth.format" -> TypedDepthFormat.d32f,
+        "frame.image.pixels.depth.loadOp" -> 1,
+        "frame.image.pixels.depth.clearDepth" -> fp(1)
+      ) ++
+        identity("frame.bins.producer.arena.identity.") ++ identity("frame.bins.bins.pool.identity.") ++ identity(
+          "frame.states.identity."
+        ) ++ identity("frame.image.pixels.colors.identity.")
+      var offset = 4096
+      for (i <- 0 until 4) {
+        val k = s"frame.image.pixels.colors.colors[$i].";
+        frame ++= Map[String, BigInt](
+          k + "enabled" -> 1,
+          k + "format" -> TypedColorFormat.id(names(i)),
+          k + "offset" -> offset,
+          k + "channelMask" -> 15,
+          k + "loadOp" -> (if (loadImages) 0 else 1)
+        ) ++ clear.zipWithIndex.map { case (v, c) => (k + s"clear[$c]", v) }
+        offset += ((64 * (1 << mode) * format(names(i)).bytes + 63) & ~63)
+      }
+      for (resolve <- Seq(false, true); i <- 0 until 5) {
+        val bytes = if (i == 4) 4 else format(names(i)).bytes; val samples = if (resolve) 1 else 1 << mode
+        val alloc = imageBase + (if (resolve) 0x80000 else 0) + i * 0x10000;
+        val base = alloc + (if (resolve) 59 else 61); val pitch = 17 * samples * bytes + 7
+        val end = (base + 9 * pitch + 63) & ~BigInt(63);
+        val k = if (resolve) s"frame.image.resolves[$i].destination." else s"frame.image.views[$i]."
+        if (resolve) frame += (s"frame.image.resolves[$i].enable" -> BigInt(1))
+        val delta = if (virtualImages) imageVaBase - imageBase else BigInt(0)
+        frame ++= Map[String, BigInt](
+          k + "base" -> (base + delta),
+          k + "limit" -> (base + delta + 8 * pitch + 17 * samples * bytes),
+          k + "allocationBase" -> (alloc + delta),
+          k + "allocationLimit" -> (end + delta),
+          k + "imageWidth" -> 17,
+          k + "imageHeight" -> 9,
+          k + "rowPitch" -> pitch,
+          k + "readable" -> (if (resolve) 0 else 1),
+          k + "writable" -> 1,
+          k + "store" -> 1
+        )
+        for (a <- alloc until end) { memory(a) = 0xa7; initial(a) = 0xa7 };
+        backings += Backing(i, base, pitch, bytes, resolve)
+      }
+      record(
+        region + 0x11000,
+        NativeBinnedGraphicsLayout.frameWords,
+        NativeBinnedGraphicsLayout.frameMagic,
+        NativeBinnedGraphicsLayout.frameFields(new NativeBinnedGraphicsFrameRecord),
+        frame
+      )
+      for (h <- 0 until drawCount) {
+        var draw = Map[String, BigInt](
+          "draw.version" -> 1,
+          "draw.state" -> h,
+          "draw.token" -> (0xa0000000L + h),
+          "draw.vertex.viewport.version" -> 1,
+          "draw.vertex.viewport.extentX" -> 17,
+          "draw.vertex.viewport.extentY" -> 9,
+          "draw.vertex.viewport.farDepth" -> fp(1),
+          "draw.vertex.geometry.topology" -> 4,
+          "draw.vertex.geometry.vertex.version" -> 1,
+          "draw.vertex.geometry.vertex.shaderPc" -> (if (centroid) region + 0x24000 else BigInt(0x401000)),
+          "draw.vertex.geometry.vertex.attributeSlots" -> (if (centroid) 2 else 1),
+          "draw.vertex.geometry.vertex.varyingSlots" -> 1,
+          "draw.vertex.geometry.vertex.varyingMask" -> (if (centroid) 15 else 0),
+          "draw.vertex.geometry.vertex.sampler.texWidth" -> 1,
+          "draw.vertex.geometry.vertex.sampler.texHeight" -> 1,
+          "draw.vertex.geometry.vertex.scratch.base" -> (region + 0x30000),
+          "draw.vertex.geometry.vertex.scratch.limit" -> (region + (if (centroid) 0x30260 else 0x301e0)),
+          "draw.vertex.geometry.vertex.scratch.allocationBase" -> (region + 0x30000),
+          "draw.vertex.geometry.vertex.scratch.allocationLimit" -> (region + (if (centroid) 0x30280 else 0x30200)),
+          "draw.vertex.geometry.vertex.input.version" -> (if (converted) 2 else 1),
+          "draw.vertex.geometry.vertex.input.count" -> 3,
+          "draw.vertex.geometry.vertex.input.instances" -> instances,
+          "draw.vertex.geometry.vertex.input.attributes[0].enabled" -> 1,
+          "draw.vertex.geometry.vertex.input.attributes[0].components" -> 4,
+          "draw.vertex.geometry.vertex.input.attributes[0].format" -> vertexFormat,
+          "draw.vertex.geometry.vertex.input.bindings[0].base" -> vertexBase,
+          "draw.vertex.geometry.vertex.input.bindings[0].limit" -> (vertexBase + 3 * vertexStride),
+          "draw.vertex.geometry.vertex.input.bindings[0].allocationBase" -> vertexBase,
+          "draw.vertex.geometry.vertex.input.bindings[0].allocationLimit" -> (vertexBase + 64),
+          "draw.vertex.geometry.vertex.input.bindings[0].stride" -> vertexStride,
+          "draw.raster.version" -> 1,
+          "draw.raster.screenW" -> 17,
+          "draw.raster.screenH" -> 9,
+          "draw.raster.sampleMode" -> mode,
+          "draw.raster.frontFaceCCW" -> 1,
+          "draw.vertex.geometry.flatMask" -> (if (centroid) 8 else 0)
+        ) ++ identity("draw.vertex.geometry.vertex.input.identity.")
+        if (polygonOffset) {
+          val sign = polygonSign * (if (h == 0) 1 else -1)
+          draw ++= Map[String, BigInt](
+            "draw.raster.version" -> 2,
+            "draw.raster.polygonOffsetEnable" -> 1,
+            "draw.raster.polygonOffsetFactor" -> fp(sign * 2),
+            "draw.raster.polygonOffsetUnits" -> fp(sign * 3)
+          )
+        }
+        if (centroid) {
+          val k = "draw.vertex.geometry.vertex.input."; val colorBase = region + 0x26000 + h * 64
+          draw ++= Map[String, BigInt](
+            k + "attributes[1].enabled" -> 1,
+            k + "attributes[1].components" -> 4,
+            k + "attributes[1].bindingIndex" -> 1,
+            k + "bindings[1].base" -> colorBase,
+            k + "bindings[1].limit" -> (colorBase + 48),
+            k + "bindings[1].allocationBase" -> colorBase,
+            k + "bindings[1].allocationLimit" -> (colorBase + 64),
+            k + "bindings[1].stride" -> 16
+          )
+        }
+        if (instances > 1) {
+          for (i <- 0 until 3) memory(pa(region + 0x22000 + i)) = i
+          val k = "draw.vertex.geometry.vertex.input."
+          draw ++= Map[String, BigInt](
+            k + "indexFormat" -> 1,
+            k + "indices.base" -> (region + 0x22000),
+            k + "indices.limit" -> (region + 0x22003),
+            k + "indices.allocationBase" -> (region + 0x22000),
+            k + "indices.allocationLimit" -> (region + 0x22040)
+          )
+        }
+        record(
+          region + 0x12000 + h * 4096,
+          NativeBinnedGraphicsLayout.drawWords,
+          NativeBinnedGraphicsLayout.drawMagic,
+          NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord),
+          draw
+        )
+      }
+      record(
+        region + 0x10000,
+        NativeBinnedGraphicsLayout.jobWords,
+        NativeBinnedGraphicsLayout.jobMagic,
+        NativeBinnedGraphicsLayout.jobFields(new NativeBinnedGraphicsJobRecord),
+        identity("job.identity.") ++ Map[String, BigInt](
+          "job.frameBase" -> (region + 0x11000),
+          "job.frameLimit" -> (region + 0x11800),
+          "job.drawBase" -> (region + 0x12000),
+          "job.drawLimit" -> (region + 0x12000 + (drawCount - 1).max(0) * 4096 + 2048),
+          "job.drawCount" -> drawCount,
+          "job.drawStride" -> 4096
+        )
+      )
+    }
+    def expectedBytes: Map[BigInt, Int] = {
+      val data = FragmentInterpolationReference.Data(
+        Vector.fill(3)(Fp32ViewportReference.decode(fp(1))),
+        if (polygonOffset) Vector(0.25, 0.75, 0.5).map(fp) else Vector.fill(3)(fp(0.5)),
+        Vector.fill(3)(Vector.fill(8)(BigInt(0))),
+        0,
+        1
+      )
+      val tri = TriangleRasterReference.Triangle(
+        Vector((BigInt(0), BigInt(0)), (BigInt(17 * 256), BigInt(0)), (BigInt(0), BigInt(9 * 256))),
+        data
+      )
+      val coverage = TriangleRasterReference
+        .raster(tri, TriangleRasterReference.Settings(width = 17, height = 9, mode = mode), graphics)
+        .flatMap(
+          _.samples.flatMap(p => (0 until (1 << mode)).filter(s => (p.mask & (1 << s)) != 0).map(s => (p.x, p.y, s)))
+        )
+        .toSet
+      val shades = Vector.tabulate(2) { h =>
+        val values = data.copy(flat = 8, values = Vector.tabulate(3)(i => gradient(h, i).padTo(8, BigInt(0))))
+        val triangle = tri.copy(values = values)
+        val pixels = mutable.Map.empty[(Int, Int), Vector[BigInt]]
+        if (centroid)
+          for (
+            raw <- TriangleRasterReference.raster(
+              triangle,
+              TriangleRasterReference.Settings(width = 17, height = 9, mode = mode),
+              graphics
+            )
+          ) {
+            val q = CentroidRasterReference(triangle, 2, raw, mode, centroidMask(h), graphics)
+            for ((p, l) <- q.samples.zip(q.lanes) if p.mask != 0) pixels((p.x, p.y)) = l.values.take(4)
+          }
         pixels.toMap
       }
-      val expected=mutable.Map.empty[BigInt,Int]++initial
-      val polygonSamples=mutable.Map.empty[(Int,Int,Int,Int),BigInt]
-      if(polygonOffset){
-        import Fp32ViewportReference.{E,decode,calc,pack,clamp,rational}
+      val expected = mutable.Map.empty[BigInt, Int] ++ initial
+      val polygonSamples = mutable.Map.empty[(Int, Int, Int, Int), BigInt]
+      if (polygonOffset) {
+        import Fp32ViewportReference.{E, decode, calc, pack, clamp, rational}
         import FragmentInterpolationReference.edge
-        val slope=PolygonDepthOffsetReference.maximum(tri.coords.map(_._1),tri.coords.map(_._2),data.depth)
-        val resolution=decode(fp(Math.ulp(0.75f).toDouble))
-        def depth(edges: Vector[BigInt],a: BigInt,bias: E): BigInt={
-          FloatingDepthReference.at(edges,a,data.depth,3,bias)
+        val slope = PolygonDepthOffsetReference.maximum(tri.coords.map(_._1), tri.coords.map(_._2), data.depth)
+        val resolution = decode(fp(Math.ulp(0.75f).toDouble))
+        def depth(edges: Vector[BigInt], a: BigInt, bias: E): BigInt = {
+          FloatingDepthReference.at(edges, a, data.depth, 3, bias)
         }
-        val offsets=if(mode==0)Vector((0,0))else if(mode==1)Vector((-1,-1),(1,1))else Vector((-1,-1),(1,-1),(-1,1),(1,1))
-        for(h<-0 until 2){val sign=polygonSign*(if(h==0)1 else -1)
-          val bias=calc(calc(slope,decode(fp(sign*2)),2),calc(resolution,decode(fp(sign*3)),2),0)
-          assert(bias.sig!=0)
-          val triangle=tri.copy(values=data.copy(flat=8,values=Vector.tabulate(3)(i=>gradient(h,i).padTo(8,BigInt(0)))))
-          for(raw<-TriangleRasterReference.raster(triangle,TriangleRasterReference.Settings(width=17,height=9,mode=mode),graphics)){
-            val q=CentroidRasterReference(triangle,2,raw,mode,centroidMask(h),graphics)
-            for((p,lane)<-q.samples.zipWithIndex;s<-0 until(1<<mode) if(p.mask&(1<<s))!=0){
-              val(ox,oy)=offsets(s);val x=BigInt(p.x)*256+128+ox*64;val y=BigInt(p.y)*256+128+oy*64
-              val edges=Vector.tabulate(3)(TriangleRasterReference.edgeAt(triangle,_,x,y))
-              val z=if(overrideSecond && h==1)fp(0.125)else depth(edges,edges.sum,bias)
-              val key=(4,p.x,p.y,s);val previous=polygonSamples.getOrElse(key,fp(1))
-              if(TypedColorReference.value(z)<=TypedColorReference.value(previous)){
-                polygonSamples(key)=z
-                val color=q.lanes(lane).values.take(4).updated(0,depth(p.edges,p.area,bias))
-                for(i<-0 until 4){val k=(i,p.x,p.y,s);val old=polygonSamples.getOrElse(k,encode(names(i),clear)._1)
-                  polygonSamples(k)=encode(names(i),TypedBlendReference.blend(names(i),color,old,TypedBlendReference.State(enable=h==1)))._1}
+        val offsets =
+          if (mode == 0) Vector((0, 0))
+          else if (mode == 1) Vector((-1, -1), (1, 1))
+          else Vector((-1, -1), (1, -1), (-1, 1), (1, 1))
+        for (h <- 0 until 2) {
+          val sign = polygonSign * (if (h == 0) 1 else -1)
+          val bias = calc(calc(slope, decode(fp(sign * 2)), 2), calc(resolution, decode(fp(sign * 3)), 2), 0)
+          assert(bias.sig != 0)
+          val triangle =
+            tri.copy(values = data.copy(flat = 8, values = Vector.tabulate(3)(i => gradient(h, i).padTo(8, BigInt(0)))))
+          for (
+            raw <- TriangleRasterReference.raster(
+              triangle,
+              TriangleRasterReference.Settings(width = 17, height = 9, mode = mode),
+              graphics
+            )
+          ) {
+            val q = CentroidRasterReference(triangle, 2, raw, mode, centroidMask(h), graphics)
+            for ((p, lane) <- q.samples.zipWithIndex; s <- 0 until (1 << mode) if (p.mask & (1 << s)) != 0) {
+              val (ox, oy) = offsets(s); val x = BigInt(p.x) * 256 + 128 + ox * 64;
+              val y = BigInt(p.y) * 256 + 128 + oy * 64
+              val edges = Vector.tabulate(3)(TriangleRasterReference.edgeAt(triangle, _, x, y))
+              val z = if (overrideSecond && h == 1) fp(0.125) else depth(edges, edges.sum, bias)
+              val key = (4, p.x, p.y, s); val previous = polygonSamples.getOrElse(key, fp(1))
+              if (TypedColorReference.value(z) <= TypedColorReference.value(previous)) {
+                polygonSamples(key) = z
+                val color = q.lanes(lane).values.take(4).updated(0, depth(p.edges, p.area, bias))
+                for (i <- 0 until 4) {
+                  val k = (i, p.x, p.y, s); val old = polygonSamples.getOrElse(k, encode(names(i), clear)._1)
+                  polygonSamples(k) = encode(
+                    names(i),
+                    TypedBlendReference.blend(names(i), color, old, TypedBlendReference.State(enable = h == 1))
+                  )._1
+                }
               }
             }
           }
         }
       }
-      def sample(i: Int,x: Int,y: Int,s: Int): BigInt={val covered=drawCount>0 && coverage((x,y,s))
-        if(polygonOffset)polygonSamples.getOrElse((i,x,y,s),if(i==4)fp(1)else encode(names(i),clear)._1)
-        else if(i==4)fp(if(covered)0.5 else 1)else{var old=encode(names(i),clear)._1
-          if(covered){old=encode(names(i),if(centroid)shades(0)((x,y))else expectedRgba(0))._1
-            for(_<-0 until instances)old=encode(names(i),TypedBlendReference.blend(names(i),if(centroid)shades(1)((x,y))else expectedRgba(1),old,TypedBlendReference.State(enable=true)))._1};old}}
-      for(b<-backings;y<-0 until 9;x<-0 until 17){
-        if(b.resolve){val raw=TypedResolveReference.resolve(if(b.location==4)"R32F"else names(b.location),Vector.tabulate(1<<mode)(s=>sample(b.location,x,y,s)),mode,depth=b.location==4)
-          for(j<-0 until b.bytes)expected(b.base+y*b.pitch+x*b.bytes+j)=((raw>>(j*8))&255).toInt}
-        else for(s<-0 until(1<<mode);j<-0 until b.bytes)expected(b.base+y*b.pitch+(x*(1<<mode)+s)*b.bytes+j)=((sample(b.location,x,y,s)>>(j*8))&255).toInt}
+      def sample(i: Int, x: Int, y: Int, s: Int): BigInt = {
+        val covered = drawCount > 0 && coverage((x, y, s))
+        if (polygonOffset) polygonSamples.getOrElse((i, x, y, s), if (i == 4) fp(1) else encode(names(i), clear)._1)
+        else if (i == 4) fp(if (covered) 0.5 else 1)
+        else {
+          var old = encode(names(i), clear)._1
+          if (covered) {
+            old = encode(names(i), if (centroid) shades(0)((x, y)) else expectedRgba(0))._1
+            for (_ <- 0 until instances)
+              old = encode(
+                names(i),
+                TypedBlendReference.blend(
+                  names(i),
+                  if (centroid) shades(1)((x, y)) else expectedRgba(1),
+                  old,
+                  TypedBlendReference.State(enable = true)
+                )
+              )._1
+          };
+          old
+        }
+      }
+      for (b <- backings; y <- 0 until 9; x <- 0 until 17) {
+        if (b.resolve) {
+          val raw = TypedResolveReference.resolve(
+            if (b.location == 4) "R32F" else names(b.location),
+            Vector.tabulate(1 << mode)(s => sample(b.location, x, y, s)),
+            mode,
+            depth = b.location == 4
+          )
+          for (j <- 0 until b.bytes) expected(b.base + y * b.pitch + x * b.bytes + j) = ((raw >> (j * 8)) & 255).toInt
+        } else
+          for (s <- 0 until (1 << mode); j <- 0 until b.bytes)
+            expected(b.base + y * b.pitch + (x * (1 << mode) + s) * b.bytes + j) =
+              ((sample(b.location, x, y, s) >> (j * 8)) & 255).toInt
+      }
       expected.toMap
     }
-    def verify(): Unit={for((a,v)<-expectedBytes)assert(memory(a)==v,s"native binned byte mismatch ${a.toString(16)} got=${memory(a)} expected=$v")
-      assert(!reads.exists(a=>a>=0x400000 && a<0x800000),"VAs must not reach physical AXI")
-      if(virtualImages)assert(!(reads++writes).exists(a=>a>=imageVaBase && a<imageVaBase+0x100000),"image VAs must be translated before physical AXI")}
-    def read(a: BigInt): BigInt={reads+=a;val base=a& ~BigInt(63);(0 until 64).foldLeft(BigInt(0))((v,b)=>v|(BigInt(memory.getOrElse(base+b,0))<<(b*8)))}
-    def write(a: BigInt,data: BigInt,mask: BigInt): Unit={writes+=a;for(b<-0 until 64 if mask.testBit(b))memory(a+b)=((data>>(b*8))&255).toInt}
-    val queryProbe=if(visibilityQueries)Some(new NativeVisibilityQueryHostProbe(d,memory,read,write))else None
-    def submit(id: Int=23,bytes: Int=512,feedback: Option[(NativeTransformFeedbackHostProbe,Boolean)]=None,feedbackScope: ()=>Unit=()=>()): Unit={queryProbe.foreach(_.beforeFrame());parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,7)
-      axiWrite(d,GpuCommandMmioRegs.SOURCE,(region+0x10000).toInt);axiWrite(d,GpuCommandMmioRegs.DESTINATION,(region+0x10200).toInt)
-      axiWrite(d,GpuCommandMmioRegs.BYTES,bytes);axiWrite(d,GpuCommandMmioRegs.PATTERN,0);feedback.foreach{case(p,discard)=>p.stageRender(discard)};feedbackScope();axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)}
-    def run(status: Int=0,id: Int=23,readFault: BigInt=>Boolean=_=>false,writeFault: (BigInt,BigInt,BigInt)=>Boolean=(_,_,_)=>false,
-      publication: Option[NativeIndirectDrawHostProbe]=None): Unit={
-      serviceMemoryMaster(d,read,readFault,writeAckDelay=7,readResponseDelay=3,maxCycles=1000000,writeFault=writeFault,
-        onPausedCycle=publication.map(p=>()=>p.consumePublication()))(write){publication.forall(_.publicationComplete) && d.io.m_irq.peek().litToBoolean}
-      val result=axiRead(d,GpuCommandMmioRegs.COMPLETION)
-      val details=(0 until 12).map(i=>axiRead(d,0x180+i*4))
-      assert((result&255)==id && ((result>>8)&7)==7 && ((result>>11)&15)==status && ((result>>15)&1)==(if(status==0)1 else 0),
-        s"native binned completion=${result.toString(16)} expectedStatus=$status GNX1=${details.map(_.toString(16)).mkString(",")}")
-      assert(details.head==BigInt("474e5801",16) && (details(1)&7)==status && details(11)==0)
+    def verify(): Unit = {
+      for ((a, v) <- expectedBytes)
+        assert(memory(a) == v, s"native binned byte mismatch ${a.toString(16)} got=${memory(a)} expected=$v")
+      assert(!reads.exists(a => a >= 0x400000 && a < 0x800000), "VAs must not reach physical AXI")
+      if (virtualImages)
+        assert(
+          !(reads ++ writes).exists(a => a >= imageVaBase && a < imageVaBase + 0x100000),
+          "image VAs must be translated before physical AXI"
+        )
+    }
+    def read(a: BigInt): BigInt = {
+      reads += a; val base = a & ~BigInt(63);
+      (0 until 64).foldLeft(BigInt(0))((v, b) => v | (BigInt(memory.getOrElse(base + b, 0)) << (b * 8)))
+    }
+    def write(a: BigInt, data: BigInt, mask: BigInt): Unit = {
+      writes += a; for (b <- 0 until 64 if mask.testBit(b)) memory(a + b) = ((data >> (b * 8)) & 255).toInt
+    }
+    val queryProbe = if (visibilityQueries) Some(new NativeVisibilityQueryHostProbe(d, memory, read, write)) else None
+    def submit(
+        id: Int = 23,
+        bytes: Int = 512,
+        feedback: Option[(NativeTransformFeedbackHostProbe, Boolean)] = None,
+        feedbackScope: () => Unit = () => ()
+    ): Unit = {
+      queryProbe.foreach(_.beforeFrame()); parkMemory(d); axiWrite(d, GpuCommandMmioRegs.COMMAND_ID, id);
+      axiWrite(d, GpuCommandMmioRegs.OPCODE, 7)
+      axiWrite(d, GpuCommandMmioRegs.SOURCE, (region + 0x10000).toInt);
+      axiWrite(d, GpuCommandMmioRegs.DESTINATION, (region + 0x10200).toInt)
+      axiWrite(d, GpuCommandMmioRegs.BYTES, bytes); axiWrite(d, GpuCommandMmioRegs.PATTERN, 0);
+      feedback.foreach { case (p, discard) => p.stageRender(discard) }; feedbackScope();
+      axiWrite(d, GpuCommandMmioRegs.SUBMIT, 1)
+    }
+    def run(
+        status: Int = 0,
+        id: Int = 23,
+        readFault: BigInt => Boolean = _ => false,
+        writeFault: (BigInt, BigInt, BigInt) => Boolean = (_, _, _) => false,
+        publication: Option[NativeIndirectDrawHostProbe] = None
+    ): Unit = {
+      serviceMemoryMaster(
+        d,
+        read,
+        readFault,
+        writeAckDelay = 7,
+        readResponseDelay = 3,
+        maxCycles = 1000000,
+        writeFault = writeFault,
+        onPausedCycle = publication.map(p => () => p.consumePublication())
+      )(write) { publication.forall(_.publicationComplete) && d.io.m_irq.peek().litToBoolean }
+      val result = axiRead(d, GpuCommandMmioRegs.COMPLETION)
+      val details = (0 until 12).map(i => axiRead(d, 0x180 + i * 4))
+      assert(
+        (result & 255) == id && ((result >> 8) & 7) == 7 && ((result >> 11) & 15) == status && ((result >> 15) & 1) == (if (
+                                                                                                                          status == 0
+                                                                                                                        ) 1
+                                                                                                                        else
+                                                                                                                          0),
+        s"native binned completion=${result.toString(16)} expectedStatus=$status GNX1=${details.map(_.toString(16)).mkString(",")}"
+      )
+      assert(details.head == BigInt("474e5801", 16) && (details(1) & 7) == status && details(11) == 0)
       queryProbe.foreach(_.completed(status))
-      if(status==0)assert(details(1)==0 && details(5)==0 && details.slice(6,9)==Seq[BigInt](7,8,generation))
+      if (status == 0)
+        assert(details(1) == 0 && details(5) == 0 && details.slice(6, 9) == Seq[BigInt](7, 8, generation))
     }
-    def pop(): Unit={axiWrite(d,GpuCommandMmioRegs.COMPLETION_POP,1);axiWrite(d,RenderHostRegs.IRQ,3)
-      for(i<-0 until 12)assert(axiRead(d,0x180+i*4)==0,"popped native details must not remain visible");queryProbe.foreach(_.afterFrame())}
-    def consumer(id: Int): BigInt={parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,0)
-      axiWrite(d,GpuCommandMmioRegs.KERNEL_PC,0x403000);axiWrite(d,GpuCommandMmioRegs.KERNARG,(region+0x130000).toInt)
-      for(a<-Seq(GpuCommandMmioRegs.GRID_X,GpuCommandMmioRegs.GRID_Y,GpuCommandMmioRegs.GRID_Z,GpuCommandMmioRegs.LOCAL_X,GpuCommandMmioRegs.LOCAL_Y,GpuCommandMmioRegs.LOCAL_Z))axiWrite(d,a,1)
-      axiWrite(d,GpuCommandMmioRegs.SUBMIT,1);serviceMemoryMaster(d,read,maxCycles=100000)(write){d.io.m_irq.peek().litToBoolean}
-      val result=axiRead(d,GpuCommandMmioRegs.COMPLETION);assert((result&255)==id && ((result>>15)&1)==1)
-      for(i<-0 until 12)assert(axiRead(d,0x180+i*4)==0,"ordinary compute must not inherit native completion details")
-      val v=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(memory.getOrElse(pa(region+0x130040)+b,0))<<(b*8)));pop();v}
+    def pop(): Unit = {
+      axiWrite(d, GpuCommandMmioRegs.COMPLETION_POP, 1); axiWrite(d, RenderHostRegs.IRQ, 3)
+      for (i <- 0 until 12) assert(axiRead(d, 0x180 + i * 4) == 0, "popped native details must not remain visible");
+      queryProbe.foreach(_.afterFrame())
+    }
+    def consumer(id: Int): BigInt = {
+      parkMemory(d); axiWrite(d, GpuCommandMmioRegs.COMMAND_ID, id); axiWrite(d, GpuCommandMmioRegs.OPCODE, 0)
+      axiWrite(d, GpuCommandMmioRegs.KERNEL_PC, 0x403000);
+      axiWrite(d, GpuCommandMmioRegs.KERNARG, (region + 0x130000).toInt)
+      for (
+        a <- Seq(
+          GpuCommandMmioRegs.GRID_X,
+          GpuCommandMmioRegs.GRID_Y,
+          GpuCommandMmioRegs.GRID_Z,
+          GpuCommandMmioRegs.LOCAL_X,
+          GpuCommandMmioRegs.LOCAL_Y,
+          GpuCommandMmioRegs.LOCAL_Z
+        )
+      ) axiWrite(d, a, 1)
+      axiWrite(d, GpuCommandMmioRegs.SUBMIT, 1);
+      serviceMemoryMaster(d, read, maxCycles = 100000)(write) { d.io.m_irq.peek().litToBoolean }
+      val result = axiRead(d, GpuCommandMmioRegs.COMPLETION); assert((result & 255) == id && ((result >> 15) & 1) == 1)
+      for (i <- 0 until 12)
+        assert(axiRead(d, 0x180 + i * 4) == 0, "ordinary compute must not inherit native completion details")
+      val v = (0 until 4).foldLeft(BigInt(0))((v, b) =>
+        v | (BigInt(memory.getOrElse(pa(region + 0x130040) + b, 0)) << (b * 8))
+      );
+      pop(); v
+    }
   }
-  if(getClass==classOf[NativeBinnedGraphicsHostAxiSpec])
-  it should "execute a fragment image store through the native host" in {
-    simulate(host(local=false,fragmentImages=true)){d=>initialize(d);val image=new Image(d);vm(d)
-      image.setup()
-      val root=image.region+0x28000;val table=image.region+0x28400;val target=image.region+0x29000
-      val fields=TypedFragmentStateLayout.fields(new TypedFragmentState(f))
-      for(h<-0 until 2){val state=image.region+0x20000+h*512
-        image.patchRecord(state,fields,"image.version",1)
-        image.patchRecord(state,fields,"image.address",root)
-      }
-      for((v,i)<-Vector[BigInt](ShaderImagePublicationLayout.magic,64,1,7,8,image.generation,1,1,table,table+1024,0).zipWithIndex)
-        image.word(image.pa(root+i*4),v)
-      val fmt=TextureImageFormat.id("RGBA32UI");val control=(fmt<<6)|40
-      val desc=Array.fill[BigInt](64)(0)
-      for((i,v)<-Seq[(Int,BigInt)](0->BigInt("47495501",16),1->256,2->1,3->7,4->8,5->image.generation,
-        7->1,8->1,9->(1<<GraphicsStage.fragment),10->1,11->1,12->fmt,13->fmt,14->1,
-        17->15,18->1,22->target,23->(target+4096),25->target,26->4,27->1,28->1,29->1,30->64,37->16)) desc(i)=v
-      desc.zipWithIndex.foreach{case(v,i)=>image.word(image.pa(table+4*i),v)}
-      for(i<-0 until 64)image.memory(image.pa(target)+i)=0xa5
-      def vector(fn:Int,form:Int,rd:Int,vs1:Int,vs2:Int=0):BigInt =
-        (BigInt(fn)<<26)|(BigInt(1)<<25)|(BigInt(vs2)<<20)|(BigInt(vs1)<<15)|(BigInt(form)<<12)|(BigInt(rd)<<7)|0x57
-      def imageOp(fn:Int,pair:Int=0,vs1:Int=0,vs2:Int=0):BigInt =
-        (BigInt(fn)<<26)|(BigInt(1)<<25)|(BigInt(vs2)<<20)|(BigInt(vs1)<<15)|(BigInt(pair)<<12)|0x2b
-      val store=Vector(BigInt("0104f057",16),vector(23,3,2,0),
-        BigInt(((control+0x800)& ~0xfff)|(10<<7)|0x37),addi(10,10,control&0xfff),vector(23,4,3,10),
-        imageOp(8,vs1=2,vs2=3),imageOp(8,pair=1,vs1=2,vs2=2))++
-        (0 until 4).map(c=>vector(0,3,4+c,c+1,1))++
-        Vector(imageOp(8,pair=2,vs1=4,vs2=5),imageOp(8,pair=3,vs1=6,vs2=7),imageOp(10,vs1=1,vs2=2))
-      (startup++store++fragmentProgram.drop(startup.size)).zipWithIndex.foreach{case(v,i)=>image.word(image.pa(0x402000+4*i),v)}
-      axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(199);image.run(id=199)
-      val written=(0 until 64).map(i=>image.memory.getOrElse(image.pa(target)+i,0xa5))
-      assert(written.exists(_!=0xa5),"fragment image stores must reach the target")
-      for(lane<-0 until 4;component<-0 until 4;byte<-0 until 4) {
-        val actual=written(lane*16+component*4+byte)
-        val expected=((lane+component+1)>>(byte*8))&255
-        assert(actual==0xa5 || actual==expected,
-          s"wrong image byte for lane=$lane component=$component byte=$byte: $actual, expected $expected or untouched")
-      }
-      assert((0 until 4).exists(lane => (0 until 4).exists(component =>
-        (0 until 4).forall(byte => written(lane*16+component*4+byte)==(((lane+component+1)>>(byte*8))&255)))),
-        "at least one complete image component must be stored")
-      image.verify();image.pop()
-
-      // A new frame with a mismatched publication identity must fail before
-      // the fragment shader can modify its image target.
-      image.setup()
-      val badRoot=image.region+0x28000;val badTable=image.region+0x28400;val badTarget=image.region+0x29000
-      for(h<-0 until 2){val state=image.region+0x20000+h*512
-        image.patchRecord(state,fields,"image.version",1)
-        image.patchRecord(state,fields,"image.address",badRoot)
-      }
-      for((v,i)<-Vector[BigInt](ShaderImagePublicationLayout.magic,64,1,99,8,image.generation,1,1,badTable,badTable+1024,0).zipWithIndex)
-        image.word(image.pa(badRoot+i*4),v)
-      desc(3)=99;desc(5)=image.generation;desc(22)=badTarget
-      desc(23)=badTarget+4096;desc(25)=badTarget
-      desc.zipWithIndex.foreach{case(v,i)=>image.word(image.pa(badTable+4*i),v)}
-      for(i<-0 until 64)image.memory(image.pa(badTarget)+i)=0xa5
-      axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(200);image.run(status=5,id=200)
-      assert((0 until 64).forall(i=>image.memory.getOrElse(image.pa(badTarget)+i,0xa5)==0xa5),
-        "rejected image publication must not modify the target")
-      image.pop()
-
-      def installHealthyFrame(): (BigInt,BigInt) = {
+  if (getClass == classOf[NativeBinnedGraphicsHostAxiSpec])
+    it should "execute a fragment image store through the native host" in {
+      simulate(host(local = false, fragmentImages = true)) { d =>
+        initialize(d); val image = new Image(d); vm(d)
         image.setup()
-        val nextRoot=image.region+0x28000;val nextTable=image.region+0x28400;val nextTarget=image.region+0x29000
-        for(h<-0 until 2){val state=image.region+0x20000+h*512
-          image.patchRecord(state,fields,"image.version",1)
-          image.patchRecord(state,fields,"image.address",nextRoot)
+        val root = image.region + 0x28000; val table = image.region + 0x28400; val target = image.region + 0x29000
+        val fields = TypedFragmentStateLayout.fields(new TypedFragmentState(f))
+        for (h <- 0 until 2) {
+          val state = image.region + 0x20000 + h * 512
+          image.patchRecord(state, fields, "image.version", 1)
+          image.patchRecord(state, fields, "image.address", root)
         }
-        for((v,i)<-Vector[BigInt](ShaderImagePublicationLayout.magic,64,1,7,8,image.generation,1,1,nextTable,nextTable+1024,0).zipWithIndex)
-          image.word(image.pa(nextRoot+i*4),v)
-        desc(3)=7;desc(5)=image.generation;desc(22)=nextTarget
-        desc(23)=nextTarget+4096;desc(25)=nextTarget
-        desc.zipWithIndex.foreach{case(v,i)=>image.word(image.pa(nextTable+4*i),v)}
-        for(i<-0 until 64)image.memory(image.pa(nextTarget)+i)=0xa5
-        (nextRoot,nextTarget)
+        for (
+          (v, i) <- Vector[BigInt](
+            ShaderImagePublicationLayout.magic,
+            64,
+            1,
+            7,
+            8,
+            image.generation,
+            1,
+            1,
+            table,
+            table + 1024,
+            0
+          ).zipWithIndex
+        )
+          image.word(image.pa(root + i * 4), v)
+        val fmt = TextureImageFormat.id("RGBA32UI"); val control = (fmt << 6) | 40
+        val desc = Array.fill[BigInt](64)(0)
+        for (
+          (i, v) <- Seq[(Int, BigInt)](
+            0 -> BigInt("47495501", 16),
+            1 -> 256,
+            2 -> 1,
+            3 -> 7,
+            4 -> 8,
+            5 -> image.generation,
+            7 -> 1,
+            8 -> 1,
+            9 -> (1 << GraphicsStage.fragment),
+            10 -> 1,
+            11 -> 1,
+            12 -> fmt,
+            13 -> fmt,
+            14 -> 1,
+            17 -> 15,
+            18 -> 1,
+            22 -> target,
+            23 -> (target + 4096),
+            25 -> target,
+            26 -> 4,
+            27 -> 1,
+            28 -> 1,
+            29 -> 1,
+            30 -> 64,
+            37 -> 16
+          )
+        ) desc(i) = v
+        desc.zipWithIndex.foreach { case (v, i) => image.word(image.pa(table + 4 * i), v) }
+        for (i <- 0 until 64) image.memory(image.pa(target) + i) = 0xa5
+        def vector(fn: Int, form: Int, rd: Int, vs1: Int, vs2: Int = 0): BigInt =
+          (BigInt(fn) << 26) | (BigInt(1) << 25) | (BigInt(vs2) << 20) | (BigInt(vs1) << 15) | (BigInt(
+            form
+          ) << 12) | (BigInt(rd) << 7) | 0x57
+        def imageOp(fn: Int, pair: Int = 0, vs1: Int = 0, vs2: Int = 0): BigInt =
+          (BigInt(fn) << 26) | (BigInt(1) << 25) | (BigInt(vs2) << 20) | (BigInt(vs1) << 15) | (BigInt(
+            pair
+          ) << 12) | 0x2b
+        val store = Vector(
+          BigInt("0104f057", 16),
+          vector(23, 3, 2, 0),
+          BigInt(((control + 0x800) & ~0xfff) | (10 << 7) | 0x37),
+          addi(10, 10, control & 0xfff),
+          vector(23, 4, 3, 10),
+          imageOp(8, vs1 = 2, vs2 = 3),
+          imageOp(8, pair = 1, vs1 = 2, vs2 = 2)
+        ) ++
+          (0 until 4).map(c => vector(0, 3, 4 + c, c + 1, 1)) ++
+          Vector(
+            imageOp(8, pair = 2, vs1 = 4, vs2 = 5),
+            imageOp(8, pair = 3, vs1 = 6, vs2 = 7),
+            imageOp(10, vs1 = 1, vs2 = 2)
+          )
+        (startup ++ store ++ fragmentProgram.drop(startup.size)).zipWithIndex.foreach { case (v, i) =>
+          image.word(image.pa(0x402000 + 4 * i), v)
+        }
+        axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1); image.submit(199); image.run(id = 199)
+        val written = (0 until 64).map(i => image.memory.getOrElse(image.pa(target) + i, 0xa5))
+        assert(written.exists(_ != 0xa5), "fragment image stores must reach the target")
+        for (lane <- 0 until 4; component <- 0 until 4; byte <- 0 until 4) {
+          val actual = written(lane * 16 + component * 4 + byte)
+          val expected = ((lane + component + 1) >> (byte * 8)) & 255
+          assert(
+            actual == 0xa5 || actual == expected,
+            s"wrong image byte for lane=$lane component=$component byte=$byte: $actual, expected $expected or untouched"
+          )
+        }
+        assert(
+          (0 until 4).exists(lane =>
+            (0 until 4).exists(component =>
+              (0 until 4).forall(byte =>
+                written(lane * 16 + component * 4 + byte) == (((lane + component + 1) >> (byte * 8)) & 255)
+              )
+            )
+          ),
+          "at least one complete image component must be stored"
+        )
+        image.verify(); image.pop()
+
+        // A new frame with a mismatched publication identity must fail before
+        // the fragment shader can modify its image target.
+        image.setup()
+        val badRoot = image.region + 0x28000; val badTable = image.region + 0x28400;
+        val badTarget = image.region + 0x29000
+        for (h <- 0 until 2) {
+          val state = image.region + 0x20000 + h * 512
+          image.patchRecord(state, fields, "image.version", 1)
+          image.patchRecord(state, fields, "image.address", badRoot)
+        }
+        for (
+          (v, i) <- Vector[BigInt](
+            ShaderImagePublicationLayout.magic,
+            64,
+            1,
+            99,
+            8,
+            image.generation,
+            1,
+            1,
+            badTable,
+            badTable + 1024,
+            0
+          ).zipWithIndex
+        )
+          image.word(image.pa(badRoot + i * 4), v)
+        desc(3) = 99; desc(5) = image.generation; desc(22) = badTarget
+        desc(23) = badTarget + 4096; desc(25) = badTarget
+        desc.zipWithIndex.foreach { case (v, i) => image.word(image.pa(badTable + 4 * i), v) }
+        for (i <- 0 until 64) image.memory(image.pa(badTarget) + i) = 0xa5
+        axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1); image.submit(200); image.run(status = 5, id = 200)
+        assert(
+          (0 until 64).forall(i => image.memory.getOrElse(image.pa(badTarget) + i, 0xa5) == 0xa5),
+          "rejected image publication must not modify the target"
+        )
+        image.pop()
+
+        def installHealthyFrame(): (BigInt, BigInt) = {
+          image.setup()
+          val nextRoot = image.region + 0x28000; val nextTable = image.region + 0x28400;
+          val nextTarget = image.region + 0x29000
+          for (h <- 0 until 2) {
+            val state = image.region + 0x20000 + h * 512
+            image.patchRecord(state, fields, "image.version", 1)
+            image.patchRecord(state, fields, "image.address", nextRoot)
+          }
+          for (
+            (v, i) <- Vector[BigInt](
+              ShaderImagePublicationLayout.magic,
+              64,
+              1,
+              7,
+              8,
+              image.generation,
+              1,
+              1,
+              nextTable,
+              nextTable + 1024,
+              0
+            ).zipWithIndex
+          )
+            image.word(image.pa(nextRoot + i * 4), v)
+          desc(3) = 7; desc(5) = image.generation; desc(22) = nextTarget
+          desc(23) = nextTarget + 4096; desc(25) = nextTarget
+          desc.zipWithIndex.foreach { case (v, i) => image.word(image.pa(nextTable + 4 * i), v) }
+          for (i <- 0 until 64) image.memory(image.pa(nextTarget) + i) = 0xa5
+          (nextRoot, nextTarget)
+        }
+        val (faultRoot, faultTarget) = installHealthyFrame()
+        axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1); image.submit(201)
+        var injected = false
+        image.run(
+          status = 3,
+          id = 201,
+          readFault = address => {
+            val hit = (address & ~BigInt(63)) == image.pa(faultRoot)
+            if (hit) injected = true
+            hit
+          }
+        )
+        assert(injected, "the image publication read fault must be exercised")
+        assert(
+          (0 until 64).forall(i => image.memory.getOrElse(image.pa(faultTarget) + i, 0xa5) == 0xa5),
+          "faulted image publication must not modify the target"
+        )
+        image.pop()
+        val (_, recoveredTarget) = installHealthyFrame()
+        axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1); image.submit(202); image.run(id = 202)
+        assert(
+          (0 until 64).exists(i => image.memory.getOrElse(image.pa(recoveredTarget) + i, 0xa5) != 0xa5),
+          "healthy image stores must recover after a publication fault"
+        )
+        image.verify(); image.pop()
       }
-      val (faultRoot,faultTarget)=installHealthyFrame()
-      axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(201)
-      var injected=false
-      image.run(status=3,id=201,readFault=address=>{
-        val hit=(address & ~BigInt(63))==image.pa(faultRoot)
-        if(hit)injected=true
-        hit
-      })
-      assert(injected,"the image publication read fault must be exercised")
-      assert((0 until 64).forall(i=>image.memory.getOrElse(image.pa(faultTarget)+i,0xa5)==0xa5),
-        "faulted image publication must not modify the target")
-      image.pop()
-      val (_,recoveredTarget)=installHealthyFrame()
-      axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(202);image.run(id=202)
-      assert((0 until 64).exists(i=>image.memory.getOrElse(image.pa(recoveredTarget)+i,0xa5)!=0xa5),
-        "healthy image stores must recover after a publication fault")
-      image.verify();image.pop()
     }
-  }
-  if(getClass==classOf[NativeBinnedGraphicsHostAxiSpec])
-  it should "load fragment image values into native host framebuffer output" in {
-    simulate(host(local=false,fragmentImages=true)){d=>initialize(d);val image=new Image(d);vm(d)
-      image.setup()
-      val fields=TypedFragmentStateLayout.fields(new TypedFragmentState(f))
-      val fmt=TextureImageFormat.id("RGBA32UI");val control=(fmt<<6)|40
-      val targets=(0 until 2).map(h=>image.region+0x29000+h*0x1000)
-      for(h<-0 until 2){
-        val root=image.region+0x28000+h*0x100;val table=image.region+0x28400+h*0x400;val target=targets(h)
-        val state=image.region+0x20000+h*512
-        image.patchRecord(state,fields,"image.version",1);image.patchRecord(state,fields,"image.address",root)
-        for((v,i)<-Vector[BigInt](ShaderImagePublicationLayout.magic,64,1,7,8,image.generation,1,1,table,table+1024,0).zipWithIndex)
-          image.word(image.pa(root+i*4),v)
-        val desc=Array.fill[BigInt](64)(0)
-        for((i,v)<-Seq[(Int,BigInt)](0->BigInt("47495501",16),1->256,2->1,3->7,4->8,5->image.generation,
-          7->1,8->1,9->(1<<GraphicsStage.fragment),10->1,11->1,12->fmt,13->fmt,14->1,
-          17->15,18->1,22->target,23->(target+4096),25->target,26->4,27->1,28->1,29->1,30->64,37->16)) desc(i)=v
-        desc.zipWithIndex.foreach{case(v,i)=>image.word(image.pa(table+4*i),v)}
-        for(pixel<-0 until 4; component<-0 until 4)
-          image.word(image.pa(target+pixel*16+component*4),image.rgba(h)(component))
+  if (getClass == classOf[NativeBinnedGraphicsHostAxiSpec])
+    it should "load fragment image values into native host framebuffer output" in {
+      simulate(host(local = false, fragmentImages = true)) { d =>
+        initialize(d); val image = new Image(d); vm(d)
+        image.setup()
+        val fields = TypedFragmentStateLayout.fields(new TypedFragmentState(f))
+        val fmt = TextureImageFormat.id("RGBA32UI"); val control = (fmt << 6) | 40
+        val targets = (0 until 2).map(h => image.region + 0x29000 + h * 0x1000)
+        for (h <- 0 until 2) {
+          val root = image.region + 0x28000 + h * 0x100; val table = image.region + 0x28400 + h * 0x400;
+          val target = targets(h)
+          val state = image.region + 0x20000 + h * 512
+          image.patchRecord(state, fields, "image.version", 1); image.patchRecord(state, fields, "image.address", root)
+          for (
+            (v, i) <- Vector[BigInt](
+              ShaderImagePublicationLayout.magic,
+              64,
+              1,
+              7,
+              8,
+              image.generation,
+              1,
+              1,
+              table,
+              table + 1024,
+              0
+            ).zipWithIndex
+          )
+            image.word(image.pa(root + i * 4), v)
+          val desc = Array.fill[BigInt](64)(0)
+          for (
+            (i, v) <- Seq[(Int, BigInt)](
+              0 -> BigInt("47495501", 16),
+              1 -> 256,
+              2 -> 1,
+              3 -> 7,
+              4 -> 8,
+              5 -> image.generation,
+              7 -> 1,
+              8 -> 1,
+              9 -> (1 << GraphicsStage.fragment),
+              10 -> 1,
+              11 -> 1,
+              12 -> fmt,
+              13 -> fmt,
+              14 -> 1,
+              17 -> 15,
+              18 -> 1,
+              22 -> target,
+              23 -> (target + 4096),
+              25 -> target,
+              26 -> 4,
+              27 -> 1,
+              28 -> 1,
+              29 -> 1,
+              30 -> 64,
+              37 -> 16
+            )
+          ) desc(i) = v
+          desc.zipWithIndex.foreach { case (v, i) => image.word(image.pa(table + 4 * i), v) }
+          for (pixel <- 0 until 4; component <- 0 until 4)
+            image.word(image.pa(target + pixel * 16 + component * 4), image.rgba(h)(component))
+        }
+        def vector(fn: Int, form: Int, rd: Int, vs1: Int, vs2: Int = 0): BigInt =
+          (BigInt(fn) << 26) | (BigInt(1) << 25) | (BigInt(vs2) << 20) | (BigInt(vs1) << 15) | (BigInt(
+            form
+          ) << 12) | (BigInt(rd) << 7) | 0x57
+        def imageOp(fn: Int, pair: Int = 0, rd: Int = 0, vs1: Int = 0, vs2: Int = 0): BigInt =
+          (BigInt(fn) << 26) | (BigInt(1) << 25) | (BigInt(vs2) << 20) | (BigInt(vs1) << 15) | (BigInt(
+            pair
+          ) << 12) | (BigInt(rd) << 7) | 0x2b
+        val prepare = Vector(
+          BigInt("0104f057", 16),
+          vector(23, 3, 2, 0),
+          BigInt(((control + 0x800) & ~0xfff) | (10 << 7) | 0x37),
+          addi(10, 10, control & 0xfff),
+          vector(23, 4, 3, 10),
+          imageOp(8, vs1 = 2, vs2 = 3),
+          imageOp(8, pair = 1, vs1 = 2, vs2 = 2)
+        )
+        val loads = Vector(imageOp(9, rd = 8, vs1 = 2, vs2 = 2)) ++
+          (1 until 4).map(c => imageOp(11, pair = c, rd = 8 + c))
+        val outputs = (0 until 4).flatMap(location =>
+          (0 until 4).flatMap(c => Seq(addi(6, 7, (10 + location * 4 + c) * 32), vm(6, 8 + c, true)))
+        )
+        (startup ++ prepare ++ loads ++ outputs ++ fragmentProgram.takeRight(11)).zipWithIndex.foreach { case (v, i) =>
+          image.word(image.pa(0x402000 + 4 * i), v)
+        }
+        axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1); image.submit(203); image.run(id = 203)
+        for (target <- targets)
+          assert(
+            image.reads.exists(a => (a & ~BigInt(63)) == image.pa(target)),
+            "each image must be read through the native host"
+          )
+        image.verify(); image.pop()
       }
-      def vector(fn:Int,form:Int,rd:Int,vs1:Int,vs2:Int=0):BigInt =
-        (BigInt(fn)<<26)|(BigInt(1)<<25)|(BigInt(vs2)<<20)|(BigInt(vs1)<<15)|(BigInt(form)<<12)|(BigInt(rd)<<7)|0x57
-      def imageOp(fn:Int,pair:Int=0,rd:Int=0,vs1:Int=0,vs2:Int=0):BigInt =
-        (BigInt(fn)<<26)|(BigInt(1)<<25)|(BigInt(vs2)<<20)|(BigInt(vs1)<<15)|(BigInt(pair)<<12)|(BigInt(rd)<<7)|0x2b
-      val prepare=Vector(BigInt("0104f057",16),vector(23,3,2,0),
-        BigInt(((control+0x800)& ~0xfff)|(10<<7)|0x37),addi(10,10,control&0xfff),vector(23,4,3,10),
-        imageOp(8,vs1=2,vs2=3),imageOp(8,pair=1,vs1=2,vs2=2))
-      val loads=Vector(imageOp(9,rd=8,vs1=2,vs2=2))++
-        (1 until 4).map(c=>imageOp(11,pair=c,rd=8+c))
-      val outputs=(0 until 4).flatMap(location=>(0 until 4).flatMap(c=>
-        Seq(addi(6,7,(10+location*4+c)*32),vm(6,8+c,true))))
-      (startup++prepare++loads++outputs++fragmentProgram.takeRight(11)).zipWithIndex.foreach{
-        case(v,i)=>image.word(image.pa(0x402000+4*i),v)}
-      axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(203);image.run(id=203)
-      for(target<-targets)
-        assert(image.reads.exists(a=>(a & ~BigInt(63))==image.pa(target)),
-          "each image must be read through the native host")
-      image.verify();image.pop()
     }
-  }
-  if(getClass==classOf[NativeBinnedGraphicsHostAxiSpec])
-  it should "preserve fragment image store-to-load order through native host" in {
-    simulate(host(local=false,fragmentImages=true)){d=>initialize(d);val image=new Image(d);vm(d)
-      image.setup()
-      val fields=TypedFragmentStateLayout.fields(new TypedFragmentState(f))
-      val fmt=TextureImageFormat.id("RGBA32UI");val control=(fmt<<6)|40
-      val targets=(0 until 2).map(h=>image.region+0x29000+h*0x1000)
-      for(h<-0 until 2){
-        val root=image.region+0x28000+h*0x100;val table=image.region+0x28400+h*0x400;val target=targets(h)
-        val state=image.region+0x20000+h*512
-        image.patchRecord(state,fields,"image.version",1);image.patchRecord(state,fields,"image.address",root)
-        for((v,i)<-Vector[BigInt](ShaderImagePublicationLayout.magic,64,1,7,8,image.generation,1,1,table,table+1024,0).zipWithIndex)
-          image.word(image.pa(root+i*4),v)
-        val desc=Array.fill[BigInt](64)(0)
-        for((i,v)<-Seq[(Int,BigInt)](0->BigInt("47495501",16),1->256,2->1,3->7,4->8,5->image.generation,
-          7->1,8->1,9->(1<<GraphicsStage.fragment),10->1,11->1,12->fmt,13->fmt,14->1,
-          17->15,18->1,22->target,23->(target+4096),25->target,26->4,27->1,28->1,29->1,30->64,37->16)) desc(i)=v
-        desc.zipWithIndex.foreach{case(v,i)=>image.word(image.pa(table+4*i),v)}
-        for(i<-0 until 64)image.memory(image.pa(target)+i)=0xa5
+  if (getClass == classOf[NativeBinnedGraphicsHostAxiSpec])
+    it should "preserve fragment image store-to-load order through native host" in {
+      simulate(host(local = false, fragmentImages = true)) { d =>
+        initialize(d); val image = new Image(d); vm(d)
+        image.setup()
+        val fields = TypedFragmentStateLayout.fields(new TypedFragmentState(f))
+        val fmt = TextureImageFormat.id("RGBA32UI"); val control = (fmt << 6) | 40
+        val targets = (0 until 2).map(h => image.region + 0x29000 + h * 0x1000)
+        for (h <- 0 until 2) {
+          val root = image.region + 0x28000 + h * 0x100; val table = image.region + 0x28400 + h * 0x400;
+          val target = targets(h)
+          val state = image.region + 0x20000 + h * 512
+          image.patchRecord(state, fields, "image.version", 1); image.patchRecord(state, fields, "image.address", root)
+          for (
+            (v, i) <- Vector[BigInt](
+              ShaderImagePublicationLayout.magic,
+              64,
+              1,
+              7,
+              8,
+              image.generation,
+              1,
+              1,
+              table,
+              table + 1024,
+              0
+            ).zipWithIndex
+          )
+            image.word(image.pa(root + i * 4), v)
+          val desc = Array.fill[BigInt](64)(0)
+          for (
+            (i, v) <- Seq[(Int, BigInt)](
+              0 -> BigInt("47495501", 16),
+              1 -> 256,
+              2 -> 1,
+              3 -> 7,
+              4 -> 8,
+              5 -> image.generation,
+              7 -> 1,
+              8 -> 1,
+              9 -> (1 << GraphicsStage.fragment),
+              10 -> 1,
+              11 -> 1,
+              12 -> fmt,
+              13 -> fmt,
+              14 -> 1,
+              17 -> 15,
+              18 -> 1,
+              22 -> target,
+              23 -> (target + 4096),
+              25 -> target,
+              26 -> 4,
+              27 -> 1,
+              28 -> 1,
+              29 -> 1,
+              30 -> 64,
+              37 -> 16
+            )
+          ) desc(i) = v
+          desc.zipWithIndex.foreach { case (v, i) => image.word(image.pa(table + 4 * i), v) }
+          for (i <- 0 until 64) image.memory(image.pa(target) + i) = 0xa5
+        }
+        def vector(fn: Int, form: Int, rd: Int, vs1: Int, vs2: Int = 0): BigInt =
+          (BigInt(fn) << 26) | (BigInt(1) << 25) | (BigInt(vs2) << 20) | (BigInt(vs1) << 15) | (BigInt(
+            form
+          ) << 12) | (BigInt(rd) << 7) | 0x57
+        def imageOp(fn: Int, pair: Int = 0, rd: Int = 0, vs1: Int = 0, vs2: Int = 0): BigInt =
+          (BigInt(fn) << 26) | (BigInt(1) << 25) | (BigInt(vs2) << 20) | (BigInt(vs1) << 15) | (BigInt(
+            pair
+          ) << 12) | (BigInt(rd) << 7) | 0x2b
+        val prepare = Vector(
+          BigInt("0104f057", 16),
+          vector(23, 3, 2, 0),
+          BigInt(((control + 0x800) & ~0xfff) | (10 << 7) | 0x37),
+          addi(10, 10, control & 0xfff),
+          vector(23, 4, 3, 10),
+          imageOp(8, vs1 = 2, vs2 = 3),
+          imageOp(8, pair = 1, vs1 = 2, vs2 = 2)
+        )
+        val colors = (0 until 4).flatMap(c =>
+          Seq(
+            addi(13, 1, 896 + c * 4),
+            (BigInt(13) << 15) | (BigInt(2) << 12) | (BigInt(13) << 7) | 3,
+            vector(0x17, 4, 4 + c, 13)
+          )
+        )
+        val store = colors ++ Vector(
+          imageOp(8, pair = 2, vs1 = 4, vs2 = 5),
+          imageOp(8, pair = 3, vs1 = 6, vs2 = 7),
+          imageOp(10, vs1 = 2, vs2 = 2)
+        )
+        val loads = Vector(imageOp(9, rd = 8, vs1 = 2, vs2 = 2)) ++
+          (1 until 4).map(c => imageOp(11, pair = c, rd = 8 + c))
+        val outputs = (0 until 4).flatMap(location =>
+          (0 until 4).flatMap(c => Seq(addi(6, 7, (10 + location * 4 + c) * 32), vm(6, 8 + c, true)))
+        )
+        (startup ++ prepare ++ store ++ loads ++ outputs ++ fragmentProgram.takeRight(11)).zipWithIndex.foreach {
+          case (v, i) => image.word(image.pa(0x402000 + 4 * i), v)
+        }
+        axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1); image.submit(203); image.run(id = 203)
+        for (h <- 0 until 2; c <- 0 until 4) {
+          val a = image.pa(targets(h) + c * 4)
+          val actual =
+            (0 until 4).foldLeft(BigInt(0))((v, b) => v | (BigInt(image.memory.getOrElse(a + b, 0xa5)) << (8 * b)))
+          assert(actual == image.rgba(h)(c), s"draw $h image component $c was not stored")
+        }
+        image.verify(); image.pop()
       }
-      def vector(fn:Int,form:Int,rd:Int,vs1:Int,vs2:Int=0):BigInt =
-        (BigInt(fn)<<26)|(BigInt(1)<<25)|(BigInt(vs2)<<20)|(BigInt(vs1)<<15)|(BigInt(form)<<12)|(BigInt(rd)<<7)|0x57
-      def imageOp(fn:Int,pair:Int=0,rd:Int=0,vs1:Int=0,vs2:Int=0):BigInt =
-        (BigInt(fn)<<26)|(BigInt(1)<<25)|(BigInt(vs2)<<20)|(BigInt(vs1)<<15)|(BigInt(pair)<<12)|(BigInt(rd)<<7)|0x2b
-      val prepare=Vector(BigInt("0104f057",16),vector(23,3,2,0),
-        BigInt(((control+0x800)& ~0xfff)|(10<<7)|0x37),addi(10,10,control&0xfff),vector(23,4,3,10),
-        imageOp(8,vs1=2,vs2=3),imageOp(8,pair=1,vs1=2,vs2=2))
-      val colors=(0 until 4).flatMap(c=>Seq(addi(13,1,896+c*4),
-        (BigInt(13)<<15)|(BigInt(2)<<12)|(BigInt(13)<<7)|3,vector(0x17,4,4+c,13)))
-      val store=colors++Vector(imageOp(8,pair=2,vs1=4,vs2=5),imageOp(8,pair=3,vs1=6,vs2=7),
-        imageOp(10,vs1=2,vs2=2))
-      val loads=Vector(imageOp(9,rd=8,vs1=2,vs2=2))++
-        (1 until 4).map(c=>imageOp(11,pair=c,rd=8+c))
-      val outputs=(0 until 4).flatMap(location=>(0 until 4).flatMap(c=>
-        Seq(addi(6,7,(10+location*4+c)*32),vm(6,8+c,true))))
-      (startup++prepare++store++loads++outputs++fragmentProgram.takeRight(11)).zipWithIndex.foreach{
-        case(v,i)=>image.word(image.pa(0x402000+4*i),v)}
-      axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(203);image.run(id=203)
-      for(h<-0 until 2; c<-0 until 4) {
-        val a=image.pa(targets(h)+c*4)
-        val actual=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(image.memory.getOrElse(a+b,0xa5))<<(8*b)))
-        assert(actual==image.rgba(h)(c),s"draw $h image component $c was not stored")
-      }
-      image.verify();image.pop()
     }
-  }
   // Register these cases once, without duplicating them in every feature profile.
-  if(getClass==classOf[NativeBinnedGraphicsHostAxiSpec])for(local<-Seq(true,false))
-  it should s"render repeated native indexed triangles with post-transform reuse and exact binned images local=$local" in {
-    val native=profile(local).copy(vertex=p.copy(postTransformEntries=16))
-    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
-      memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
-      exposePerformance=true,nativeBinnedGraphics=Some(native))){d=>
-      initialize(d);val image=new Image(d);vm(d)
-      assert(axiRead(d,0x1b8)==BigInt(0x3100502),"native discovery must report the implemented cache capacity")
-      for((reuse,frame)<-Seq(false,true).zipWithIndex){
-        image.setup()
-        val indices=image.region+0x22000
-        for(i<-0 until 9)image.memory(image.pa(indices+i))=i%3
-        val key="draw.vertex.geometry.vertex."
-        for((name,value)<-Map[String,BigInt](key+"reuseOutputs"->(if(reuse)1 else 0),key+"input.count"->9,key+"input.indexFormat"->1,
-          key+"input.indices.base"->indices,key+"input.indices.limit"->(indices+9),
-          key+"input.indices.allocationBase"->indices,key+"input.indices.allocationLimit"->(indices+64)))image.patchDraw(name,value)
-        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
-        image.submit(230+frame);image.run(id=230+frame);image.verify()
-        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2);image.pop()
-        val perf=d.io.performance.get;perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
-      }
-      info(s"NATIVE_BINNED_POST_TRANSFORM_REUSE local=$local indices=9 triangles=3 cacheEntries=16 optOutAndOptIn=true exactMRTDepthResolveGuards=true realSv32=true heldCompletionPinsVM=true payloadReleased=true")
-    }
-  }
-  if(getClass==classOf[NativeBinnedGraphicsHostAxiSpec])for(local<-Seq(true,false))
-  it should s"consume GPU-published indirect arrays and elements through native bin replay local=$local" in {
-    simulate(host(local)){d=>
-      initialize(d);val image=new Image(d);vm(d)
-      val probe=new NativeIndirectDrawHostProbe(d,image.memory,image.read,image.write,image.pa)
-      assert(axiRead(d,0x1b8)==BigInt(0x3000502))
-      val cases=if(!local)Seq((1,false),(2,true),(2,false))else Seq((1,false),(2,false))
-      val fields=NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord)
-      for(((mode,reset),frame)<-cases.zipWithIndex){
-        image.setup();val parameters=image.region+0x2203c;val indexBase=image.region+0x27000
-        val values=if(mode==1)Seq(3,1,0,0)else Seq(3,1,1,-1,0)
-        if(mode==2)Seq(99,1,2,3).zipWithIndex.foreach{case(v,i)=>image.memory(image.pa(indexBase+i))=v}
-        for(n<-0 until 2){
-          val address=image.region+0x12000+n*4096;val record=image.pa(address);val prefix="draw.vertex.geometry.vertex.input."
-          val changes=Map[String,BigInt](prefix+"count"->0,prefix+"instances"->0,prefix+"indexFormat"->(if(mode==1)0 else 1))++
-            (if(mode==2)Map[String,BigInt](prefix+"indices.base"->indexBase,prefix+"indices.limit"->(indexBase+4),
-              prefix+"indices.allocationBase"->indexBase,prefix+"indices.allocationLimit"->(indexBase+64))else Map.empty[String,BigInt])
-          for((name,value)<-changes)image.patchRecord(address,fields,name,value)
-          image.word(record+499*4,mode);image.word(record+500*4,parameters);image.word(record+501*4,parameters+4*values.size)
-          image.word(record+503*4,parameters& ~BigInt(63));image.word(record+504*4,(parameters+128)& ~BigInt(63))
-        }
-        probe.initializeArguments(parameters,values,cpu=reset);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
-        if(!reset){
-          val token=0x309+frame
-          probe.produce(170+frame,image.region+0x28000,parameters,values,token)
-          probe.publish(190+frame,token,parameters,values.size)
-          image.submit(230+frame);image.run(id=230+frame,publication=Some(probe));image.verify()
-          axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2);image.pop()
-        }else{
-          probe.noWait();image.submit(230+frame);var cut=false
-          serviceMemoryMaster(d,image.read,readResponseDelay=37,writeAckDelay=29,maxCycles=300000,
-            onReadAccepted=a=>if(!cut && a==image.pa(parameters& ~BigInt(63))){
-              cut=true;axiWrite(d,GpuCommandMmioRegs.RESET,1)
-              axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
-              for(_<-0 until 3)assert((axiRead(d,GpuCommandMmioRegs.STATUS)&8)!=0,"reset abandoned the real indirect reply")
-            })(image.write){cut && d.io.m_irq.peek().litToBoolean}
-          assert(cut && (axiRead(d,GpuCommandMmioRegs.STATUS)&8)==0)
-          assert(!image.writes.exists(_>=image.imageBase),"reset indirect draw published an image")
-          axiWrite(d,RenderHostRegs.IRQ,3)
-        }
-        probe.checkGuards(parameters,values.size)
-        val perf=d.io.performance.get;perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
-      }
-      info(s"INDIRECT_DRAW_NATIVE_BINNED local=$local frames=${cases.size} actualGPUproducer=true eventPublication=true arraysAndElements=true crossLine=true staticCountsZero=true signedBaseVertex=true Sv32=true resetDuringOwnedReply=${!local} exactMRTDepthResolveGuards=true payloadReleased=true healthyReuse=true")
-    }
-  }
-  private def vm(d: GpuHostSystemAxi): Unit={axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
-    axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)}
-  if(tessellationHostCompatibility && !combinedTessellationFeedbackQuery)
-    for(local<-if(fragmentImagesWithTessellation)Seq(false)else Seq(true,false))
-  it should s"preserve native binned images across tessellation ownership handoffs local=$local" in {
-    val tessellationMemory=TessellationNativeHostFixture.build()
-    simulate(host(local,fragmentImages=fragmentImagesWithTessellation)){d=>
-      initialize(d);val image=new Image(d);image.memory++=tessellationMemory
-      // This host translates shader fetches as well as data accesses.
-      image.word(0x30000,0xcf);vm(d)
-      def invalidTessellation(id:Int):Unit={
-        image.queryProbe.foreach(_.beforeFrame())
-        parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,15)
-        axiWrite(d,GpuCommandMmioRegs.SOURCE,0x4000);axiWrite(d,GpuCommandMmioRegs.DESTINATION,0x4200)
-        axiWrite(d,GpuCommandMmioRegs.PATTERN,0);axiWrite(d,GpuCommandMmioRegs.BYTES,511);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
-        serviceMemoryMaster(d,image.read,maxCycles=100000)(image.write){d.io.m_irq.peek().litToBoolean}
-        val meta=axiRead(d,GpuCommandMmioRegs.COMPLETION);val opcode=((meta>>8)&7)|(((meta>>16)&1)<<3)
-        assert((meta&255)==id && opcode==15 && ((meta>>11)&15)==1 && !meta.testBit(15))
-        image.queryProbe.foreach(_.completed(1));image.pop()
-      }
-      def renderTessellation(id:Int):Unit={
-        image.queryProbe.foreach(_.beforeFrame())
-        parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,15)
-        axiWrite(d,GpuCommandMmioRegs.SOURCE,0x4d0000);axiWrite(d,GpuCommandMmioRegs.DESTINATION,0x4d0200)
-        axiWrite(d,GpuCommandMmioRegs.PATTERN,0);axiWrite(d,GpuCommandMmioRegs.BYTES,512);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
-        var queuedEnd=false
-        serviceMemoryMaster(d,image.read,readResponseDelay=3,writeAckDelay=7,maxCycles=1000000,
-          onReadAccepted=a=>if(visibilityQueries && !queuedEnd && (a & ~BigInt(63))==0x8d0000){
-            queuedEnd=true;image.queryProbe.get.queueEnd()
-            assert((axiRead(d,GpuCommandMmioRegs.STATUS)&2)==0,"query end completed while tessellation owned a read")
-          })(image.write){d.io.m_irq.peek().litToBoolean}
-        if(visibilityQueries)assert(queuedEnd,"query end was not queued during tessellation")
-        val meta=axiRead(d,GpuCommandMmioRegs.COMPLETION);val opcode=((meta>>8)&7)|(((meta>>16)&1)<<3)
-        assert((meta&255)==id && opcode==15 && ((meta>>11)&15)==0 && meta.testBit(15),s"tessellation completion=$meta")
-        assert(axiRead(d,0x180)==BigInt("474e5a01",16))
-        val reds=(0 until 16).map(i=>image.memory.getOrElse(BigInt(0xa00000+i*4),0))
-        assert(reds.contains(255) && reds.contains(26),s"tessellation image=$reds")
-        image.queryProbe.foreach(_.completed(0));image.pop()
-      }
-      def installFragmentImageStore():BigInt={
-        val root=image.region+0x28000;val table=image.region+0x28400;val target=image.region+0x29000
-        val fields=TypedFragmentStateLayout.fields(new TypedFragmentState(f))
-        for(h<-0 until 2){val state=image.region+0x20000+h*512
-          image.patchRecord(state,fields,"image.version",1);image.patchRecord(state,fields,"image.address",root)}
-        for((v,i)<-Vector[BigInt](ShaderImagePublicationLayout.magic,64,1,7,8,image.generation,1,1,table,table+1024,0).zipWithIndex)
-          image.word(image.pa(root+i*4),v)
-        val fmt=TextureImageFormat.id("RGBA32UI");val control=(fmt<<6)|40
-        val desc=Array.fill[BigInt](64)(0)
-        for((i,v)<-Seq[(Int,BigInt)](0->BigInt("47495501",16),1->256,2->1,3->7,4->8,5->image.generation,
-          7->1,8->1,9->(1<<GraphicsStage.fragment),10->1,11->1,12->fmt,13->fmt,14->1,
-          17->15,18->1,22->target,23->(target+4096),25->target,26->4,27->1,28->1,29->1,30->64,37->16))desc(i)=v
-        desc.zipWithIndex.foreach{case(v,i)=>image.word(image.pa(table+4*i),v)}
-        for(i<-0 until 64)image.memory(image.pa(target)+i)=0xa5
-        def vector(fn:Int,form:Int,rd:Int,vs1:Int,vs2:Int=0):BigInt =
-          (BigInt(fn)<<26)|(BigInt(1)<<25)|(BigInt(vs2)<<20)|(BigInt(vs1)<<15)|(BigInt(form)<<12)|(BigInt(rd)<<7)|0x57
-        def imageOp(fn:Int,pair:Int=0,vs1:Int=0,vs2:Int=0):BigInt =
-          (BigInt(fn)<<26)|(BigInt(1)<<25)|(BigInt(vs2)<<20)|(BigInt(vs1)<<15)|(BigInt(pair)<<12)|0x2b
-        val store=Vector(BigInt("0104f057",16),vector(23,3,2,0),
-          BigInt(((control+0x800)& ~0xfff)|(10<<7)|0x37),addi(10,10,control&0xfff),vector(23,4,3,10),
-          imageOp(8,vs1=2,vs2=3),imageOp(8,pair=1,vs1=2,vs2=2))++
-          (0 until 4).map(c=>vector(0,3,4+c,c+1,1))++
-          Vector(imageOp(8,pair=2,vs1=4,vs2=5),imageOp(8,pair=3,vs1=6,vs2=7),imageOp(10,vs1=1,vs2=2))
-        (startup++store++fragmentProgram.drop(startup.size)).zipWithIndex.foreach{case(v,i)=>image.word(image.pa(0x402000+4*i),v)}
-        target
-      }
-      def checkFragmentImageStore(target:BigInt):Vector[Int]={
-        val written=(0 until 64).map(i=>image.memory.getOrElse(image.pa(target)+i,0xa5)).toVector
-        for(lane<-0 until 4;component<-0 until 4;byte<-0 until 4){
-          val expected=((lane+component+1)>>(byte*8))&255;val actual=written(lane*16+component*4+byte)
-          assert(actual==0xa5 || actual==expected,s"unexpected image byte lane=$lane component=$component byte=$byte: $actual")}
-        assert((0 until 4).exists(lane=>(0 until 4).exists(component=>(0 until 4).forall(byte=>
-          written(lane*16+component*4+byte)==(((lane+component+1)>>(byte*8))&255)))),"no image component was stored")
-        written
-      }
-      invalidTessellation(240)
-      renderTessellation(243)
-      image.setup();val target=if(fragmentImagesWithTessellation)Some(installFragmentImageStore())else None
-      axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(241);image.run(id=241);image.verify()
-      val imageBytes=target.map(checkFragmentImageStore);image.pop()
-      renderTessellation(244)
-      target.zip(imageBytes).foreach{case(address,bytes)=>assert(checkFragmentImageStore(address)==bytes,
-        "tessellation changed a retired fragment image publication")}
-      if(fragmentImagesWithTessellation){
-        image.setup();val nextTarget=installFragmentImageStore()
-        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(245);image.run(id=245);image.verify()
-        checkFragmentImageStore(nextTarget);image.pop()
-      }
-      invalidTessellation(242)
-      if(local){d.io.performance.get.payloadReservedBytes.expect(0.U);d.io.performance.get.payloadPinsActive.expect(0.U)}
-    }
-  }
-  if(combinedTessellationFeedbackQuery)for(local<-Seq(true,false))
-  it should s"keep visibility and feedback live across renderer ownership local=$local" in {
-    val tessellationMemory=TessellationNativeHostFixture.build()
-    simulate(host(local)){d=>
-      initialize(d);val image=new Image(d);image.memory++=tessellationMemory;image.word(0x30000,0xcf);vm(d)
-      val record=BigInt(0x30400000);val recordPa=BigInt(0x18400000)
-      val buffer=BigInt(0x3080003c);val bufferPa=BigInt(0x1880003c);val root=BigInt(0x80000030L)
-      val context=BigInt(0x71000007L);val cookie=101;val program=9
-      for((va,pa)<-Seq(record->recordPa,(buffer & ~BigInt(0x3fffff))->(bufferPa & ~BigInt(0x3fffff))))
-        image.word(0x30000+(va>>22)*4,((pa>>12)<<10)|0x2cf)
-      def install():Unit={for(i<-0 until 128)image.word(recordPa+i*4,0)
-        Seq[BigInt](BigInt("47544601",16),512,1,0,context,cookie,program,1,1,1,1).zipWithIndex.foreach{case(v,i)=>image.word(recordPa+i*4,v)}
-        image.word(recordPa+16*4,buffer);image.word(recordPa+17*4,buffer+4096);image.word(recordPa+41*4,root)
-        for(a<-(bufferPa & ~BigInt(63)) until bufferPa+256)image.memory(a)=0xa7}
-      def word(a:BigInt):BigInt=(0 until 4).foldLeft(BigInt(0))((v,i)=>v|(BigInt(image.memory.getOrElse(a+i,0))<<(8*i)))
-      def pop():Unit={axiWrite(d,GpuCommandMmioRegs.COMPLETION_POP,1);axiWrite(d,RenderHostRegs.IRQ,3)}
-      def control(action:Int,id:Int,status:Int=0):Unit={image.word(recordPa+3*4,action);image.word(recordPa+42*4,0);image.word(recordPa+43*4,0);parkMemory(d)
-        axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,12)
-        axiWrite(d,GpuCommandMmioRegs.SOURCE,record.toInt);axiWrite(d,GpuCommandMmioRegs.DESTINATION,(record+512).toInt)
-        axiWrite(d,GpuCommandMmioRegs.BYTES,512);axiWrite(d,GpuCommandMmioRegs.PATTERN,0)
-        axiWrite(d,GpuCommandMmioRegs.WIDTH,context.toInt);axiWrite(d,GpuCommandMmioRegs.HEIGHT,cookie)
-        axiWrite(d,GpuCommandMmioRegs.SOURCE_STRIDE,program);axiWrite(d,GpuCommandMmioRegs.FLAGS,0);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
-        serviceMemoryMaster(d,image.read,readResponseDelay=3,writeAckDelay=7,maxCycles=1000000)(image.write){d.io.m_irq.peek().litToBoolean}
-        val result=axiRead(d,GpuCommandMmioRegs.COMPLETION);val opcode=((result>>8)&7)|(((result>>16)&1)<<3)
-        assert((result&255)==id && opcode==12 && ((result>>11)&15)==status && result.testBit(15)==(status==0),s"feedback completion=$result");assert(word(recordPa+42*4)==status);pop()}
-      def scope(discard:Boolean):Unit={axiWrite(d,GpuCommandMmioRegs.WIDTH,context.toInt);axiWrite(d,GpuCommandMmioRegs.HEIGHT,program)
-        axiWrite(d,GpuCommandMmioRegs.SOURCE_STRIDE,cookie);axiWrite(d,GpuCommandMmioRegs.FLAGS,16 | (if(discard)8 else 0))}
-      def finish(id:Int,opcode:Int):Unit={serviceMemoryMaster(d,image.read,readResponseDelay=3,writeAckDelay=7,maxCycles=1000000,noProgressLimit=50000)(image.write){d.io.m_irq.peek().litToBoolean}
-        val result=axiRead(d,GpuCommandMmioRegs.COMPLETION);val op=((result>>8)&7)|(((result>>16)&1)<<3)
-        assert((result&255)==id && op==opcode && ((result>>11)&15)==0 && result.testBit(15),s"combined completion=$result");pop()}
-      val query=image.queryProbe.get;val primitive=if(primitiveQueries)Some(new NativePrimitiveQueryHostProbe(d,image.memory,image.read,image.write))else None
-      primitive.foreach(_.prepare());query.beforeFrame();primitive.foreach(_.beforeFrame());install();control(0,180)
-      image.setup();val fields=NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord)
-      for(i<-0 until 2)image.patchRecord(image.region+0x12000+i*4096,fields,"draw.vertex.geometry.topology",1)
-      axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,181);axiWrite(d,GpuCommandMmioRegs.OPCODE,7)
-      axiWrite(d,GpuCommandMmioRegs.SOURCE,(image.region+0x10000).toInt);axiWrite(d,GpuCommandMmioRegs.DESTINATION,(image.region+0x10200).toInt)
-      axiWrite(d,GpuCommandMmioRegs.BYTES,512);axiWrite(d,GpuCommandMmioRegs.PATTERN,0);scope(discard=true);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1);finish(181,7)
-      query.completed(0,expectedValue=false);query.afterFrame();query.beforeFrame()
-      parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,182);axiWrite(d,GpuCommandMmioRegs.OPCODE,15)
-      axiWrite(d,GpuCommandMmioRegs.SOURCE,0x4d0000);axiWrite(d,GpuCommandMmioRegs.DESTINATION,0x4d0200)
-      axiWrite(d,GpuCommandMmioRegs.PATTERN,0);axiWrite(d,GpuCommandMmioRegs.BYTES,512);scope(discard=false);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
-      query.queueEnd();assert((axiRead(d,GpuCommandMmioRegs.STATUS)&2)==0,"query ended before the accepted tessellation job")
-      finish(182,15);query.completed(0);query.afterFrame();control(1,183);primitive.foreach(_.afterFrame(4))
-      val expected=Vector.fill(2)(Vector(fp(-1),fp(1))).flatten++Vector.fill(2)(Vector[BigInt](0,fp(1))).flatten
-      assert(word(recordPa+28*4)==32 && word(recordPa+36*4)==4 && word(recordPa+38*4)==8)
-      for((v,i)<-expected.zipWithIndex)assert(word(bufferPa+i*4)==v,s"feedback word $i")
-      for(a<-(bufferPa & ~BigInt(63)) until bufferPa+256 if a<bufferPa || a>=bufferPa+32)
-        assert(image.memory(a)==0xa7,s"feedback guard ${a.toString(16)}")
-      def tessellation(id:Int,fault:Boolean=false,reset:Boolean=false):Unit={
-        parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,15)
-        axiWrite(d,GpuCommandMmioRegs.SOURCE,0x4d0000);axiWrite(d,GpuCommandMmioRegs.DESTINATION,0x4d0200)
-        axiWrite(d,GpuCommandMmioRegs.PATTERN,0);axiWrite(d,GpuCommandMmioRegs.BYTES,512);scope(discard=false);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
-        val line=bufferPa & ~BigInt(63);var injected=false;var cut=false
-        serviceMemoryMaster(d,image.read,readResponseDelay=3,writeAckDelay=if(reset)53 else 7,maxCycles=1000000,noProgressLimit=50000,
-          writeFault=(address,_,_)=>{val hit=fault && (address & ~BigInt(63))==line;if(hit)injected=true;hit},
-          onWriteAccepted=address=>if(reset && !cut && (address & ~BigInt(63))==line){cut=true
-            axiWrite(d,GpuCommandMmioRegs.RESET,1);axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
-            assert((axiRead(d,GpuCommandMmioRegs.STATUS)&8)!=0,"reset released a feedback write before its response")})(image.write){d.io.m_irq.peek().litToBoolean}
-        if(reset){assert(cut && (axiRead(d,GpuCommandMmioRegs.STATUS)&8)==0,"combined reset did not drain")
-          if(fault)assert(injected,"combined reset/fault race not reached");query.aborted();axiWrite(d,RenderHostRegs.IRQ,3);primitive.foreach(_.abortedFrame())}
-        else{val result=axiRead(d,GpuCommandMmioRegs.COMPLETION);val op=((result>>8)&7)|(((result>>16)&1)<<3);val status=if(fault)5 else 0
-          assert((result&255)==id && op==15 && ((result>>11)&15)==status && result.testBit(15)==(status==0),s"combined tessellation=$result")
-          if(fault)assert(injected,"combined feedback store fault not reached");pop();query.completed(status);query.afterFrame();primitive.foreach(_.afterFrame(if(fault)0 else 2,status=if(fault)3 else 0))}}
-      def recover(id:Int):Unit={install();query.beforeFrame();primitive.foreach(_.beforeFrame());control(0,id);tessellation(id+1);control(1,id+2)
-        assert(word(recordPa+28*4)==16 && word(recordPa+36*4)==2 && word(recordPa+38*4)==4)
-        for((v,i)<-Vector.fill(2)(Vector[BigInt](0,fp(1))).flatten.zipWithIndex)assert(word(bufferPa+i*4)==v,s"recovery word $i")
-        for(a<-(bufferPa & ~BigInt(63)) until bufferPa+256 if a<bufferPa || a>=bufferPa+16)
-          assert(image.memory(a)==0xa7,s"recovery guard ${a.toString(16)}")}
-      install();query.beforeFrame();primitive.foreach(_.beforeFrame());control(0,184);tessellation(185,fault=true);control(1,186,status=3)
-      assert(word(recordPa+28*4)==0 && word(recordPa+36*4)==0 && word(recordPa+38*4)==0)
-      recover(187)
-      install();query.beforeFrame();primitive.foreach(_.beforeFrame());control(0,190);tessellation(191,reset=true);control(1,192,status=5);recover(193)
-      install();query.beforeFrame();primitive.foreach(_.beforeFrame());control(0,196);tessellation(197,fault=true,reset=true);control(1,198,status=5);recover(199)
-    }
-  }
-  if(tessellationHostCompatibility && transformFeedback && !combinedTessellationFeedbackQuery)for(local<-Seq(true,false))
-  it should s"migrate live feedback checkpoints across legacy and tessellation jobs local=$local" in {
-    val tessellationMemory=TessellationNativeHostFixture.build()
-    simulate(host(local)){d=>
-      initialize(d);val image=new Image(d);image.memory++=tessellationMemory;image.word(0x30000,0xcf);vm(d)
-      val record=BigInt(0x30400000);val recordPa=BigInt(0x18400000)
-      val buffer=BigInt(0x3080003c);val bufferPa=BigInt(0x1880003c);val root=BigInt(0x80000030L)
-      val context=BigInt(0x71000007L);val cookie=101;val program=9
-      for((va,pa)<-Seq(record->recordPa,(buffer & ~BigInt(0x3fffff))->(bufferPa & ~BigInt(0x3fffff))))
-        image.word(0x30000+(va>>22)*4,((pa>>12)<<10)|0x2cf)
-      def install():Unit={for(i<-0 until 128)image.word(recordPa+i*4,0)
-        Seq[BigInt](BigInt("47544601",16),512,1,0,context,cookie,program,1,1,1,1).zipWithIndex.foreach{case(v,i)=>image.word(recordPa+i*4,v)}
-        image.word(recordPa+16*4,buffer);image.word(recordPa+17*4,buffer+4096);image.word(recordPa+41*4,root)
-        for(a<-(bufferPa & ~BigInt(63)) until bufferPa+256)image.memory(a)=0xa7}
-      def word(a:BigInt):BigInt=(0 until 4).foldLeft(BigInt(0))((v,i)=>v|(BigInt(image.memory.getOrElse(a+i,0))<<(8*i)))
-      def control(action:Int,id:Int,status:Int=0):Unit={
-        image.word(recordPa+3*4,action);image.word(recordPa+42*4,0);image.word(recordPa+43*4,0);parkMemory(d)
-        axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,12)
-        axiWrite(d,GpuCommandMmioRegs.SOURCE,record.toInt);axiWrite(d,GpuCommandMmioRegs.DESTINATION,(record+512).toInt)
-        axiWrite(d,GpuCommandMmioRegs.BYTES,512);axiWrite(d,GpuCommandMmioRegs.PATTERN,0)
-        axiWrite(d,GpuCommandMmioRegs.WIDTH,context.toInt);axiWrite(d,GpuCommandMmioRegs.HEIGHT,cookie)
-        axiWrite(d,GpuCommandMmioRegs.SOURCE_STRIDE,program);axiWrite(d,GpuCommandMmioRegs.FLAGS,0);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
-        serviceMemoryMaster(d,image.read,readResponseDelay=3,writeAckDelay=7,maxCycles=1000000)(image.write){d.io.m_irq.peek().litToBoolean}
-        val result=axiRead(d,GpuCommandMmioRegs.COMPLETION);val opcode=((result>>8)&7)|(((result>>16)&1)<<3)
-        assert((result&255)==id && opcode==12 && ((result>>11)&15)==status && result.testBit(15)==(status==0),s"feedback control=$result")
-        assert(word(recordPa+42*4)==status,s"feedback checkpoint status=${word(recordPa+42*4)}")
-        image.pop()
-      }
-      def scope():Unit={axiWrite(d,GpuCommandMmioRegs.WIDTH,context.toInt);axiWrite(d,GpuCommandMmioRegs.HEIGHT,program)
-        axiWrite(d,GpuCommandMmioRegs.SOURCE_STRIDE,cookie);axiWrite(d,GpuCommandMmioRegs.FLAGS,24)}
-      def legacy(id:Int):Unit={
-        image.setup();val fields=NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord)
-        for(i<-0 until 2)image.patchRecord(image.region+0x12000+i*4096,fields,"draw.vertex.geometry.topology",1)
-        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(id,feedbackScope=()=>scope());image.run(id=id);image.pop()
-      }
-      def tessellation(id:Int,status:Int=0,fault:Boolean=false,reset:Boolean=false):Unit={parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,15)
-        axiWrite(d,GpuCommandMmioRegs.SOURCE,0x4d0000);axiWrite(d,GpuCommandMmioRegs.DESTINATION,0x4d0200)
-        axiWrite(d,GpuCommandMmioRegs.PATTERN,0);axiWrite(d,GpuCommandMmioRegs.BYTES,512);scope();axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
-        var injected=false;var cut=false;val dataLine=bufferPa & ~BigInt(63)
-        serviceMemoryMaster(d,image.read,readResponseDelay=3,writeAckDelay=if(reset)53 else 7,maxCycles=1000000,noProgressLimit=50000,
-          writeFault=(address,_,_)=>{val hit=fault && (address & ~BigInt(63))==dataLine;if(hit)injected=true;hit},
-          onWriteAccepted=address=>if(reset && !cut && (address & ~BigInt(63))==dataLine){cut=true
-            axiWrite(d,GpuCommandMmioRegs.RESET,1);axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
-            assert((axiRead(d,GpuCommandMmioRegs.STATUS)&8)!=0,"feedback reset released an owned store")})(image.write){d.io.m_irq.peek().litToBoolean}
-        if(reset){assert(cut && (axiRead(d,GpuCommandMmioRegs.STATUS)&8)==0,"feedback reset did not drain")
-          if(fault)assert(injected,"feedback reset/fault race not reached")
-          axiWrite(d,RenderHostRegs.IRQ,3)}
-        else{val result=axiRead(d,GpuCommandMmioRegs.COMPLETION);val opcode=((result>>8)&7)|(((result>>16)&1)<<3)
-          assert((result&255)==id && opcode==15 && ((result>>11)&15)==status && result.testBit(15)==(status==0),s"tessellation=$result")
-          if(fault)assert(injected,"feedback store fault not reached");image.pop()}}
-      install();control(0,180);legacy(181);tessellation(182);legacy(183);control(1,184)
-      val expected=Vector.fill(2)(Vector(fp(-1),fp(1))).flatten++Vector.fill(2)(Vector[BigInt](0,fp(1))).flatten++
-        Vector.fill(2)(Vector(fp(-1),fp(1))).flatten
-      val recovered=Vector.fill(2)(Vector(fp(-1),fp(1))).flatten++Vector.fill(2)(Vector[BigInt](0,fp(1))).flatten
-      def checkCapture(words:Seq[BigInt]):Unit={for((v,i)<-words.zipWithIndex)assert(word(bufferPa+i*4)==v,s"feedback word $i")
-        for(a<-(bufferPa & ~BigInt(63)) until bufferPa+256 if a<bufferPa || a>=bufferPa+words.size*4)
-          assert(image.memory(a)==0xa7,s"feedback guard ${a.toString(16)}")}
-      assert(word(recordPa+28*4)==48 && word(recordPa+36*4)==6 && word(recordPa+38*4)==12)
-      checkCapture(expected)
-      // A failed capture must remain faulted when a later job switches owners.
-      install();control(0,185);tessellation(186,status=5,fault=true)
-      image.setup();image.submit(187,bytes=511,feedbackScope=()=>scope());image.run(status=1,id=187);image.pop()
-      control(1,188,status=3);assert(word(recordPa+28*4)==0 && word(recordPa+36*4)==0 && word(recordPa+38*4)==0)
-      install();control(0,189);legacy(190);tessellation(191);control(1,192)
-      assert(word(recordPa+28*4)==32 && word(recordPa+36*4)==4 && word(recordPa+38*4)==8);checkCapture(recovered)
-      // Global reset drains the outstanding feedback write and removes its lease.
-      install();control(0,193);tessellation(194,reset=true);control(1,195,status=5)
-      install();control(0,196);legacy(197);tessellation(198);control(1,199)
-      assert(word(recordPa+28*4)==32 && word(recordPa+36*4)==4 && word(recordPa+38*4)==8);checkCapture(recovered)
-      install();control(0,200);tessellation(201,fault=true,reset=true);control(1,202,status=5)
-      install();control(0,203);legacy(204);tessellation(205);control(1,206)
-      assert(word(recordPa+28*4)==32 && word(recordPa+36*4)==4 && word(recordPa+38*4)==8);checkCapture(recovered)
-    }
-  }
-  if(shaderStructuredSimt)for(local<-Seq(true,false))
-  it should s"execute checked binned SIMT shaders with scoped fault and reset recovery local=$local" in {
-    simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d);val perf=d.io.performance.get
-      val vertexWord=NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord)
-        .find(_.name=="draw.vertex.geometry.vertex.shaderPc").get.word
-      val fragmentWord=TypedFragmentStateLayout.fields(new TypedFragmentState(f)).find(_.name=="fragment.shaderPc").get.word
-      var frames=0
-      def released(): Unit={perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
-        if(local)assert(perf.payloadAllocations.peek().litValue==perf.payloadReleases.peek().litValue)}
-      def install(stage: String,code: Vector[BigInt]): BigInt={
-        val pc=image.region+0x29000
-        code.zipWithIndex.foreach{case(word,i)=>image.word(image.pa(pc+4*i),word)}
-        if(stage=="vertex")for(draw<-0 until 2)image.word(image.pa(image.region+0x12000+draw*4096+vertexWord*4),pc)
-        else for(state<-0 until 2)image.word(image.pa(image.region+0x20000+state*512+fragmentWord*4),pc)
-        pc
-      }
-      def render(stage: String,mode: Int,kind: String): Unit={
-        image.setup(mode)
-        val body=if(stage=="vertex")vertexProgram else fragmentProgram
-        val code=if(kind=="overflow")NativeSimtProgram.overflow(gpu.simtStackDepth)
-          else NativeSimtProgram.guarded(body,corrupt=kind=="corrupt")
-        val pc=install(stage,code);val good=kind=="healthy"
-        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(64+frames)
-        image.run(status=if(good)0 else 5,id=64+frames)
-        assert(image.reads.contains(image.pa(pc)),s"binned $stage SIMT code was not fetched")
-        if(good)image.verify()else assert(!image.writes.exists(_>=image.imageBase),s"binned $kind $stage fault published an image")
-        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
-        image.pop();released();frames+=1
-      }
-      for(stage<-Seq("vertex","fragment");mode<-Seq(0,2))render(stage,mode,"healthy")
-      for(stage<-Seq("vertex","fragment");kind<-Seq("corrupt","overflow"))render(stage,0,kind)
-      for(stage<-Seq("vertex","fragment")){
-        image.setup(0);val pc=install(stage,NativeSimtProgram.parkedScope)
-        axiWrite(d,0x320,-1);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(64+frames)
-        var cut=false
-        serviceMemoryMaster(d,image.read,readResponseDelay=37,writeAckDelay=29,maxCycles=1000000,
-          onReadAccepted=a=>if(!cut && a==image.pa(pc+64)){
-            assert(image.reads.contains(image.pa(pc)),"binned reset preceded the scope's first instruction line")
-            cut=true;if(local)assert(perf.payloadReservedBytes.peek().litValue>0)
-            axiWrite(d,GpuCommandMmioRegs.RESET,1)
-            axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
-          })(image.write){cut && d.io.m_irq.peek().litToBoolean}
-        assert(cut && (axiRead(d,GpuCommandMmioRegs.STATUS)&10)==0)
-        assert(!image.writes.exists(_>=image.imageBase));released();frames+=1
-        axiWrite(d,RenderHostRegs.IRQ,3);axiWrite(d,0x320,4096)
-        render(stage,0,"healthy")
-      }
-      assert(frames==12)
-      info(s"NATIVE_SIMT_BINNED local=$local CUs2=true engines2=true frames=$frames " +
-        "vertexAndFragment=true modes1x4x=true scalarReductionOracle=true corruptionAndOverflowRejected=true " +
-        "resetWithLiveScope=true exactHealthyImages=true heldCompletionPinsVM=true payloadReleased=true")
-    }
-  }
-  if(shaderReconvergenceFaults)for(local<-Seq(true,false))
-  it should s"drain binned empty joins in both shared-CU shader stages and reuse payload owners local=$local" in {
-    simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d);val perf=d.io.performance.get
-      val vertexWord=NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord)
-        .find(_.name=="draw.vertex.geometry.vertex.shaderPc").get.word
-      val fragmentWord=TypedFragmentStateLayout.fields(new TypedFragmentState(f)).find(_.name=="fragment.shaderPc").get.word
-      var frames=0
-      def released(): Unit={perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
-        if(local)assert(perf.payloadAllocations.peek().litValue==perf.payloadReleases.peek().litValue)}
-      for(stage<-Seq("vertex","fragment")){
-        image.setup(0);val pc=image.region+0x29000
-        image.word(image.pa(pc),BigInt("0000205b",16));image.word(image.pa(pc+4),BigInt("30500073",16))
-        if(stage=="vertex")for(draw<-0 until 2)image.word(image.pa(image.region+0x12000+draw*4096+vertexWord*4),pc)
-        else for(state<-0 until 2)image.word(image.pa(image.region+0x20000+state*512+fragmentWord*4),pc)
-        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(220+frames);image.run(status=5,id=220+frames)
-        assert(image.reads.contains(image.pa(pc)),s"binned $stage join never reached instruction memory")
-        assert(!image.writes.exists(_>=image.imageBase),s"binned $stage join published an image")
-        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
-        image.pop();released();frames+=1
-        image.setup(0);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
-        image.submit(220+frames);image.run(id=220+frames);image.verify();image.pop();released();frames+=1
-      }
-      assert(frames==4)
-      info(s"NATIVE_SIMT_UNDERFLOW_BINNED local=$local CUs2=true engines2=true frames4=true vertexAndFragment=true actualJoinThenCease=true twoShaderFaults=true twoExactHealthyImages=true heldCompletionPinsVM=true payloadReleased=true noImageOnFault=true")
-    }
-  }
-  if(shaderAvailabilityFaults)for(local<-Seq(true,false))
-  it should s"trap unavailable scalar FP and VF register references before binned issue local=$local" in {
-    simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d);val perf=d.io.performance.get
-      val shaderWord=NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord)
-        .find(_.name=="draw.vertex.geometry.vertex.shaderPc").get.word
-      val unavailable=Seq[BigInt](BigInt("00000553",16),BigInt("0000a507",16),BigInt("02a0d557",16),BigInt("42a01557",16))
-      val prefix=Vector(addi(10,0,7),BigInt("c1027057",16),BigInt("5e00b557",16)) // vmv.v.i v10,1
-      var frames=0
-      for(word<-unavailable;healthy<-Seq(false,true)){
-        image.setup(0);val pc=image.region+0x28000
-        val code=if(healthy)prefix++vertexProgram else Vector(word,BigInt("30500073",16))
-        code.zipWithIndex.foreach{case(w,i)=>image.word(image.pa(pc+4*i),w)}
-        for(draw<-0 until 2)image.word(image.pa(image.region+0x12000+draw*4096+shaderWord*4),pc)
-        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);val id=200+frames
-        image.submit(id);image.run(status=if(healthy)0 else 5,id=id)
-        if(healthy)image.verify()else assert(!image.writes.exists(_>=image.imageBase),"unavailable FP instruction published a binned image")
-        axiWrite(d,0x320,17,expectedResponse=2);axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
-        image.pop();perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
-        if(local)assert(perf.payloadAllocations.peek().litValue==perf.payloadReleases.peek().litValue)
-        frames+=1
-      }
-      assert(frames==8)
-      info(s"NATIVE_SHADER_AVAILABILITY_BINNED local=$local CUs=2 engines=2 frames=$frames shaderFaults=4 scalarAdd=true scalarLoad=true vectorScalarRead=true vectorScalarWrite=true rejectedBeforeIssue=true V10Reused=true exactHealthyImages=true payloadReleased=true heldCompletionPinsVM=true")
-    }
-  }
-  if(shaderRunningReset)for(local<-Seq(true,false))
-  it should s"interrupt running binned vertex and fragment loops with owned data replies local=$local" in {
-    simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d);val perf=d.io.performance.get
-      val vertexWord=NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord)
-        .find(_.name=="draw.vertex.geometry.vertex.shaderPc").get.word
-      val fragmentWord=TypedFragmentStateLayout.fields(new TypedFragmentState(f)).find(_.name=="fragment.shaderPc").get.word
-      def released(): Unit={perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
-        if(local)assert(perf.payloadAllocations.peek().litValue==perf.payloadReleases.peek().litValue)}
-      for((stage,index)<-Seq("vertex","fragment").zipWithIndex){
-        image.setup(0);val pc=image.region+0x29000;val scratch=image.region+0x1e0000
-        // Native vertex scratch owns region+0x30000, and local payload reads
-        // there legitimately bypass AXI. The loop probe needs a disjoint page.
-        require(scratch >= image.region+0x180000 && scratch+512 <= image.region+0x400000)
-        val code=Vector(scratch|0x2b7,BigInt("0002a303",16),addi(5,5,64),BigInt("ff9ff06f",16))
-        code.zipWithIndex.foreach{case(word,i)=>image.word(image.pa(pc+4*i),word)}
-        for(i<-0 until 8)image.word(image.pa(scratch+i*64),BigInt(i+1))
-        if(stage=="vertex")for(draw<-0 until 2)image.word(image.pa(image.region+0x12000+draw*4096+vertexWord*4),pc)
-        else for(state<-0 until 2)image.word(image.pa(image.region+0x20000+state*512+fragmentWord*4),pc)
-        axiWrite(d,0x320,-1);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(210+index*2)
-        var cut=false
-        serviceMemoryMaster(d,image.read,readResponseDelay=37,writeAckDelay=29,maxCycles=1000000,
-          onReadAccepted=a=>if(!cut && a==image.pa(scratch+128)){
-            assert(image.reads.contains(image.pa(scratch)) && image.reads.contains(image.pa(scratch+64)),
-              s"$stage reset preceded two completed loop iterations")
-            cut=true;if(local)assert(perf.payloadReservedBytes.peek().litValue>0)
-            axiWrite(d,GpuCommandMmioRegs.RESET,1)
-            axiWrite(d,0x320,17,expectedResponse=2);axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
-          })(image.write){cut && d.io.m_irq.peek().litToBoolean}
-        assert(cut && (axiRead(d,GpuCommandMmioRegs.STATUS)&10)==0)
-        assert(!image.writes.exists(_>=image.imageBase));released()
-        assert(axiRead(d,0x320)==BigInt("ffffffff",16))
-        axiWrite(d,RenderHostRegs.IRQ,3);axiWrite(d,0x320,4096)
-        image.setup(0);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
-        image.submit(211+index*2);image.run(id=211+index*2);image.verify();image.pop();released()
-      }
-      info(s"NATIVE_RUNNING_RESET_BINNED local=$local CUs=2 engines=2 frames=4 vertexAndFragment=true twoCompletedLoopIterations=true resetDuringOwnedDataRead=true delayedReplyDrained=true exactHealthyImages=true payloadReleased=true policyPreserved=true")
-    }
-  }
-  if(shaderExecutionLimits)for(local<-Seq(true,false))
-  it should s"bound binned vertex and fragment loops and preserve fetch ownership through reset local=$local" in {
-    simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d);val perf=d.io.performance.get
-      val vertexWord=NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord)
-        .find(_.name=="draw.vertex.geometry.vertex.shaderPc").get.word
-      val fragmentWord=TypedFragmentStateLayout.fields(new TypedFragmentState(f)).find(_.name=="fragment.shaderPc").get.word
-      def loop(stage: String,offset: Int): BigInt={
-        val pc=image.region+offset;image.word(image.pa(pc),BigInt("0000006f",16))
-        if(stage=="vertex")for(draw<-0 until 2)image.word(image.pa(image.region+0x12000+draw*4096+vertexWord*4),pc)
-        else for(state<-0 until 2)image.word(image.pa(image.region+0x20000+state*512+fragmentWord*4),pc)
-        pc
-      }
-      def released(): Unit={perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
-        if(local)assert(perf.payloadAllocations.peek().litValue==perf.payloadReleases.peek().litValue)}
-      for((value,i)<-opengpu.system.NativeShaderExecutionCapabilities.words.zipWithIndex)assert(axiRead(d,0x300+4*i)==value)
-      for((stage,frame)<-Seq("vertex","fragment").zipWithIndex){
-        image.setup(0);val pc=loop(stage,0x26000)
-        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,0x320,128)
-        image.submit(180+frame);axiWrite(d,0x320,17,expectedResponse=2);image.run(status=5,id=180+frame)
-        assert(image.reads.contains(image.pa(pc)),s"$stage loop never reached instruction memory")
-        assert(!image.writes.exists(_>=image.imageBase),s"$stage loop published an image")
-        axiWrite(d,0x320,17,expectedResponse=2);axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
-        image.pop();released()
-      }
-      image.setup(0);val pc=loop("vertex",0x27000)
-      axiWrite(d,0x320,-1);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(182)
-      var requested=false
-      serviceMemoryMaster(d,image.read,readResponseDelay=31,writeAckDelay=29,maxCycles=1000000,
-        onReadAccepted=a=>if(!requested && a==image.pa(pc)){
-          requested=true;if(local)assert(perf.payloadReservedBytes.peek().litValue>0)
-          axiWrite(d,GpuCommandMmioRegs.RESET,1)
-          axiWrite(d,0x320,17,expectedResponse=2);axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
-        })(image.write){requested && d.io.m_irq.peek().litToBoolean}
-      assert(requested && (axiRead(d,GpuCommandMmioRegs.STATUS)&10)==0)
-      assert(!image.writes.exists(_>=image.imageBase));released()
-      assert(axiRead(d,0x320)==BigInt("ffffffff",16))
-      axiWrite(d,RenderHostRegs.IRQ,3);axiWrite(d,0x320,4096)
-      image.setup(0);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
-      image.submit(183);image.run(id=183);image.verify();image.pop();released()
-      info(s"NATIVE_SHADER_EXECUTION_BINNED local=$local CUs=2 engines=2 frames=4 vertexLoop=true fragmentLoop=true quota128=true resetDuringOwnedFetch=true delayedReplyDrained=true maxQuota=true queuedAndCompletionPolicyPinned=true exactHealthyImages=true payloadReleased=true")
-    }
-  }
-  if(primitiveQueryExtended)for(local<-Seq(true,false);kind<-Seq("memory","lifetime","recovery"))
-  it should s"preserve native binned query $kind ownership across two tile engines local=$local" in {
-    simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d)
-      def frame(preserve: Boolean=false): Unit={
-        val saved=if(preserve)image.memory.filter{case(address,_)=>
-          (address>=0x18400000 && address<0x18401000) || (address>=0x18800000 && address<0x18810000) ||
-          (address>=0x18c00000 && address<0x18c000c0) || (address>=0x30304 && address<0x30310)}.toMap
-          else Map.empty[BigInt,Int]
-        image.setup(fragmentVersion=3);image.memory++=saved
-      }
-      def idle(): Unit=if(local){val perf=d.io.performance.get
-        perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
-        assert(perf.payloadAllocations.peek().litValue==perf.payloadReleases.peek().litValue)
-      }
-      def expected: Seq[BigInt]={
-        val positions=Vector(Vector(-1.0,-1.0,0.0,1.0),Vector(1.0,-1.0,0.0,1.0),Vector(-1.0,1.0,0.0,1.0))
-        (0 until 2).flatMap(h=>positions.indices.flatMap(i=>positions(i).map(fp)++image.gradient(h,i)))
-      }
-      frame();image.queryProbe.foreach{q=>q.beforeFrame();q.completed(0,false);q.afterFrame()}
-      val query=new NativePrimitiveQueryHostProbe(d,image.memory,image.read,image.write);query.prepare()
-      if(kind=="memory")query.memoryFaults(local,kind="BINNED")
-      else{
-        val a=new NativeTransformFeedbackRecoveryProbe(d,image.memory,image.read,image.write,0)
-        def draw(id: Int,capture: Boolean): Unit={
-          image.submit(id,feedbackScope=()=>a.stageRender(capture));image.run(id=id)
-          image.verify();image.pop();idle()
-        }
-        if(kind=="lifetime"){
-          a.begin();query.beforeFrame();draw(160,true);query.assertOpen()
-          a.command(2);frame(true);draw(161,false);query.assertOpen()
-          a.command(3);frame(true);draw(162,true);query.assertOpen()
-          a.end(expected++expected,primitives=4)
-          frame(true);draw(163,false);query.afterFrame(4)
-          a.begin();frame(true);draw(164,true);a.end(expected,primitives=2);query.completed(4)
-          query.reportLifetime(local,primitivesPerFrame=2,kind="BINNED")
-        }else{
-          val b=new NativeTransformFeedbackRecoveryProbe(d,image.memory,image.read,image.write,1)
-          def flush(): Unit=axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
-          def finish(status: Int,active: NativeTransformFeedbackRecoveryProbe): Unit=
-            image.queryProbe.foreach(_.completed(status,status==0 && active.context==a.context))
-          def peer(id: Int): Unit={
-            frame(true);query.beforeFrame();image.submit(id,feedbackScope=()=>b.stageRender());image.run(id=id)
-            finish(0,b);image.verify();image.pop();b.end(expected,primitives=2);query.afterFrame(0,peerCount=2);idle()
+  if (getClass == classOf[NativeBinnedGraphicsHostAxiSpec])
+    for (local <- Seq(true, false))
+      it should s"render repeated native indexed triangles with post-transform reuse and exact binned images local=$local" in {
+        val native = profile(local).copy(vertex = p.copy(postTransformEntries = 16))
+        simulate(
+          new GpuHostSystemAxi(
+            graphics,
+            gpu,
+            numComputeUnits = 2,
+            fragCore = true,
+            sharedGraphics = true,
+            parallelGraphics = true,
+            memoryAxiDataBytes = 32,
+            instructionCacheSets = 4,
+            instructionCacheWays = 1,
+            vectorCacheSets = 4,
+            vectorCacheWays = 1,
+            exposePerformance = true,
+            nativeBinnedGraphics = Some(native)
+          )
+        ) { d =>
+          initialize(d); val image = new Image(d); vm(d)
+          assert(axiRead(d, 0x1b8) == BigInt(0x3100502), "native discovery must report the implemented cache capacity")
+          for ((reuse, frame) <- Seq(false, true).zipWithIndex) {
+            image.setup()
+            val indices = image.region + 0x22000
+            for (i <- 0 until 9) image.memory(image.pa(indices + i)) = i % 3
+            val key = "draw.vertex.geometry.vertex."
+            for (
+              (name, value) <- Map[String, BigInt](
+                key + "reuseOutputs" -> (if (reuse) 1 else 0),
+                key + "input.count" -> 9,
+                key + "input.indexFormat" -> 1,
+                key + "input.indices.base" -> indices,
+                key + "input.indices.limit" -> (indices + 9),
+                key + "input.indices.allocationBase" -> indices,
+                key + "input.indices.allocationLimit" -> (indices + 64)
+              )
+            ) image.patchDraw(name, value)
+            axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1)
+            image.submit(230 + frame); image.run(id = 230 + frame); image.verify()
+            axiWrite(d, GpuCommandMmioRegs.VECTOR_SATP, 0, expectedResponse = 2); image.pop()
+            val perf = d.io.performance.get; perf.payloadReservedBytes.expect(0.U); perf.payloadPinsActive.expect(0.U)
           }
-          for(fault<-Seq("checkpoint-permission","capture-permission","capture-bus","capture-reset")){
-            frame();a.begin();b.begin();query.beforeFrame()
-            if(fault=="checkpoint-permission"){
-              a.permission(false,false);flush();val start=image.writes.size
-              a.command(2,status=3,flags=0)
-              assert(!image.writes.drop(start).exists(x=>x>=0x18400000 && x<0x18401000))
-              a.permission(false,true);flush();a.command(1,status=5,flags=2)
-              image.submit(150,feedbackScope=()=>a.stageRender());image.run(status=5,id=150)
-              finish(5,a);image.pop();idle();query.afterFrame(0,status=3)
-              assert(!image.writes.contains(a.firstDataLine),"missing lease wrote binned feedback data")
-              peer(151)
-            }else if(fault=="capture-permission" || fault=="capture-bus"){
-              if(fault=="capture-permission"){a.permission(true,false);flush()}
-              var injected=false;val start=image.writes.size
-              image.submit(152,feedbackScope=()=>a.stageRender())
-              image.run(status=3,id=152,writeFault=(address,_,_)=>{
-                val hit=fault=="capture-bus" && !injected && address==a.firstDataLine+128
-                if(hit){assert(Seq(a.firstDataLine,a.firstDataLine+64).forall(image.writes.drop(start).contains));injected=true};hit
-              })
-              finish(3,a);image.pop();idle()
-              if(fault=="capture-permission")assert(!image.writes.drop(start).contains(a.firstDataLine))
-              else assert(injected,"binned final capture-line fault was not reached")
-              a.end(Seq.empty,status=3,allowedPartialBytes=if(injected)96 else 0);query.afterFrame(0,status=3)
-              a.permission(true,true);flush();peer(153)
-            }else{
-              image.submit(154,feedbackScope=()=>a.stageRender());var cut=false
-              serviceMemoryMaster(d,image.read,writeAckDelay=53,readResponseDelay=3,maxCycles=1000000,
-                onWriteAccepted=address=>if(!cut && (address & ~BigInt(63))==a.firstDataLine){
-                  cut=true;axiWrite(d,GpuCommandMmioRegs.RESET,1)
-                  axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
-                })(image.write){cut && d.io.m_irq.peek().litToBoolean}
-              assert(cut && (axiRead(d,GpuCommandMmioRegs.STATUS)&10)==0,"binned capture reset did not drain")
-              image.queryProbe.foreach(_.aborted());axiWrite(d,RenderHostRegs.IRQ,3);idle();query.abortedFrame()
-              a.command(1,status=5,flags=2);b.command(1,status=5,flags=2)
-              frame();b.begin();flush();peer(155)
+          info(
+            s"NATIVE_BINNED_POST_TRANSFORM_REUSE local=$local indices=9 triangles=3 cacheEntries=16 optOutAndOptIn=true exactMRTDepthResolveGuards=true realSv32=true heldCompletionPinsVM=true payloadReleased=true"
+          )
+        }
+      }
+  if (getClass == classOf[NativeBinnedGraphicsHostAxiSpec])
+    for (local <- Seq(true, false))
+      it should s"consume GPU-published indirect arrays and elements through native bin replay local=$local" in {
+        simulate(host(local)) { d =>
+          initialize(d); val image = new Image(d); vm(d)
+          val probe = new NativeIndirectDrawHostProbe(d, image.memory, image.read, image.write, image.pa)
+          assert(axiRead(d, 0x1b8) == BigInt(0x3000502))
+          val cases = if (!local) Seq((1, false), (2, true), (2, false)) else Seq((1, false), (2, false))
+          val fields = NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord)
+          for (((mode, reset), frame) <- cases.zipWithIndex) {
+            image.setup(); val parameters = image.region + 0x2203c; val indexBase = image.region + 0x27000
+            val values = if (mode == 1) Seq(3, 1, 0, 0) else Seq(3, 1, 1, -1, 0)
+            if (mode == 2) Seq(99, 1, 2, 3).zipWithIndex.foreach { case (v, i) =>
+              image.memory(image.pa(indexBase + i)) = v
             }
-            info(s"NATIVE_PRIMITIVE_QUERY_BINNED_RECOVERY_CASE local=$local kind=$fault peerHealthy=true payloadReleased=true")
+            for (n <- 0 until 2) {
+              val address = image.region + 0x12000 + n * 4096; val record = image.pa(address);
+              val prefix = "draw.vertex.geometry.vertex.input."
+              val changes = Map[String, BigInt](
+                prefix + "count" -> 0,
+                prefix + "instances" -> 0,
+                prefix + "indexFormat" -> (if (mode == 1) 0 else 1)
+              ) ++
+                (if (mode == 2)
+                   Map[String, BigInt](
+                     prefix + "indices.base" -> indexBase,
+                     prefix + "indices.limit" -> (indexBase + 4),
+                     prefix + "indices.allocationBase" -> indexBase,
+                     prefix + "indices.allocationLimit" -> (indexBase + 64)
+                   )
+                 else Map.empty[String, BigInt])
+              for ((name, value) <- changes) image.patchRecord(address, fields, name, value)
+              image.word(record + 499 * 4, mode); image.word(record + 500 * 4, parameters);
+              image.word(record + 501 * 4, parameters + 4 * values.size)
+              image.word(record + 503 * 4, parameters & ~BigInt(63));
+              image.word(record + 504 * 4, (parameters + 128) & ~BigInt(63))
+            }
+            probe.initializeArguments(parameters, values, cpu = reset); axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1)
+            if (!reset) {
+              val token = 0x309 + frame
+              probe.produce(170 + frame, image.region + 0x28000, parameters, values, token)
+              probe.publish(190 + frame, token, parameters, values.size)
+              image.submit(230 + frame); image.run(id = 230 + frame, publication = Some(probe)); image.verify()
+              axiWrite(d, GpuCommandMmioRegs.VECTOR_SATP, 0, expectedResponse = 2); image.pop()
+            } else {
+              probe.noWait(); image.submit(230 + frame); var cut = false
+              serviceMemoryMaster(
+                d,
+                image.read,
+                readResponseDelay = 37,
+                writeAckDelay = 29,
+                maxCycles = 300000,
+                onReadAccepted = a =>
+                  if (!cut && a == image.pa(parameters & ~BigInt(63))) {
+                    cut = true; axiWrite(d, GpuCommandMmioRegs.RESET, 1)
+                    axiWrite(d, GpuCommandMmioRegs.VECTOR_SATP, 0, expectedResponse = 2)
+                    for (_ <- 0 until 3)
+                      assert(
+                        (axiRead(d, GpuCommandMmioRegs.STATUS) & 8) != 0,
+                        "reset abandoned the real indirect reply"
+                      )
+                  }
+              )(image.write) { cut && d.io.m_irq.peek().litToBoolean }
+              assert(cut && (axiRead(d, GpuCommandMmioRegs.STATUS) & 8) == 0)
+              assert(!image.writes.exists(_ >= image.imageBase), "reset indirect draw published an image")
+              axiWrite(d, RenderHostRegs.IRQ, 3)
+            }
+            probe.checkGuards(parameters, values.size)
+            val perf = d.io.performance.get; perf.payloadReservedBytes.expect(0.U); perf.payloadPinsActive.expect(0.U)
           }
-          query.reportBinnedRecovery(local)
+          info(
+            s"INDIRECT_DRAW_NATIVE_BINNED local=$local frames=${cases.size} actualGPUproducer=true eventPublication=true arraysAndElements=true crossLine=true staticCountsZero=true signedBaseVertex=true Sv32=true resetDuringOwnedReply=${!local} exactMRTDepthResolveGuards=true payloadReleased=true healthyReuse=true"
+          )
         }
       }
-    }
+  private def vm(d: GpuHostSystemAxi): Unit = {
+    axiWrite(d, GpuCommandMmioRegs.VECTOR_SATP, 0x80000030);
+    axiWrite(d, GpuCommandMmioRegs.INSTRUCTION_SATP, 0x80000030)
+    axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1); axiWrite(d, RenderHostRegs.IRQ, 1)
   }
-  if(transformFeedback && !primitiveQueryExtended)for(local<-Seq(true,false))
-  it should s"capture each native binned primitive once before tile fanout and preserve exact images with raster discard local=$local" in {
-    simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d)
-      val feedback=new NativeTransformFeedbackHostProbe(d,image.memory,image.read,image.write)
-      val primitive=if(primitiveQueries)Some(new NativePrimitiveQueryHostProbe(d,image.memory,image.read,image.write))else None
-      for(discard<-Seq(false,true)){
-        image.setup(fragmentVersion=3)
-        if(!discard)image.queryProbe.foreach{q=>q.beforeFrame();q.completed(0,false);q.afterFrame()}
-        primitive.foreach(_.prepare());feedback.begin();primitive.foreach(_.beforeFrame());image.submit(if(discard)132 else 131,feedback=Some(feedback->discard))
-        image.run(id=if(discard)132 else 131);image.queryProbe.foreach(_.completed(0,!discard))
-        if(discard){val count=image.drawCount;image.drawCount=0;image.verify();image.drawCount=count}else image.verify()
-        image.pop()
-        val positions=Vector(Vector(-1.0,-1.0,0.0,1.0),Vector(1.0,-1.0,0.0,1.0),Vector(-1.0,1.0,0.0,1.0))
-        val expected=(0 until 2).flatMap(h=>positions.indices.flatMap(i=>positions(i).map(fp)++image.gradient(h,i)))
-        feedback.end(expected,2,6)
-        primitive.foreach(_.afterFrame(2))
-      }
-      feedback.report("BINNED",local)
-      primitive.foreach(_.report("BINNED",local,2))
-    }
-  }
-  if(!tessellationHostCompatibility && !transformFeedback && !shaderStructuredSimt && !shaderReconvergenceFaults && !shaderExecutionLimits && !shaderAvailabilityFaults && !shaderRunningReset){
-  if(groupedTexture)for(local<-Seq(true,false))
-  it should (if(sharedTextureReset)s"drain shared native texture reads across AXI command reset and republish both binned image engines local=$local"
-    else s"sample shared RGBA8 in both native binned stages and observe coherent DMA publication across two image engines local=$local") in {
-    simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d)
-      val vo=BigInt(0x580000);val fo=BigInt(0x680000)
-      val broadcast=(BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(4)<<12)
-      def constant(rd: Int,value: BigInt): Vector[BigInt]={
-        val hi=(value+2048)>>12;val lo=(value-(hi<<12)).toInt
-        Vector((hi<<12)|(BigInt(rd)<<7)|0x37,addi(rd,rd,lo))
-      }
-      def sampler(unit: Int): Vector[BigInt]={
-        val values=Vector(fp(0.75),fp(0.75))++Vector.fill(14)(BigInt(0))
-        val params=(0 until 8).flatMap{pair=>
-          constant(12,values(pair*2))++constant(13,values(pair*2+1))++Vector(
-            broadcast|(BigInt(12)<<15)|(BigInt(10)<<7)|0x57,
-            broadcast|(BigInt(13)<<15)|(BigInt(11)<<7)|0x57,
-            (BigInt(3)<<26)|(BigInt(1)<<25)|(BigInt(11)<<20)|(BigInt(10)<<15)|(BigInt(pair)<<12)|0x2b)
-        }
-        (params++Vector(addi(13,0,unit),addi(14,0,1),
-          broadcast|(BigInt(13)<<15)|(BigInt(5)<<7)|0x57,
-          broadcast|(BigInt(14)<<15)|(BigInt(6)<<7)|0x57,
-          (BigInt(4)<<26)|(BigInt(1)<<25)|(BigInt(6)<<20)|(BigInt(5)<<15)|(BigInt(7)<<7)|0x2b)).toVector
-      }
-      def fill(id: Int,address: BigInt,raw: BigInt): Unit={
-        parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id)
-        axiWrite(d,GpuCommandMmioRegs.OPCODE,GpuCommandOpcode.fill.litValue.toInt)
-        axiWrite(d,GpuCommandMmioRegs.DESTINATION,address.toInt);axiWrite(d,GpuCommandMmioRegs.BYTES,128)
-        axiWrite(d,GpuCommandMmioRegs.PATTERN,raw.toLong.toInt);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
-        serviceMemoryMaster(d,image.read,writeAckDelay=11,readResponseDelay=5,maxCycles=100000)(image.write){d.io.m_irq.peek().litToBoolean}
-        val result=axiRead(d,GpuCommandMmioRegs.COMPLETION)
-        assert((result&255)==id && ((result>>8)&7)==GpuCommandOpcode.fill.litValue && ((result>>11)&15)==0 && result.testBit(15))
-        image.pop()
-      }
-      var frames=0
-      for(mode<-Seq(0,2)){
-        image.setup(mode)
-        val id=Seq[BigInt](7,8,image.generation)
-        val raw=if(mode==0)BigInt(0xff804020L)else BigInt(0xff20b4c0L)
-        image.expectedSampledRed=Some(ImageFormatReference.decode("RGBA8",raw)(0))
-        def put(a: BigInt,v: BigInt): Unit=image.word(image.pa(a),v)
-        def byte(a: BigInt,v: Int): Unit={image.memory(image.pa(a))=v}
-        val data=for((base,stage,unit)<-Seq((vo,0,31),(fo,1,17)))yield {
-          NativeTextureFetchTestData.roots(put,stage=stage,id=id,offset=base)
-          NativeTextureFetchTestData.install(put,byte,unit,id=id,stage=stage,offset=base,raw=0)
-          val address=base+0x20000+unit*4096+(if(sharedTextureReset)(frames+1)*0x2000 else 0)
-          if(sharedTextureReset){
-            // Cold distinct backing guarantees an external AR for the reset
-            // cut; the healthy rerun then republishes these same addresses.
-            put(base+NativeTextureFetchTestData.images+unit*128+15*4,address)
-            put(base+NativeTextureFetchTestData.images+unit*128+16*4,address+4096)
-            put(base+NativeTextureFetchTestData.levels+unit*128+9*4,address)
-            put(base+NativeTextureFetchTestData.levels+unit*128+10*4,address+4096)
+  if (tessellationHostCompatibility && !combinedTessellationFeedbackQuery)
+    for (local <- if (fragmentImagesWithTessellation) Seq(false) else Seq(true, false))
+      it should s"preserve native binned images across tessellation ownership handoffs local=$local" in {
+        val tessellationMemory = TessellationNativeHostFixture.build()
+        simulate(host(local, fragmentImages = fragmentImagesWithTessellation)) { d =>
+          initialize(d); val image = new Image(d); image.memory ++= tessellationMemory
+          // This host translates shader fetches as well as data accesses.
+          image.word(0x30000, 0xcf); vm(d)
+          def invalidTessellation(id: Int): Unit = {
+            image.queryProbe.foreach(_.beforeFrame())
+            parkMemory(d); axiWrite(d, GpuCommandMmioRegs.COMMAND_ID, id); axiWrite(d, GpuCommandMmioRegs.OPCODE, 15)
+            axiWrite(d, GpuCommandMmioRegs.SOURCE, 0x4000); axiWrite(d, GpuCommandMmioRegs.DESTINATION, 0x4200)
+            axiWrite(d, GpuCommandMmioRegs.PATTERN, 0); axiWrite(d, GpuCommandMmioRegs.BYTES, 511);
+            axiWrite(d, GpuCommandMmioRegs.SUBMIT, 1)
+            serviceMemoryMaster(d, image.read, maxCycles = 100000)(image.write) { d.io.m_irq.peek().litToBoolean }
+            val meta = axiRead(d, GpuCommandMmioRegs.COMPLETION);
+            val opcode = ((meta >> 8) & 7) | (((meta >> 16) & 1) << 3)
+            assert((meta & 255) == id && opcode == 15 && ((meta >> 11) & 15) == 1 && !meta.testBit(15))
+            image.queryProbe.foreach(_.completed(1)); image.pop()
           }
-          put(base+NativeTextureFetchTestData.levels+unit*128+12*4,address)
-          put(base+NativeTextureFetchTestData.levels+unit*128+17*4,64)
-          address
+          def renderTessellation(id: Int): Unit = {
+            image.queryProbe.foreach(_.beforeFrame())
+            parkMemory(d); axiWrite(d, GpuCommandMmioRegs.COMMAND_ID, id); axiWrite(d, GpuCommandMmioRegs.OPCODE, 15)
+            axiWrite(d, GpuCommandMmioRegs.SOURCE, 0x4d0000); axiWrite(d, GpuCommandMmioRegs.DESTINATION, 0x4d0200)
+            axiWrite(d, GpuCommandMmioRegs.PATTERN, 0); axiWrite(d, GpuCommandMmioRegs.BYTES, 512);
+            axiWrite(d, GpuCommandMmioRegs.SUBMIT, 1)
+            var queuedEnd = false
+            serviceMemoryMaster(
+              d,
+              image.read,
+              readResponseDelay = 3,
+              writeAckDelay = 7,
+              maxCycles = 1000000,
+              onReadAccepted = a =>
+                if (visibilityQueries && !queuedEnd && (a & ~BigInt(63)) == 0x8d0000) {
+                  queuedEnd = true; image.queryProbe.get.queueEnd()
+                  assert(
+                    (axiRead(d, GpuCommandMmioRegs.STATUS) & 2) == 0,
+                    "query end completed while tessellation owned a read"
+                  )
+                }
+            )(image.write) { d.io.m_irq.peek().litToBoolean }
+            if (visibilityQueries) assert(queuedEnd, "query end was not queued during tessellation")
+            val meta = axiRead(d, GpuCommandMmioRegs.COMPLETION);
+            val opcode = ((meta >> 8) & 7) | (((meta >> 16) & 1) << 3)
+            assert(
+              (meta & 255) == id && opcode == 15 && ((meta >> 11) & 15) == 0 && meta.testBit(15),
+              s"tessellation completion=$meta"
+            )
+            assert(axiRead(d, 0x180) == BigInt("474e5a01", 16))
+            val reds = (0 until 16).map(i => image.memory.getOrElse(BigInt(0xa00000 + i * 4), 0))
+            assert(reds.contains(255) && reds.contains(26), s"tessellation image=$reds")
+            image.queryProbe.foreach(_.completed(0)); image.pop()
+          }
+          def installFragmentImageStore(): BigInt = {
+            val root = image.region + 0x28000; val table = image.region + 0x28400; val target = image.region + 0x29000
+            val fields = TypedFragmentStateLayout.fields(new TypedFragmentState(f))
+            for (h <- 0 until 2) {
+              val state = image.region + 0x20000 + h * 512
+              image.patchRecord(state, fields, "image.version", 1);
+              image.patchRecord(state, fields, "image.address", root)
+            }
+            for (
+              (v, i) <- Vector[BigInt](
+                ShaderImagePublicationLayout.magic,
+                64,
+                1,
+                7,
+                8,
+                image.generation,
+                1,
+                1,
+                table,
+                table + 1024,
+                0
+              ).zipWithIndex
+            )
+              image.word(image.pa(root + i * 4), v)
+            val fmt = TextureImageFormat.id("RGBA32UI"); val control = (fmt << 6) | 40
+            val desc = Array.fill[BigInt](64)(0)
+            for (
+              (i, v) <- Seq[(Int, BigInt)](
+                0 -> BigInt("47495501", 16),
+                1 -> 256,
+                2 -> 1,
+                3 -> 7,
+                4 -> 8,
+                5 -> image.generation,
+                7 -> 1,
+                8 -> 1,
+                9 -> (1 << GraphicsStage.fragment),
+                10 -> 1,
+                11 -> 1,
+                12 -> fmt,
+                13 -> fmt,
+                14 -> 1,
+                17 -> 15,
+                18 -> 1,
+                22 -> target,
+                23 -> (target + 4096),
+                25 -> target,
+                26 -> 4,
+                27 -> 1,
+                28 -> 1,
+                29 -> 1,
+                30 -> 64,
+                37 -> 16
+              )
+            ) desc(i) = v
+            desc.zipWithIndex.foreach { case (v, i) => image.word(image.pa(table + 4 * i), v) }
+            for (i <- 0 until 64) image.memory(image.pa(target) + i) = 0xa5
+            def vector(fn: Int, form: Int, rd: Int, vs1: Int, vs2: Int = 0): BigInt =
+              (BigInt(fn) << 26) | (BigInt(1) << 25) | (BigInt(vs2) << 20) | (BigInt(vs1) << 15) | (BigInt(
+                form
+              ) << 12) | (BigInt(rd) << 7) | 0x57
+            def imageOp(fn: Int, pair: Int = 0, vs1: Int = 0, vs2: Int = 0): BigInt =
+              (BigInt(fn) << 26) | (BigInt(1) << 25) | (BigInt(vs2) << 20) | (BigInt(vs1) << 15) | (BigInt(
+                pair
+              ) << 12) | 0x2b
+            val store = Vector(
+              BigInt("0104f057", 16),
+              vector(23, 3, 2, 0),
+              BigInt(((control + 0x800) & ~0xfff) | (10 << 7) | 0x37),
+              addi(10, 10, control & 0xfff),
+              vector(23, 4, 3, 10),
+              imageOp(8, vs1 = 2, vs2 = 3),
+              imageOp(8, pair = 1, vs1 = 2, vs2 = 2)
+            ) ++
+              (0 until 4).map(c => vector(0, 3, 4 + c, c + 1, 1)) ++
+              Vector(
+                imageOp(8, pair = 2, vs1 = 4, vs2 = 5),
+                imageOp(8, pair = 3, vs1 = 6, vs2 = 7),
+                imageOp(10, vs1 = 1, vs2 = 2)
+              )
+            (startup ++ store ++ fragmentProgram.drop(startup.size)).zipWithIndex.foreach { case (v, i) =>
+              image.word(image.pa(0x402000 + 4 * i), v)
+            }
+            target
+          }
+          def checkFragmentImageStore(target: BigInt): Vector[Int] = {
+            val written = (0 until 64).map(i => image.memory.getOrElse(image.pa(target) + i, 0xa5)).toVector
+            for (lane <- 0 until 4; component <- 0 until 4; byte <- 0 until 4) {
+              val expected = ((lane + component + 1) >> (byte * 8)) & 255;
+              val actual = written(lane * 16 + component * 4 + byte)
+              assert(
+                actual == 0xa5 || actual == expected,
+                s"unexpected image byte lane=$lane component=$component byte=$byte: $actual"
+              )
+            }
+            assert(
+              (0 until 4).exists(lane =>
+                (0 until 4).exists(component =>
+                  (0 until 4).forall(byte =>
+                    written(lane * 16 + component * 4 + byte) == (((lane + component + 1) >> (byte * 8)) & 255)
+                  )
+                )
+              ),
+              "no image component was stored"
+            )
+            written
+          }
+          invalidTessellation(240)
+          renderTessellation(243)
+          image.setup(); val target = if (fragmentImagesWithTessellation) Some(installFragmentImageStore()) else None
+          axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1); image.submit(241); image.run(id = 241); image.verify()
+          val imageBytes = target.map(checkFragmentImageStore); image.pop()
+          renderTessellation(244)
+          target.zip(imageBytes).foreach { case (address, bytes) =>
+            assert(
+              checkFragmentImageStore(address) == bytes,
+              "tessellation changed a retired fragment image publication"
+            )
+          }
+          if (fragmentImagesWithTessellation) {
+            image.setup(); val nextTarget = installFragmentImageStore()
+            axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1); image.submit(245); image.run(id = 245); image.verify()
+            checkFragmentImageStore(nextTarget); image.pop()
+          }
+          invalidTessellation(242)
+          if (local) {
+            d.io.performance.get.payloadReservedBytes.expect(0.U); d.io.performance.get.payloadPinsActive.expect(0.U)
+          }
         }
-        val vp=image.region+0x24000;val fp=image.region+0x25000
-        val vertexCode=vertexProgram.dropRight(1)++sampler(31)++Vector(BigInt("30500073",16))
-        val fragmentCode=fragmentProgram.dropRight(1)++sampler(17)++
-          (0 until 4).flatMap(location=>Vector(addi(6,7,(10+location*4)*32),vm(6,7,true)))++Vector(BigInt("30500073",16))
-        vertexCode.zipWithIndex.foreach{case(w,i)=>put(vp+i*4,w)}
-        fragmentCode.zipWithIndex.foreach{case(w,i)=>put(fp+i*4,w)}
-        for(h<-0 until 2){
-          val draw=image.region+0x12000+h*4096
-          val fields=NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord)
-          image.patchRecord(draw,fields,"draw.vertex.geometry.vertex.shaderPc",vp)
-          image.patchRecord(draw,fields,"draw.vertex.geometry.vertex.resources.version",1)
-          image.patchRecord(draw,fields,"draw.vertex.geometry.vertex.resources.address",vo+NativeTextureFetchTestData.root)
-          val state=image.region+0x20000+h*512
-          val sf=TypedFragmentStateLayout.fields(new TypedFragmentState(f))
-          image.patchRecord(state,sf,"fragment.shaderPc",fp)
-          image.patchRecord(state,sf,"fragment.resources.version",1)
-          image.patchRecord(state,sf,"fragment.resources.address",fo+NativeTextureFetchTestData.root)
-        }
-        // Repeat the same physical texture lines with a different GPU-written
-        // pattern; a new frame may not reuse old shared-cache texels.
-        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
-        val perf=d.io.performance.get
-        if(sharedTextureReset){
-          for(address<-data;offset<-0 until 128 by 4)put(address+offset,raw)
-          val oldGroups=perf.nativeTextureGroups.peek().litValue
-          val oldReads=perf.nativeTextureDataReads.map(_.peek().litValue).sum
-          val oldWalks=perf.nativeTexturePageWalks.map(_.peek().litValue).sum
-          image.submit(100+frames)
-          val dma=image.region+0x140000
-          parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,120+frames)
-          axiWrite(d,GpuCommandMmioRegs.OPCODE,GpuCommandOpcode.fill.litValue.toInt)
-          axiWrite(d,GpuCommandMmioRegs.DESTINATION,dma.toInt);axiWrite(d,GpuCommandMmioRegs.BYTES,64)
-          axiWrite(d,GpuCommandMmioRegs.PATTERN,0xdeadbeef);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
-          var requested=false;var live=BigInt(0)
-          val target=image.pa(data(if(mode==0)0 else 1))
-          serviceMemoryMaster(d,image.read,writeAckDelay=31,readResponseDelay=53,maxCycles=1000000,
-            onReadAccepted=a=>if(!requested && a>=target && a<target+128){
-              requested=true;live=perf.payloadReservedBytes.peek().litValue
-              if(local)assert(live>0,"a live shared texture instruction lost its local payload reservation")
-              assert(perf.nativeTextureGroups.peek().litValue>oldGroups && perf.nativeTextureDataReads.map(_.peek().litValue).sum>oldReads)
-              assert(perf.nativeTexturePageWalks.map(_.peek().litValue).sum>oldWalks,"shared data cut bypassed Sv32")
-              axiWrite(d,GpuCommandMmioRegs.RESET,1)
-              axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
-            })(image.write){requested && d.io.m_irq.peek().litToBoolean}
-          assert(requested,s"shared texture reset never reached ${target.toString(16)} mode=$mode local=$local")
-          assert((axiRead(d,GpuCommandMmioRegs.STATUS)&10)==0)
-          assert(axiRead(d,GpuCommandMmioRegs.VECTOR_SATP)==0x80000030L)
-          assert(!image.writes.exists(a=>a>=image.pa(dma) && a<image.pa(dma+64)),"reset executed the queued DMA")
-          perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
-          assert(perf.payloadAllocations.peek().litValue==perf.payloadReleases.peek().litValue)
-          for(i<-0 until 12)assert(axiRead(d,0x180+i*4)==0,"reset retained aborted native details")
-          axiWrite(d,RenderHostRegs.IRQ,3);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
-          image.queryProbe.foreach(_.aborted())
-          info(s"NATIVE_SHARED_BINNED_RESET_CUT local=$local CUs=4 mode=$mode stage=${if(mode==0)"vertex"else"fragment"} payloadBytes=$live actualSharedDataWalks=true outstandingPhysicalRead=true queuedDMAAborted=true VMWriteRejectedUntilDrain=true abortedCompletionDiscarded=true")
-        }
-        val published=if(sharedTextureReset)raw ^ BigInt(0x00ffffffL)else raw
-        image.expectedSampledRed=Some(ImageFormatReference.decode("RGBA8",published)(0))
-        data.zipWithIndex.foreach{case(address,n)=>fill(40+frames*2+n,address,published)}
-        val groups=perf.nativeTextureGroups.peek().litValue
-        val reads=perf.nativeTextureDataReads.map(_.peek().litValue).sum
-        image.submit(60+frames);image.run(id=60+frames);image.verify()
-        assert(perf.nativeTextureGroups.peek().litValue>groups,"binned frame never entered shared sampling")
-        assert(perf.nativeTextureDataReads.map(_.peek().litValue).sum>reads,"new binned frame retained stale shared lines")
-        for(base<-Seq(vo,fo))assert(image.reads.contains(image.pa(base+NativeTextureFetchTestData.root)),"both shader stages must read their typed texture root")
-        assert(perf.nativeTexturePageWalks.map(_.peek().litValue).sum>0)
-        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
-        image.pop();frames+=1
       }
-      assert(frames==2)
-      image.queryProbe.foreach(_.report(if(sharedTextureReset)"RESET"else"BINNED",local,frames,if(sharedTextureReset)frames else 0))
-      if(sharedTextureReset)info(s"NATIVE_SHARED_BINNED_RESET_AXI local=$local CUs=4 frames=$frames resets=$frames engines=2 exactMRTDepthResolve=true vertexAndFragmentResetCuts=true actualSharedDataWalks=true sameAddressNewPatternAfterReset=true modes1x4x=true queuedDMAAborted=true payloadAndPhysicalDrain=true")
-      else info(s"NATIVE_SHARED_BINNED_AXI local=$local CUs=4 frames=$frames engines=2 exactMRTDepthResolve=true bothStages=true realSv32=true actualSharedDataWalks=true sameAddressDMAPublication=true modes1x4x=true heldCompletionPinsVM=true")
-    }
-  }
-  if(getClass==classOf[NativeBinnedGraphicsHostAxiSpec])for(local<-Seq(true,false))
-  it should s"discover and execute native uniform roots through binned draws and cached fragment states local=$local" in {
-    simulate(host(local)){d=>
-      initialize(d);val image=new Image(d);vm(d)
-      for((word,i)<-Vector[BigInt](BigInt("47554301",16),16,1,127,3,12,24).zipWithIndex)
-        assert(axiRead(d,0x3a0+i*4)==word,s"binned GUC1 word $i differs")
-      val drawFields=NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord)
-      val stateFields=TypedFragmentStateLayout.fields(new TypedFragmentState(f))
-      val uniformRed=fp(0.625)
-      for((denied,frame)<-Seq(false,true,false).zipWithIndex){
-        image.expectedSampledRed=Some(uniformRed);image.setup()
-        val region=image.region;val table=region+0x27000;val vroot=region+0x26000;val froot=vroot+64
-        val vdata=region+0x300000;val fdata=vdata+16384
-        def put(a: BigInt,v: BigInt): Unit=image.word(image.pa(a),v)
-        def record(a: BigInt,magic: BigInt,fields: Map[Int,BigInt]): Unit={
-          for(i<-0 until 16)put(a+4*i,fields.getOrElse(i,BigInt(0)))
-          for((v,i)<-Seq[BigInt](magic,64,1,7,8,image.generation).zipWithIndex)put(a+4*i,v)
+  if (combinedTessellationFeedbackQuery)
+    for (local <- Seq(true, false))
+      it should s"keep visibility and feedback live across renderer ownership local=$local" in {
+        val tessellationMemory = TessellationNativeHostFixture.build()
+        simulate(host(local)) { d =>
+          initialize(d); val image = new Image(d); image.memory ++= tessellationMemory; image.word(0x30000, 0xcf); vm(d)
+          val record = BigInt(0x30400000); val recordPa = BigInt(0x18400000)
+          val buffer = BigInt(0x3080003c); val bufferPa = BigInt(0x1880003c); val root = BigInt(0x80000030L)
+          val context = BigInt(0x71000007L); val cookie = 101; val program = 9
+          for ((va, pa) <- Seq(record -> recordPa, (buffer & ~BigInt(0x3fffff)) -> (bufferPa & ~BigInt(0x3fffff))))
+            image.word(0x30000 + (va >> 22) * 4, ((pa >> 12) << 10) | 0x2cf)
+          def install(): Unit = {
+            for (i <- 0 until 128) image.word(recordPa + i * 4, 0)
+            Seq[BigInt](BigInt("47544601", 16), 512, 1, 0, context, cookie, program, 1, 1, 1, 1).zipWithIndex.foreach {
+              case (v, i) => image.word(recordPa + i * 4, v)
+            }
+            image.word(recordPa + 16 * 4, buffer); image.word(recordPa + 17 * 4, buffer + 4096);
+            image.word(recordPa + 41 * 4, root)
+            for (a <- (bufferPa & ~BigInt(63)) until bufferPa + 256) image.memory(a) = 0xa7
+          }
+          def word(a: BigInt): BigInt =
+            (0 until 4).foldLeft(BigInt(0))((v, i) => v | (BigInt(image.memory.getOrElse(a + i, 0)) << (8 * i)))
+          def pop(): Unit = { axiWrite(d, GpuCommandMmioRegs.COMPLETION_POP, 1); axiWrite(d, RenderHostRegs.IRQ, 3) }
+          def control(action: Int, id: Int, status: Int = 0): Unit = {
+            image.word(recordPa + 3 * 4, action); image.word(recordPa + 42 * 4, 0); image.word(recordPa + 43 * 4, 0);
+            parkMemory(d)
+            axiWrite(d, GpuCommandMmioRegs.COMMAND_ID, id); axiWrite(d, GpuCommandMmioRegs.OPCODE, 12)
+            axiWrite(d, GpuCommandMmioRegs.SOURCE, record.toInt);
+            axiWrite(d, GpuCommandMmioRegs.DESTINATION, (record + 512).toInt)
+            axiWrite(d, GpuCommandMmioRegs.BYTES, 512); axiWrite(d, GpuCommandMmioRegs.PATTERN, 0)
+            axiWrite(d, GpuCommandMmioRegs.WIDTH, context.toInt); axiWrite(d, GpuCommandMmioRegs.HEIGHT, cookie)
+            axiWrite(d, GpuCommandMmioRegs.SOURCE_STRIDE, program); axiWrite(d, GpuCommandMmioRegs.FLAGS, 0);
+            axiWrite(d, GpuCommandMmioRegs.SUBMIT, 1)
+            serviceMemoryMaster(d, image.read, readResponseDelay = 3, writeAckDelay = 7, maxCycles = 1000000)(
+              image.write
+            ) { d.io.m_irq.peek().litToBoolean }
+            val result = axiRead(d, GpuCommandMmioRegs.COMPLETION);
+            val opcode = ((result >> 8) & 7) | (((result >> 16) & 1) << 3)
+            assert(
+              (result & 255) == id && opcode == 12 && ((result >> 11) & 15) == status && result
+                .testBit(15) == (status == 0),
+              s"feedback completion=$result"
+            );
+            assert(word(recordPa + 42 * 4) == status); pop()
+          }
+          def scope(discard: Boolean): Unit = {
+            axiWrite(d, GpuCommandMmioRegs.WIDTH, context.toInt); axiWrite(d, GpuCommandMmioRegs.HEIGHT, program)
+            axiWrite(d, GpuCommandMmioRegs.SOURCE_STRIDE, cookie);
+            axiWrite(d, GpuCommandMmioRegs.FLAGS, 16 | (if (discard) 8 else 0))
+          }
+          def finish(id: Int, opcode: Int): Unit = {
+            serviceMemoryMaster(
+              d,
+              image.read,
+              readResponseDelay = 3,
+              writeAckDelay = 7,
+              maxCycles = 1000000,
+              noProgressLimit = 50000
+            )(image.write) { d.io.m_irq.peek().litToBoolean }
+            val result = axiRead(d, GpuCommandMmioRegs.COMPLETION);
+            val op = ((result >> 8) & 7) | (((result >> 16) & 1) << 3)
+            assert(
+              (result & 255) == id && op == opcode && ((result >> 11) & 15) == 0 && result.testBit(15),
+              s"combined completion=$result"
+            );
+            pop()
+          }
+          val query = image.queryProbe.get;
+          val primitive =
+            if (primitiveQueries) Some(new NativePrimitiveQueryHostProbe(d, image.memory, image.read, image.write))
+            else None
+          primitive.foreach(_.prepare()); query.beforeFrame(); primitive.foreach(_.beforeFrame()); install();
+          control(0, 180)
+          image.setup(); val fields = NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord)
+          for (i <- 0 until 2)
+            image.patchRecord(image.region + 0x12000 + i * 4096, fields, "draw.vertex.geometry.topology", 1)
+          axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1); parkMemory(d); axiWrite(d, GpuCommandMmioRegs.COMMAND_ID, 181);
+          axiWrite(d, GpuCommandMmioRegs.OPCODE, 7)
+          axiWrite(d, GpuCommandMmioRegs.SOURCE, (image.region + 0x10000).toInt);
+          axiWrite(d, GpuCommandMmioRegs.DESTINATION, (image.region + 0x10200).toInt)
+          axiWrite(d, GpuCommandMmioRegs.BYTES, 512); axiWrite(d, GpuCommandMmioRegs.PATTERN, 0); scope(discard = true);
+          axiWrite(d, GpuCommandMmioRegs.SUBMIT, 1); finish(181, 7)
+          query.completed(0, expectedValue = false); query.afterFrame(); query.beforeFrame()
+          parkMemory(d); axiWrite(d, GpuCommandMmioRegs.COMMAND_ID, 182); axiWrite(d, GpuCommandMmioRegs.OPCODE, 15)
+          axiWrite(d, GpuCommandMmioRegs.SOURCE, 0x4d0000); axiWrite(d, GpuCommandMmioRegs.DESTINATION, 0x4d0200)
+          axiWrite(d, GpuCommandMmioRegs.PATTERN, 0); axiWrite(d, GpuCommandMmioRegs.BYTES, 512);
+          scope(discard = false); axiWrite(d, GpuCommandMmioRegs.SUBMIT, 1)
+          query.queueEnd();
+          assert((axiRead(d, GpuCommandMmioRegs.STATUS) & 2) == 0, "query ended before the accepted tessellation job")
+          finish(182, 15); query.completed(0); query.afterFrame(); control(1, 183); primitive.foreach(_.afterFrame(4))
+          val expected =
+            Vector.fill(2)(Vector(fp(-1), fp(1))).flatten ++ Vector.fill(2)(Vector[BigInt](0, fp(1))).flatten
+          assert(word(recordPa + 28 * 4) == 32 && word(recordPa + 36 * 4) == 4 && word(recordPa + 38 * 4) == 8)
+          for ((v, i) <- expected.zipWithIndex) assert(word(bufferPa + i * 4) == v, s"feedback word $i")
+          for (a <- (bufferPa & ~BigInt(63)) until bufferPa + 256 if a < bufferPa || a >= bufferPa + 32)
+            assert(image.memory(a) == 0xa7, s"feedback guard ${a.toString(16)}")
+          def tessellation(id: Int, fault: Boolean = false, reset: Boolean = false): Unit = {
+            parkMemory(d); axiWrite(d, GpuCommandMmioRegs.COMMAND_ID, id); axiWrite(d, GpuCommandMmioRegs.OPCODE, 15)
+            axiWrite(d, GpuCommandMmioRegs.SOURCE, 0x4d0000); axiWrite(d, GpuCommandMmioRegs.DESTINATION, 0x4d0200)
+            axiWrite(d, GpuCommandMmioRegs.PATTERN, 0); axiWrite(d, GpuCommandMmioRegs.BYTES, 512);
+            scope(discard = false); axiWrite(d, GpuCommandMmioRegs.SUBMIT, 1)
+            val line = bufferPa & ~BigInt(63); var injected = false; var cut = false
+            serviceMemoryMaster(
+              d,
+              image.read,
+              readResponseDelay = 3,
+              writeAckDelay = if (reset) 53 else 7,
+              maxCycles = 1000000,
+              noProgressLimit = 50000,
+              writeFault = (address, _, _) => {
+                val hit = fault && (address & ~BigInt(63)) == line; if (hit) injected = true; hit
+              },
+              onWriteAccepted = address =>
+                if (reset && !cut && (address & ~BigInt(63)) == line) {
+                  cut = true
+                  axiWrite(d, GpuCommandMmioRegs.RESET, 1);
+                  axiWrite(d, GpuCommandMmioRegs.VECTOR_SATP, 0, expectedResponse = 2)
+                  assert(
+                    (axiRead(d, GpuCommandMmioRegs.STATUS) & 8) != 0,
+                    "reset released a feedback write before its response"
+                  )
+                }
+            )(image.write) { d.io.m_irq.peek().litToBoolean }
+            if (reset) {
+              assert(cut && (axiRead(d, GpuCommandMmioRegs.STATUS) & 8) == 0, "combined reset did not drain")
+              if (fault) assert(injected, "combined reset/fault race not reached"); query.aborted();
+              axiWrite(d, RenderHostRegs.IRQ, 3); primitive.foreach(_.abortedFrame())
+            } else {
+              val result = axiRead(d, GpuCommandMmioRegs.COMPLETION);
+              val op = ((result >> 8) & 7) | (((result >> 16) & 1) << 3); val status = if (fault) 5 else 0
+              assert(
+                (result & 255) == id && op == 15 && ((result >> 11) & 15) == status && result
+                  .testBit(15) == (status == 0),
+                s"combined tessellation=$result"
+              )
+              if (fault) assert(injected, "combined feedback store fault not reached"); pop(); query.completed(status);
+              query.afterFrame(); primitive.foreach(_.afterFrame(if (fault) 0 else 2, status = if (fault) 3 else 0))
+            }
+          }
+          def recover(id: Int): Unit = {
+            install(); query.beforeFrame(); primitive.foreach(_.beforeFrame()); control(0, id); tessellation(id + 1);
+            control(1, id + 2)
+            assert(word(recordPa + 28 * 4) == 16 && word(recordPa + 36 * 4) == 2 && word(recordPa + 38 * 4) == 4)
+            for ((v, i) <- Vector.fill(2)(Vector[BigInt](0, fp(1))).flatten.zipWithIndex)
+              assert(word(bufferPa + i * 4) == v, s"recovery word $i")
+            for (a <- (bufferPa & ~BigInt(63)) until bufferPa + 256 if a < bufferPa || a >= bufferPa + 16)
+              assert(image.memory(a) == 0xa7, s"recovery guard ${a.toString(16)}")
+          }
+          install(); query.beforeFrame(); primitive.foreach(_.beforeFrame()); control(0, 184);
+          tessellation(185, fault = true); control(1, 186, status = 3)
+          assert(word(recordPa + 28 * 4) == 0 && word(recordPa + 36 * 4) == 0 && word(recordPa + 38 * 4) == 0)
+          recover(187)
+          install(); query.beforeFrame(); primitive.foreach(_.beforeFrame()); control(0, 190);
+          tessellation(191, reset = true); control(1, 192, status = 5); recover(193)
+          install(); query.beforeFrame(); primitive.foreach(_.beforeFrame()); control(0, 196);
+          tessellation(197, fault = true, reset = true); control(1, 198, status = 5); recover(199)
         }
-        for((root,stage,binding)<-Seq((vroot,0,0),(froot,1,23)))record(root,BigInt("47555201",16),
-          Map(6->BigInt(stage),7->BigInt(1<<11),9->(BigInt(binding)<<25),10->table,11->(table+1536)))
-        for((binding,data)<-Seq(0->vdata,23->fdata))record(table+binding*64,BigInt("47554201",16),
-          Map(6->BigInt(binding),7->BigInt(3),8->data,9->(data+16384),11->data,12->(data+16384),14->BigInt(1)))
-        put(vdata+16380,fp(1));put(fdata+16380,uniformRed)
-        val vp=region+0x28000;val fs=region+0x29000
-        val vcode=vertexProgram.dropRight(1)++NativeUniformTestData.instructions(0,32,10,Some(Seq(11->16380)))++Seq(BigInt("30500073",16))
-        val broadcast=(BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(4)<<12)
-        val query=Seq(addi(14,0,11),BigInt("000047b7",16),addi(15,15,-4),
-          broadcast|(BigInt(14)<<15)|(BigInt(3)<<7)|0x57,broadcast|(BigInt(15)<<15)|(BigInt(4)<<7)|0x57,
-          (BigInt(7)<<26)|(BigInt(1)<<25)|(BigInt(4)<<20)|(BigInt(3)<<15)|(BigInt(5)<<7)|0x2b)
-        val fcode=fragmentProgram.dropRight(1)++query++(0 until 4).flatMap(c=>Seq(addi(6,7,(10+c*4)*32),vm(6,5,true)))++Seq(BigInt("30500073",16))
-        vcode.zipWithIndex.foreach{case(w,i)=>put(vp+4*i,w)};fcode.zipWithIndex.foreach{case(w,i)=>put(fs+4*i,w)}
-        for(h<-0 until 2){val draw=region+0x12000+h*4096;val state=region+0x20000+h*512
-          for((name,value)<-Seq("draw.vertex.geometry.vertex.shaderPc"->vp,"draw.vertex.geometry.vertex.uniforms.version"->BigInt(1),
-            "draw.vertex.geometry.vertex.uniforms.address"->vroot))image.patchRecord(draw,drawFields,name,value)
-          for((name,value)<-Seq("fragment.shaderPc"->fs,"fragment.uniforms.version"->BigInt(1),"fragment.uniforms.address"->froot))
-            image.patchRecord(state,stateFields,name,value)
-        }
-        val page=(fdata+16380)& ~BigInt(4095)
-        if(denied){val pt=BigInt(0x31000);image.word(0x30000+(region>>22)*4,(pt>>12)<<10|1)
-          for(p<-0 until 1024)image.word(pt+p*4,((image.pa(region+p*4096)>>12)<<10)|0xcf)
-          image.word(pt+((page>>12)&1023)*4,((image.pa(page)>>12)<<10)|0x49)
-        }
-        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(210+frame);image.run(if(denied)3 else 0,id=210+frame)
-        if(denied)assert(!image.reads.exists(a=>a>=image.pa(page) && a<image.pa(page+4096)),"denied binned uniform page reached physical AXI")
-        else{
-          image.verify()
-          for(a<-Seq(vroot,froot,table,table+23*64,(vdata+16380)& ~BigInt(63),(fdata+16380)& ~BigInt(63)))
-            assert(image.reads.contains(image.pa(a)),s"binned uniform address ${a.toString(16)} was not read")
-        }
-        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2);image.pop()
-        d.io.performance.get.payloadReservedBytes.expect(0.U);d.io.performance.get.payloadPinsActive.expect(0.U)
       }
-      info(s"NATIVE_UNIFORM_BINNED local=$local frames3=true GUC1=true GND1VertexRoot=true GFS1FragmentRoot=true engines2=true scalarVertexVectorFragment=true binding0And23=true blockLastWord=true realSv32=true deniedDataNoPhysicalRead=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true healthyReuse=true")
-    }
-  }
+  if (tessellationHostCompatibility && transformFeedback && !combinedTessellationFeedbackQuery)
+    for (local <- Seq(true, false))
+      it should s"migrate live feedback checkpoints across legacy and tessellation jobs local=$local" in {
+        val tessellationMemory = TessellationNativeHostFixture.build()
+        simulate(host(local)) { d =>
+          initialize(d); val image = new Image(d); image.memory ++= tessellationMemory; image.word(0x30000, 0xcf); vm(d)
+          val record = BigInt(0x30400000); val recordPa = BigInt(0x18400000)
+          val buffer = BigInt(0x3080003c); val bufferPa = BigInt(0x1880003c); val root = BigInt(0x80000030L)
+          val context = BigInt(0x71000007L); val cookie = 101; val program = 9
+          for ((va, pa) <- Seq(record -> recordPa, (buffer & ~BigInt(0x3fffff)) -> (bufferPa & ~BigInt(0x3fffff))))
+            image.word(0x30000 + (va >> 22) * 4, ((pa >> 12) << 10) | 0x2cf)
+          def install(): Unit = {
+            for (i <- 0 until 128) image.word(recordPa + i * 4, 0)
+            Seq[BigInt](BigInt("47544601", 16), 512, 1, 0, context, cookie, program, 1, 1, 1, 1).zipWithIndex.foreach {
+              case (v, i) => image.word(recordPa + i * 4, v)
+            }
+            image.word(recordPa + 16 * 4, buffer); image.word(recordPa + 17 * 4, buffer + 4096);
+            image.word(recordPa + 41 * 4, root)
+            for (a <- (bufferPa & ~BigInt(63)) until bufferPa + 256) image.memory(a) = 0xa7
+          }
+          def word(a: BigInt): BigInt =
+            (0 until 4).foldLeft(BigInt(0))((v, i) => v | (BigInt(image.memory.getOrElse(a + i, 0)) << (8 * i)))
+          def control(action: Int, id: Int, status: Int = 0): Unit = {
+            image.word(recordPa + 3 * 4, action); image.word(recordPa + 42 * 4, 0); image.word(recordPa + 43 * 4, 0);
+            parkMemory(d)
+            axiWrite(d, GpuCommandMmioRegs.COMMAND_ID, id); axiWrite(d, GpuCommandMmioRegs.OPCODE, 12)
+            axiWrite(d, GpuCommandMmioRegs.SOURCE, record.toInt);
+            axiWrite(d, GpuCommandMmioRegs.DESTINATION, (record + 512).toInt)
+            axiWrite(d, GpuCommandMmioRegs.BYTES, 512); axiWrite(d, GpuCommandMmioRegs.PATTERN, 0)
+            axiWrite(d, GpuCommandMmioRegs.WIDTH, context.toInt); axiWrite(d, GpuCommandMmioRegs.HEIGHT, cookie)
+            axiWrite(d, GpuCommandMmioRegs.SOURCE_STRIDE, program); axiWrite(d, GpuCommandMmioRegs.FLAGS, 0);
+            axiWrite(d, GpuCommandMmioRegs.SUBMIT, 1)
+            serviceMemoryMaster(d, image.read, readResponseDelay = 3, writeAckDelay = 7, maxCycles = 1000000)(
+              image.write
+            ) { d.io.m_irq.peek().litToBoolean }
+            val result = axiRead(d, GpuCommandMmioRegs.COMPLETION);
+            val opcode = ((result >> 8) & 7) | (((result >> 16) & 1) << 3)
+            assert(
+              (result & 255) == id && opcode == 12 && ((result >> 11) & 15) == status && result
+                .testBit(15) == (status == 0),
+              s"feedback control=$result"
+            )
+            assert(word(recordPa + 42 * 4) == status, s"feedback checkpoint status=${word(recordPa + 42 * 4)}")
+            image.pop()
+          }
+          def scope(): Unit = {
+            axiWrite(d, GpuCommandMmioRegs.WIDTH, context.toInt); axiWrite(d, GpuCommandMmioRegs.HEIGHT, program)
+            axiWrite(d, GpuCommandMmioRegs.SOURCE_STRIDE, cookie); axiWrite(d, GpuCommandMmioRegs.FLAGS, 24)
+          }
+          def legacy(id: Int): Unit = {
+            image.setup(); val fields = NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord)
+            for (i <- 0 until 2)
+              image.patchRecord(image.region + 0x12000 + i * 4096, fields, "draw.vertex.geometry.topology", 1)
+            axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1); image.submit(id, feedbackScope = () => scope());
+            image.run(id = id); image.pop()
+          }
+          def tessellation(id: Int, status: Int = 0, fault: Boolean = false, reset: Boolean = false): Unit = {
+            parkMemory(d); axiWrite(d, GpuCommandMmioRegs.COMMAND_ID, id); axiWrite(d, GpuCommandMmioRegs.OPCODE, 15)
+            axiWrite(d, GpuCommandMmioRegs.SOURCE, 0x4d0000); axiWrite(d, GpuCommandMmioRegs.DESTINATION, 0x4d0200)
+            axiWrite(d, GpuCommandMmioRegs.PATTERN, 0); axiWrite(d, GpuCommandMmioRegs.BYTES, 512); scope();
+            axiWrite(d, GpuCommandMmioRegs.SUBMIT, 1)
+            var injected = false; var cut = false; val dataLine = bufferPa & ~BigInt(63)
+            serviceMemoryMaster(
+              d,
+              image.read,
+              readResponseDelay = 3,
+              writeAckDelay = if (reset) 53 else 7,
+              maxCycles = 1000000,
+              noProgressLimit = 50000,
+              writeFault = (address, _, _) => {
+                val hit = fault && (address & ~BigInt(63)) == dataLine; if (hit) injected = true; hit
+              },
+              onWriteAccepted = address =>
+                if (reset && !cut && (address & ~BigInt(63)) == dataLine) {
+                  cut = true
+                  axiWrite(d, GpuCommandMmioRegs.RESET, 1);
+                  axiWrite(d, GpuCommandMmioRegs.VECTOR_SATP, 0, expectedResponse = 2)
+                  assert((axiRead(d, GpuCommandMmioRegs.STATUS) & 8) != 0, "feedback reset released an owned store")
+                }
+            )(image.write) { d.io.m_irq.peek().litToBoolean }
+            if (reset) {
+              assert(cut && (axiRead(d, GpuCommandMmioRegs.STATUS) & 8) == 0, "feedback reset did not drain")
+              if (fault) assert(injected, "feedback reset/fault race not reached")
+              axiWrite(d, RenderHostRegs.IRQ, 3)
+            } else {
+              val result = axiRead(d, GpuCommandMmioRegs.COMPLETION);
+              val opcode = ((result >> 8) & 7) | (((result >> 16) & 1) << 3)
+              assert(
+                (result & 255) == id && opcode == 15 && ((result >> 11) & 15) == status && result
+                  .testBit(15) == (status == 0),
+                s"tessellation=$result"
+              )
+              if (fault) assert(injected, "feedback store fault not reached"); image.pop()
+            }
+          }
+          install(); control(0, 180); legacy(181); tessellation(182); legacy(183); control(1, 184)
+          val expected =
+            Vector.fill(2)(Vector(fp(-1), fp(1))).flatten ++ Vector.fill(2)(Vector[BigInt](0, fp(1))).flatten ++
+              Vector.fill(2)(Vector(fp(-1), fp(1))).flatten
+          val recovered =
+            Vector.fill(2)(Vector(fp(-1), fp(1))).flatten ++ Vector.fill(2)(Vector[BigInt](0, fp(1))).flatten
+          def checkCapture(words: Seq[BigInt]): Unit = {
+            for ((v, i) <- words.zipWithIndex) assert(word(bufferPa + i * 4) == v, s"feedback word $i")
+            for (a <- (bufferPa & ~BigInt(63)) until bufferPa + 256 if a < bufferPa || a >= bufferPa + words.size * 4)
+              assert(image.memory(a) == 0xa7, s"feedback guard ${a.toString(16)}")
+          }
+          assert(word(recordPa + 28 * 4) == 48 && word(recordPa + 36 * 4) == 6 && word(recordPa + 38 * 4) == 12)
+          checkCapture(expected)
+          // A failed capture must remain faulted when a later job switches owners.
+          install(); control(0, 185); tessellation(186, status = 5, fault = true)
+          image.setup(); image.submit(187, bytes = 511, feedbackScope = () => scope()); image.run(status = 1, id = 187);
+          image.pop()
+          control(1, 188, status = 3);
+          assert(word(recordPa + 28 * 4) == 0 && word(recordPa + 36 * 4) == 0 && word(recordPa + 38 * 4) == 0)
+          install(); control(0, 189); legacy(190); tessellation(191); control(1, 192)
+          assert(word(recordPa + 28 * 4) == 32 && word(recordPa + 36 * 4) == 4 && word(recordPa + 38 * 4) == 8);
+          checkCapture(recovered)
+          // Global reset drains the outstanding feedback write and removes its lease.
+          install(); control(0, 193); tessellation(194, reset = true); control(1, 195, status = 5)
+          install(); control(0, 196); legacy(197); tessellation(198); control(1, 199)
+          assert(word(recordPa + 28 * 4) == 32 && word(recordPa + 36 * 4) == 4 && word(recordPa + 38 * 4) == 8);
+          checkCapture(recovered)
+          install(); control(0, 200); tessellation(201, fault = true, reset = true); control(1, 202, status = 5)
+          install(); control(0, 203); legacy(204); tessellation(205); control(1, 206)
+          assert(word(recordPa + 28 * 4) == 32 && word(recordPa + 36 * 4) == 4 && word(recordPa + 38 * 4) == 8);
+          checkCapture(recovered)
+        }
+      }
+  if (shaderStructuredSimt)
+    for (local <- Seq(true, false))
+      it should s"execute checked binned SIMT shaders with scoped fault and reset recovery local=$local" in {
+        simulate(host(local)) { d =>
+          initialize(d); val image = new Image(d); vm(d); val perf = d.io.performance.get
+          val vertexWord = NativeBinnedGraphicsLayout
+            .drawFields(new NativeBinnedGraphicsDrawRecord)
+            .find(_.name == "draw.vertex.geometry.vertex.shaderPc")
+            .get
+            .word
+          val fragmentWord =
+            TypedFragmentStateLayout.fields(new TypedFragmentState(f)).find(_.name == "fragment.shaderPc").get.word
+          var frames = 0
+          def released(): Unit = {
+            perf.payloadReservedBytes.expect(0.U); perf.payloadPinsActive.expect(0.U)
+            if (local) assert(perf.payloadAllocations.peek().litValue == perf.payloadReleases.peek().litValue)
+          }
+          def install(stage: String, code: Vector[BigInt]): BigInt = {
+            val pc = image.region + 0x29000
+            code.zipWithIndex.foreach { case (word, i) => image.word(image.pa(pc + 4 * i), word) }
+            if (stage == "vertex")
+              for (draw <- 0 until 2) image.word(image.pa(image.region + 0x12000 + draw * 4096 + vertexWord * 4), pc)
+            else
+              for (state <- 0 until 2) image.word(image.pa(image.region + 0x20000 + state * 512 + fragmentWord * 4), pc)
+            pc
+          }
+          def render(stage: String, mode: Int, kind: String): Unit = {
+            image.setup(mode)
+            val body = if (stage == "vertex") vertexProgram else fragmentProgram
+            val code =
+              if (kind == "overflow") NativeSimtProgram.overflow(gpu.simtStackDepth)
+              else NativeSimtProgram.guarded(body, corrupt = kind == "corrupt")
+            val pc = install(stage, code); val good = kind == "healthy"
+            axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1); image.submit(64 + frames)
+            image.run(status = if (good) 0 else 5, id = 64 + frames)
+            assert(image.reads.contains(image.pa(pc)), s"binned $stage SIMT code was not fetched")
+            if (good) image.verify()
+            else assert(!image.writes.exists(_ >= image.imageBase), s"binned $kind $stage fault published an image")
+            axiWrite(d, GpuCommandMmioRegs.VECTOR_SATP, 0, expectedResponse = 2)
+            image.pop(); released(); frames += 1
+          }
+          for (stage <- Seq("vertex", "fragment"); mode <- Seq(0, 2)) render(stage, mode, "healthy")
+          for (stage <- Seq("vertex", "fragment"); kind <- Seq("corrupt", "overflow")) render(stage, 0, kind)
+          for (stage <- Seq("vertex", "fragment")) {
+            image.setup(0); val pc = install(stage, NativeSimtProgram.parkedScope)
+            axiWrite(d, 0x320, -1); axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1); image.submit(64 + frames)
+            var cut = false
+            serviceMemoryMaster(
+              d,
+              image.read,
+              readResponseDelay = 37,
+              writeAckDelay = 29,
+              maxCycles = 1000000,
+              onReadAccepted = a =>
+                if (!cut && a == image.pa(pc + 64)) {
+                  assert(image.reads.contains(image.pa(pc)), "binned reset preceded the scope's first instruction line")
+                  cut = true; if (local) assert(perf.payloadReservedBytes.peek().litValue > 0)
+                  axiWrite(d, GpuCommandMmioRegs.RESET, 1)
+                  axiWrite(d, GpuCommandMmioRegs.VECTOR_SATP, 0, expectedResponse = 2)
+                }
+            )(image.write) { cut && d.io.m_irq.peek().litToBoolean }
+            assert(cut && (axiRead(d, GpuCommandMmioRegs.STATUS) & 10) == 0)
+            assert(!image.writes.exists(_ >= image.imageBase)); released(); frames += 1
+            axiWrite(d, RenderHostRegs.IRQ, 3); axiWrite(d, 0x320, 4096)
+            render(stage, 0, "healthy")
+          }
+          assert(frames == 12)
+          info(
+            s"NATIVE_SIMT_BINNED local=$local CUs2=true engines2=true frames=$frames " +
+              "vertexAndFragment=true modes1x4x=true scalarReductionOracle=true corruptionAndOverflowRejected=true " +
+              "resetWithLiveScope=true exactHealthyImages=true heldCompletionPinsVM=true payloadReleased=true"
+          )
+        }
+      }
+  if (shaderReconvergenceFaults)
+    for (local <- Seq(true, false))
+      it should s"drain binned empty joins in both shared-CU shader stages and reuse payload owners local=$local" in {
+        simulate(host(local)) { d =>
+          initialize(d); val image = new Image(d); vm(d); val perf = d.io.performance.get
+          val vertexWord = NativeBinnedGraphicsLayout
+            .drawFields(new NativeBinnedGraphicsDrawRecord)
+            .find(_.name == "draw.vertex.geometry.vertex.shaderPc")
+            .get
+            .word
+          val fragmentWord =
+            TypedFragmentStateLayout.fields(new TypedFragmentState(f)).find(_.name == "fragment.shaderPc").get.word
+          var frames = 0
+          def released(): Unit = {
+            perf.payloadReservedBytes.expect(0.U); perf.payloadPinsActive.expect(0.U)
+            if (local) assert(perf.payloadAllocations.peek().litValue == perf.payloadReleases.peek().litValue)
+          }
+          for (stage <- Seq("vertex", "fragment")) {
+            image.setup(0); val pc = image.region + 0x29000
+            image.word(image.pa(pc), BigInt("0000205b", 16)); image.word(image.pa(pc + 4), BigInt("30500073", 16))
+            if (stage == "vertex")
+              for (draw <- 0 until 2) image.word(image.pa(image.region + 0x12000 + draw * 4096 + vertexWord * 4), pc)
+            else
+              for (state <- 0 until 2) image.word(image.pa(image.region + 0x20000 + state * 512 + fragmentWord * 4), pc)
+            axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1); image.submit(220 + frames);
+            image.run(status = 5, id = 220 + frames)
+            assert(image.reads.contains(image.pa(pc)), s"binned $stage join never reached instruction memory")
+            assert(!image.writes.exists(_ >= image.imageBase), s"binned $stage join published an image")
+            axiWrite(d, GpuCommandMmioRegs.VECTOR_SATP, 0, expectedResponse = 2)
+            image.pop(); released(); frames += 1
+            image.setup(0); axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1)
+            image.submit(220 + frames); image.run(id = 220 + frames); image.verify(); image.pop(); released();
+            frames += 1
+          }
+          assert(frames == 4)
+          info(
+            s"NATIVE_SIMT_UNDERFLOW_BINNED local=$local CUs2=true engines2=true frames4=true vertexAndFragment=true actualJoinThenCease=true twoShaderFaults=true twoExactHealthyImages=true heldCompletionPinsVM=true payloadReleased=true noImageOnFault=true"
+          )
+        }
+      }
+  if (shaderAvailabilityFaults)
+    for (local <- Seq(true, false))
+      it should s"trap unavailable scalar FP and VF register references before binned issue local=$local" in {
+        simulate(host(local)) { d =>
+          initialize(d); val image = new Image(d); vm(d); val perf = d.io.performance.get
+          val shaderWord = NativeBinnedGraphicsLayout
+            .drawFields(new NativeBinnedGraphicsDrawRecord)
+            .find(_.name == "draw.vertex.geometry.vertex.shaderPc")
+            .get
+            .word
+          val unavailable =
+            Seq[BigInt](BigInt("00000553", 16), BigInt("0000a507", 16), BigInt("02a0d557", 16), BigInt("42a01557", 16))
+          val prefix = Vector(addi(10, 0, 7), BigInt("c1027057", 16), BigInt("5e00b557", 16)) // vmv.v.i v10,1
+          var frames = 0
+          for (word <- unavailable; healthy <- Seq(false, true)) {
+            image.setup(0); val pc = image.region + 0x28000
+            val code = if (healthy) prefix ++ vertexProgram else Vector(word, BigInt("30500073", 16))
+            code.zipWithIndex.foreach { case (w, i) => image.word(image.pa(pc + 4 * i), w) }
+            for (draw <- 0 until 2) image.word(image.pa(image.region + 0x12000 + draw * 4096 + shaderWord * 4), pc)
+            axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1); val id = 200 + frames
+            image.submit(id); image.run(status = if (healthy) 0 else 5, id = id)
+            if (healthy) image.verify()
+            else
+              assert(!image.writes.exists(_ >= image.imageBase), "unavailable FP instruction published a binned image")
+            axiWrite(d, 0x320, 17, expectedResponse = 2);
+            axiWrite(d, GpuCommandMmioRegs.VECTOR_SATP, 0, expectedResponse = 2)
+            image.pop(); perf.payloadReservedBytes.expect(0.U); perf.payloadPinsActive.expect(0.U)
+            if (local) assert(perf.payloadAllocations.peek().litValue == perf.payloadReleases.peek().litValue)
+            frames += 1
+          }
+          assert(frames == 8)
+          info(
+            s"NATIVE_SHADER_AVAILABILITY_BINNED local=$local CUs=2 engines=2 frames=$frames shaderFaults=4 scalarAdd=true scalarLoad=true vectorScalarRead=true vectorScalarWrite=true rejectedBeforeIssue=true V10Reused=true exactHealthyImages=true payloadReleased=true heldCompletionPinsVM=true"
+          )
+        }
+      }
+  if (shaderRunningReset)
+    for (local <- Seq(true, false))
+      it should s"interrupt running binned vertex and fragment loops with owned data replies local=$local" in {
+        simulate(host(local)) { d =>
+          initialize(d); val image = new Image(d); vm(d); val perf = d.io.performance.get
+          val vertexWord = NativeBinnedGraphicsLayout
+            .drawFields(new NativeBinnedGraphicsDrawRecord)
+            .find(_.name == "draw.vertex.geometry.vertex.shaderPc")
+            .get
+            .word
+          val fragmentWord =
+            TypedFragmentStateLayout.fields(new TypedFragmentState(f)).find(_.name == "fragment.shaderPc").get.word
+          def released(): Unit = {
+            perf.payloadReservedBytes.expect(0.U); perf.payloadPinsActive.expect(0.U)
+            if (local) assert(perf.payloadAllocations.peek().litValue == perf.payloadReleases.peek().litValue)
+          }
+          for ((stage, index) <- Seq("vertex", "fragment").zipWithIndex) {
+            image.setup(0); val pc = image.region + 0x29000; val scratch = image.region + 0x1e0000
+            // Native vertex scratch owns region+0x30000, and local payload reads
+            // there legitimately bypass AXI. The loop probe needs a disjoint page.
+            require(scratch >= image.region + 0x180000 && scratch + 512 <= image.region + 0x400000)
+            val code = Vector(scratch | 0x2b7, BigInt("0002a303", 16), addi(5, 5, 64), BigInt("ff9ff06f", 16))
+            code.zipWithIndex.foreach { case (word, i) => image.word(image.pa(pc + 4 * i), word) }
+            for (i <- 0 until 8) image.word(image.pa(scratch + i * 64), BigInt(i + 1))
+            if (stage == "vertex")
+              for (draw <- 0 until 2) image.word(image.pa(image.region + 0x12000 + draw * 4096 + vertexWord * 4), pc)
+            else
+              for (state <- 0 until 2) image.word(image.pa(image.region + 0x20000 + state * 512 + fragmentWord * 4), pc)
+            axiWrite(d, 0x320, -1); axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1); image.submit(210 + index * 2)
+            var cut = false
+            serviceMemoryMaster(
+              d,
+              image.read,
+              readResponseDelay = 37,
+              writeAckDelay = 29,
+              maxCycles = 1000000,
+              onReadAccepted = a =>
+                if (!cut && a == image.pa(scratch + 128)) {
+                  assert(
+                    image.reads.contains(image.pa(scratch)) && image.reads.contains(image.pa(scratch + 64)),
+                    s"$stage reset preceded two completed loop iterations"
+                  )
+                  cut = true; if (local) assert(perf.payloadReservedBytes.peek().litValue > 0)
+                  axiWrite(d, GpuCommandMmioRegs.RESET, 1)
+                  axiWrite(d, 0x320, 17, expectedResponse = 2);
+                  axiWrite(d, GpuCommandMmioRegs.VECTOR_SATP, 0, expectedResponse = 2)
+                }
+            )(image.write) { cut && d.io.m_irq.peek().litToBoolean }
+            assert(cut && (axiRead(d, GpuCommandMmioRegs.STATUS) & 10) == 0)
+            assert(!image.writes.exists(_ >= image.imageBase)); released()
+            assert(axiRead(d, 0x320) == BigInt("ffffffff", 16))
+            axiWrite(d, RenderHostRegs.IRQ, 3); axiWrite(d, 0x320, 4096)
+            image.setup(0); axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1)
+            image.submit(211 + index * 2); image.run(id = 211 + index * 2); image.verify(); image.pop(); released()
+          }
+          info(
+            s"NATIVE_RUNNING_RESET_BINNED local=$local CUs=2 engines=2 frames=4 vertexAndFragment=true twoCompletedLoopIterations=true resetDuringOwnedDataRead=true delayedReplyDrained=true exactHealthyImages=true payloadReleased=true policyPreserved=true"
+          )
+        }
+      }
+  if (shaderExecutionLimits)
+    for (local <- Seq(true, false))
+      it should s"bound binned vertex and fragment loops and preserve fetch ownership through reset local=$local" in {
+        simulate(host(local)) { d =>
+          initialize(d); val image = new Image(d); vm(d); val perf = d.io.performance.get
+          val vertexWord = NativeBinnedGraphicsLayout
+            .drawFields(new NativeBinnedGraphicsDrawRecord)
+            .find(_.name == "draw.vertex.geometry.vertex.shaderPc")
+            .get
+            .word
+          val fragmentWord =
+            TypedFragmentStateLayout.fields(new TypedFragmentState(f)).find(_.name == "fragment.shaderPc").get.word
+          def loop(stage: String, offset: Int): BigInt = {
+            val pc = image.region + offset; image.word(image.pa(pc), BigInt("0000006f", 16))
+            if (stage == "vertex")
+              for (draw <- 0 until 2) image.word(image.pa(image.region + 0x12000 + draw * 4096 + vertexWord * 4), pc)
+            else
+              for (state <- 0 until 2) image.word(image.pa(image.region + 0x20000 + state * 512 + fragmentWord * 4), pc)
+            pc
+          }
+          def released(): Unit = {
+            perf.payloadReservedBytes.expect(0.U); perf.payloadPinsActive.expect(0.U)
+            if (local) assert(perf.payloadAllocations.peek().litValue == perf.payloadReleases.peek().litValue)
+          }
+          for ((value, i) <- opengpu.system.NativeShaderExecutionCapabilities.words.zipWithIndex)
+            assert(axiRead(d, 0x300 + 4 * i) == value)
+          for ((stage, frame) <- Seq("vertex", "fragment").zipWithIndex) {
+            image.setup(0); val pc = loop(stage, 0x26000)
+            axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1); axiWrite(d, 0x320, 128)
+            image.submit(180 + frame); axiWrite(d, 0x320, 17, expectedResponse = 2);
+            image.run(status = 5, id = 180 + frame)
+            assert(image.reads.contains(image.pa(pc)), s"$stage loop never reached instruction memory")
+            assert(!image.writes.exists(_ >= image.imageBase), s"$stage loop published an image")
+            axiWrite(d, 0x320, 17, expectedResponse = 2);
+            axiWrite(d, GpuCommandMmioRegs.VECTOR_SATP, 0, expectedResponse = 2)
+            image.pop(); released()
+          }
+          image.setup(0); val pc = loop("vertex", 0x27000)
+          axiWrite(d, 0x320, -1); axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1); image.submit(182)
+          var requested = false
+          serviceMemoryMaster(
+            d,
+            image.read,
+            readResponseDelay = 31,
+            writeAckDelay = 29,
+            maxCycles = 1000000,
+            onReadAccepted = a =>
+              if (!requested && a == image.pa(pc)) {
+                requested = true; if (local) assert(perf.payloadReservedBytes.peek().litValue > 0)
+                axiWrite(d, GpuCommandMmioRegs.RESET, 1)
+                axiWrite(d, 0x320, 17, expectedResponse = 2);
+                axiWrite(d, GpuCommandMmioRegs.VECTOR_SATP, 0, expectedResponse = 2)
+              }
+          )(image.write) { requested && d.io.m_irq.peek().litToBoolean }
+          assert(requested && (axiRead(d, GpuCommandMmioRegs.STATUS) & 10) == 0)
+          assert(!image.writes.exists(_ >= image.imageBase)); released()
+          assert(axiRead(d, 0x320) == BigInt("ffffffff", 16))
+          axiWrite(d, RenderHostRegs.IRQ, 3); axiWrite(d, 0x320, 4096)
+          image.setup(0); axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1)
+          image.submit(183); image.run(id = 183); image.verify(); image.pop(); released()
+          info(
+            s"NATIVE_SHADER_EXECUTION_BINNED local=$local CUs=2 engines=2 frames=4 vertexLoop=true fragmentLoop=true quota128=true resetDuringOwnedFetch=true delayedReplyDrained=true maxQuota=true queuedAndCompletionPolicyPinned=true exactHealthyImages=true payloadReleased=true"
+          )
+        }
+      }
+  if (primitiveQueryExtended)
+    for (local <- Seq(true, false); kind <- Seq("memory", "lifetime", "recovery"))
+      it should s"preserve native binned query $kind ownership across two tile engines local=$local" in {
+        simulate(host(local)) { d =>
+          initialize(d); val image = new Image(d); vm(d)
+          def frame(preserve: Boolean = false): Unit = {
+            val saved =
+              if (preserve) image.memory.filter { case (address, _) =>
+                (address >= 0x18400000 && address < 0x18401000) || (address >= 0x18800000 && address < 0x18810000) ||
+                (address >= 0x18c00000 && address < 0x18c000c0) || (address >= 0x30304 && address < 0x30310)
+              }.toMap
+              else Map.empty[BigInt, Int]
+            image.setup(fragmentVersion = 3); image.memory ++= saved
+          }
+          def idle(): Unit = if (local) {
+            val perf = d.io.performance.get
+            perf.payloadReservedBytes.expect(0.U); perf.payloadPinsActive.expect(0.U)
+            assert(perf.payloadAllocations.peek().litValue == perf.payloadReleases.peek().litValue)
+          }
+          def expected: Seq[BigInt] = {
+            val positions =
+              Vector(Vector(-1.0, -1.0, 0.0, 1.0), Vector(1.0, -1.0, 0.0, 1.0), Vector(-1.0, 1.0, 0.0, 1.0))
+            (0 until 2).flatMap(h => positions.indices.flatMap(i => positions(i).map(fp) ++ image.gradient(h, i)))
+          }
+          frame(); image.queryProbe.foreach { q => q.beforeFrame(); q.completed(0, false); q.afterFrame() }
+          val query = new NativePrimitiveQueryHostProbe(d, image.memory, image.read, image.write); query.prepare()
+          if (kind == "memory") query.memoryFaults(local, kind = "BINNED")
+          else {
+            val a = new NativeTransformFeedbackRecoveryProbe(d, image.memory, image.read, image.write, 0)
+            def draw(id: Int, capture: Boolean): Unit = {
+              image.submit(id, feedbackScope = () => a.stageRender(capture)); image.run(id = id)
+              image.verify(); image.pop(); idle()
+            }
+            if (kind == "lifetime") {
+              a.begin(); query.beforeFrame(); draw(160, true); query.assertOpen()
+              a.command(2); frame(true); draw(161, false); query.assertOpen()
+              a.command(3); frame(true); draw(162, true); query.assertOpen()
+              a.end(expected ++ expected, primitives = 4)
+              frame(true); draw(163, false); query.afterFrame(4)
+              a.begin(); frame(true); draw(164, true); a.end(expected, primitives = 2); query.completed(4)
+              query.reportLifetime(local, primitivesPerFrame = 2, kind = "BINNED")
+            } else {
+              val b = new NativeTransformFeedbackRecoveryProbe(d, image.memory, image.read, image.write, 1)
+              def flush(): Unit = axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1)
+              def finish(status: Int, active: NativeTransformFeedbackRecoveryProbe): Unit =
+                image.queryProbe.foreach(_.completed(status, status == 0 && active.context == a.context))
+              def peer(id: Int): Unit = {
+                frame(true); query.beforeFrame(); image.submit(id, feedbackScope = () => b.stageRender());
+                image.run(id = id)
+                finish(0, b); image.verify(); image.pop(); b.end(expected, primitives = 2);
+                query.afterFrame(0, peerCount = 2); idle()
+              }
+              for (fault <- Seq("checkpoint-permission", "capture-permission", "capture-bus", "capture-reset")) {
+                frame(); a.begin(); b.begin(); query.beforeFrame()
+                if (fault == "checkpoint-permission") {
+                  a.permission(false, false); flush(); val start = image.writes.size
+                  a.command(2, status = 3, flags = 0)
+                  assert(!image.writes.drop(start).exists(x => x >= 0x18400000 && x < 0x18401000))
+                  a.permission(false, true); flush(); a.command(1, status = 5, flags = 2)
+                  image.submit(150, feedbackScope = () => a.stageRender()); image.run(status = 5, id = 150)
+                  finish(5, a); image.pop(); idle(); query.afterFrame(0, status = 3)
+                  assert(!image.writes.contains(a.firstDataLine), "missing lease wrote binned feedback data")
+                  peer(151)
+                } else if (fault == "capture-permission" || fault == "capture-bus") {
+                  if (fault == "capture-permission") { a.permission(true, false); flush() }
+                  var injected = false; val start = image.writes.size
+                  image.submit(152, feedbackScope = () => a.stageRender())
+                  image.run(
+                    status = 3,
+                    id = 152,
+                    writeFault = (address, _, _) => {
+                      val hit = fault == "capture-bus" && !injected && address == a.firstDataLine + 128
+                      if (hit) {
+                        assert(Seq(a.firstDataLine, a.firstDataLine + 64).forall(image.writes.drop(start).contains));
+                        injected = true
+                      };
+                      hit
+                    }
+                  )
+                  finish(3, a); image.pop(); idle()
+                  if (fault == "capture-permission") assert(!image.writes.drop(start).contains(a.firstDataLine))
+                  else assert(injected, "binned final capture-line fault was not reached")
+                  a.end(Seq.empty, status = 3, allowedPartialBytes = if (injected) 96 else 0);
+                  query.afterFrame(0, status = 3)
+                  a.permission(true, true); flush(); peer(153)
+                } else {
+                  image.submit(154, feedbackScope = () => a.stageRender()); var cut = false
+                  serviceMemoryMaster(
+                    d,
+                    image.read,
+                    writeAckDelay = 53,
+                    readResponseDelay = 3,
+                    maxCycles = 1000000,
+                    onWriteAccepted = address =>
+                      if (!cut && (address & ~BigInt(63)) == a.firstDataLine) {
+                        cut = true; axiWrite(d, GpuCommandMmioRegs.RESET, 1)
+                        axiWrite(d, GpuCommandMmioRegs.VECTOR_SATP, 0, expectedResponse = 2)
+                      }
+                  )(image.write) { cut && d.io.m_irq.peek().litToBoolean }
+                  assert(cut && (axiRead(d, GpuCommandMmioRegs.STATUS) & 10) == 0, "binned capture reset did not drain")
+                  image.queryProbe.foreach(_.aborted()); axiWrite(d, RenderHostRegs.IRQ, 3); idle();
+                  query.abortedFrame()
+                  a.command(1, status = 5, flags = 2); b.command(1, status = 5, flags = 2)
+                  frame(); b.begin(); flush(); peer(155)
+                }
+                info(
+                  s"NATIVE_PRIMITIVE_QUERY_BINNED_RECOVERY_CASE local=$local kind=$fault peerHealthy=true payloadReleased=true"
+                )
+              }
+              query.reportBinnedRecovery(local)
+            }
+          }
+        }
+      }
+  if (transformFeedback && !primitiveQueryExtended)
+    for (local <- Seq(true, false))
+      it should s"capture each native binned primitive once before tile fanout and preserve exact images with raster discard local=$local" in {
+        simulate(host(local)) { d =>
+          initialize(d); val image = new Image(d); vm(d)
+          val feedback = new NativeTransformFeedbackHostProbe(d, image.memory, image.read, image.write)
+          val primitive =
+            if (primitiveQueries) Some(new NativePrimitiveQueryHostProbe(d, image.memory, image.read, image.write))
+            else None
+          for (discard <- Seq(false, true)) {
+            image.setup(fragmentVersion = 3)
+            if (!discard) image.queryProbe.foreach { q => q.beforeFrame(); q.completed(0, false); q.afterFrame() }
+            primitive.foreach(_.prepare()); feedback.begin(); primitive.foreach(_.beforeFrame());
+            image.submit(if (discard) 132 else 131, feedback = Some(feedback -> discard))
+            image.run(id = if (discard) 132 else 131); image.queryProbe.foreach(_.completed(0, !discard))
+            if (discard) { val count = image.drawCount; image.drawCount = 0; image.verify(); image.drawCount = count }
+            else image.verify()
+            image.pop()
+            val positions =
+              Vector(Vector(-1.0, -1.0, 0.0, 1.0), Vector(1.0, -1.0, 0.0, 1.0), Vector(-1.0, 1.0, 0.0, 1.0))
+            val expected =
+              (0 until 2).flatMap(h => positions.indices.flatMap(i => positions(i).map(fp) ++ image.gradient(h, i)))
+            feedback.end(expected, 2, 6)
+            primitive.foreach(_.afterFrame(2))
+          }
+          feedback.report("BINNED", local)
+          primitive.foreach(_.report("BINNED", local, 2))
+        }
+      }
+  if (
+    !tessellationHostCompatibility && !transformFeedback && !shaderStructuredSimt && !shaderReconvergenceFaults && !shaderExecutionLimits && !shaderAvailabilityFaults && !shaderRunningReset
+  ) {
+    if (groupedTexture)
+      for (local <- Seq(true, false))
+        it should (if (sharedTextureReset)
+                     s"drain shared native texture reads across AXI command reset and republish both binned image engines local=$local"
+                   else
+                     s"sample shared RGBA8 in both native binned stages and observe coherent DMA publication across two image engines local=$local") in {
+          simulate(host(local)) { d =>
+            initialize(d); val image = new Image(d); vm(d)
+            val vo = BigInt(0x580000); val fo = BigInt(0x680000)
+            val broadcast = (BigInt(0x17) << 26) | (BigInt(1) << 25) | (BigInt(4) << 12)
+            def constant(rd: Int, value: BigInt): Vector[BigInt] = {
+              val hi = (value + 2048) >> 12; val lo = (value - (hi << 12)).toInt
+              Vector((hi << 12) | (BigInt(rd) << 7) | 0x37, addi(rd, rd, lo))
+            }
+            def sampler(unit: Int): Vector[BigInt] = {
+              val values = Vector(fp(0.75), fp(0.75)) ++ Vector.fill(14)(BigInt(0))
+              val params = (0 until 8).flatMap { pair =>
+                constant(12, values(pair * 2)) ++ constant(13, values(pair * 2 + 1)) ++ Vector(
+                  broadcast | (BigInt(12) << 15) | (BigInt(10) << 7) | 0x57,
+                  broadcast | (BigInt(13) << 15) | (BigInt(11) << 7) | 0x57,
+                  (BigInt(3) << 26) | (BigInt(1) << 25) | (BigInt(11) << 20) | (BigInt(10) << 15) | (BigInt(
+                    pair
+                  ) << 12) | 0x2b
+                )
+              }
+              (params ++ Vector(
+                addi(13, 0, unit),
+                addi(14, 0, 1),
+                broadcast | (BigInt(13) << 15) | (BigInt(5) << 7) | 0x57,
+                broadcast | (BigInt(14) << 15) | (BigInt(6) << 7) | 0x57,
+                (BigInt(4) << 26) | (BigInt(1) << 25) | (BigInt(6) << 20) | (BigInt(5) << 15) | (BigInt(7) << 7) | 0x2b
+              )).toVector
+            }
+            def fill(id: Int, address: BigInt, raw: BigInt): Unit = {
+              parkMemory(d); axiWrite(d, GpuCommandMmioRegs.COMMAND_ID, id)
+              axiWrite(d, GpuCommandMmioRegs.OPCODE, GpuCommandOpcode.fill.litValue.toInt)
+              axiWrite(d, GpuCommandMmioRegs.DESTINATION, address.toInt); axiWrite(d, GpuCommandMmioRegs.BYTES, 128)
+              axiWrite(d, GpuCommandMmioRegs.PATTERN, raw.toLong.toInt); axiWrite(d, GpuCommandMmioRegs.SUBMIT, 1)
+              serviceMemoryMaster(d, image.read, writeAckDelay = 11, readResponseDelay = 5, maxCycles = 100000)(
+                image.write
+              ) { d.io.m_irq.peek().litToBoolean }
+              val result = axiRead(d, GpuCommandMmioRegs.COMPLETION)
+              assert(
+                (result & 255) == id && ((result >> 8) & 7) == GpuCommandOpcode.fill.litValue && ((result >> 11) & 15) == 0 && result
+                  .testBit(15)
+              )
+              image.pop()
+            }
+            var frames = 0
+            for (mode <- Seq(0, 2)) {
+              image.setup(mode)
+              val id = Seq[BigInt](7, 8, image.generation)
+              val raw = if (mode == 0) BigInt(0xff804020L) else BigInt(0xff20b4c0L)
+              image.expectedSampledRed = Some(ImageFormatReference.decode("RGBA8", raw)(0))
+              def put(a: BigInt, v: BigInt): Unit = image.word(image.pa(a), v)
+              def byte(a: BigInt, v: Int): Unit = { image.memory(image.pa(a)) = v }
+              val data = for ((base, stage, unit) <- Seq((vo, 0, 31), (fo, 1, 17))) yield {
+                NativeTextureFetchTestData.roots(put, stage = stage, id = id, offset = base)
+                NativeTextureFetchTestData.install(put, byte, unit, id = id, stage = stage, offset = base, raw = 0)
+                val address = base + 0x20000 + unit * 4096 + (if (sharedTextureReset) (frames + 1) * 0x2000 else 0)
+                if (sharedTextureReset) {
+                  // Cold distinct backing guarantees an external AR for the reset
+                  // cut; the healthy rerun then republishes these same addresses.
+                  put(base + NativeTextureFetchTestData.images + unit * 128 + 15 * 4, address)
+                  put(base + NativeTextureFetchTestData.images + unit * 128 + 16 * 4, address + 4096)
+                  put(base + NativeTextureFetchTestData.levels + unit * 128 + 9 * 4, address)
+                  put(base + NativeTextureFetchTestData.levels + unit * 128 + 10 * 4, address + 4096)
+                }
+                put(base + NativeTextureFetchTestData.levels + unit * 128 + 12 * 4, address)
+                put(base + NativeTextureFetchTestData.levels + unit * 128 + 17 * 4, 64)
+                address
+              }
+              val vp = image.region + 0x24000; val fp = image.region + 0x25000
+              val vertexCode = vertexProgram.dropRight(1) ++ sampler(31) ++ Vector(BigInt("30500073", 16))
+              val fragmentCode = fragmentProgram.dropRight(1) ++ sampler(17) ++
+                (0 until 4).flatMap(location => Vector(addi(6, 7, (10 + location * 4) * 32), vm(6, 7, true))) ++ Vector(
+                  BigInt("30500073", 16)
+                )
+              vertexCode.zipWithIndex.foreach { case (w, i) => put(vp + i * 4, w) }
+              fragmentCode.zipWithIndex.foreach { case (w, i) => put(fp + i * 4, w) }
+              for (h <- 0 until 2) {
+                val draw = image.region + 0x12000 + h * 4096
+                val fields = NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord)
+                image.patchRecord(draw, fields, "draw.vertex.geometry.vertex.shaderPc", vp)
+                image.patchRecord(draw, fields, "draw.vertex.geometry.vertex.resources.version", 1)
+                image.patchRecord(
+                  draw,
+                  fields,
+                  "draw.vertex.geometry.vertex.resources.address",
+                  vo + NativeTextureFetchTestData.root
+                )
+                val state = image.region + 0x20000 + h * 512
+                val sf = TypedFragmentStateLayout.fields(new TypedFragmentState(f))
+                image.patchRecord(state, sf, "fragment.shaderPc", fp)
+                image.patchRecord(state, sf, "fragment.resources.version", 1)
+                image.patchRecord(state, sf, "fragment.resources.address", fo + NativeTextureFetchTestData.root)
+              }
+              // Repeat the same physical texture lines with a different GPU-written
+              // pattern; a new frame may not reuse old shared-cache texels.
+              axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1)
+              val perf = d.io.performance.get
+              if (sharedTextureReset) {
+                for (address <- data; offset <- 0 until 128 by 4) put(address + offset, raw)
+                val oldGroups = perf.nativeTextureGroups.peek().litValue
+                val oldReads = perf.nativeTextureDataReads.map(_.peek().litValue).sum
+                val oldWalks = perf.nativeTexturePageWalks.map(_.peek().litValue).sum
+                image.submit(100 + frames)
+                val dma = image.region + 0x140000
+                parkMemory(d); axiWrite(d, GpuCommandMmioRegs.COMMAND_ID, 120 + frames)
+                axiWrite(d, GpuCommandMmioRegs.OPCODE, GpuCommandOpcode.fill.litValue.toInt)
+                axiWrite(d, GpuCommandMmioRegs.DESTINATION, dma.toInt); axiWrite(d, GpuCommandMmioRegs.BYTES, 64)
+                axiWrite(d, GpuCommandMmioRegs.PATTERN, 0xdeadbeef); axiWrite(d, GpuCommandMmioRegs.SUBMIT, 1)
+                var requested = false; var live = BigInt(0)
+                val target = image.pa(data(if (mode == 0) 0 else 1))
+                serviceMemoryMaster(
+                  d,
+                  image.read,
+                  writeAckDelay = 31,
+                  readResponseDelay = 53,
+                  maxCycles = 1000000,
+                  onReadAccepted = a =>
+                    if (!requested && a >= target && a < target + 128) {
+                      requested = true; live = perf.payloadReservedBytes.peek().litValue
+                      if (local)
+                        assert(live > 0, "a live shared texture instruction lost its local payload reservation")
+                      assert(
+                        perf.nativeTextureGroups
+                          .peek()
+                          .litValue > oldGroups && perf.nativeTextureDataReads.map(_.peek().litValue).sum > oldReads
+                      )
+                      assert(
+                        perf.nativeTexturePageWalks.map(_.peek().litValue).sum > oldWalks,
+                        "shared data cut bypassed Sv32"
+                      )
+                      axiWrite(d, GpuCommandMmioRegs.RESET, 1)
+                      axiWrite(d, GpuCommandMmioRegs.VECTOR_SATP, 0, expectedResponse = 2)
+                    }
+                )(image.write) { requested && d.io.m_irq.peek().litToBoolean }
+                assert(requested, s"shared texture reset never reached ${target.toString(16)} mode=$mode local=$local")
+                assert((axiRead(d, GpuCommandMmioRegs.STATUS) & 10) == 0)
+                assert(axiRead(d, GpuCommandMmioRegs.VECTOR_SATP) == 0x80000030L)
+                assert(
+                  !image.writes.exists(a => a >= image.pa(dma) && a < image.pa(dma + 64)),
+                  "reset executed the queued DMA"
+                )
+                perf.payloadReservedBytes.expect(0.U); perf.payloadPinsActive.expect(0.U)
+                assert(perf.payloadAllocations.peek().litValue == perf.payloadReleases.peek().litValue)
+                for (i <- 0 until 12) assert(axiRead(d, 0x180 + i * 4) == 0, "reset retained aborted native details")
+                axiWrite(d, RenderHostRegs.IRQ, 3); axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1)
+                image.queryProbe.foreach(_.aborted())
+                info(
+                  s"NATIVE_SHARED_BINNED_RESET_CUT local=$local CUs=4 mode=$mode stage=${if (mode == 0) "vertex"
+                    else "fragment"} payloadBytes=$live actualSharedDataWalks=true outstandingPhysicalRead=true queuedDMAAborted=true VMWriteRejectedUntilDrain=true abortedCompletionDiscarded=true"
+                )
+              }
+              val published = if (sharedTextureReset) raw ^ BigInt(0x00ffffffL) else raw
+              image.expectedSampledRed = Some(ImageFormatReference.decode("RGBA8", published)(0))
+              data.zipWithIndex.foreach { case (address, n) => fill(40 + frames * 2 + n, address, published) }
+              val groups = perf.nativeTextureGroups.peek().litValue
+              val reads = perf.nativeTextureDataReads.map(_.peek().litValue).sum
+              image.submit(60 + frames); image.run(id = 60 + frames); image.verify()
+              assert(perf.nativeTextureGroups.peek().litValue > groups, "binned frame never entered shared sampling")
+              assert(
+                perf.nativeTextureDataReads.map(_.peek().litValue).sum > reads,
+                "new binned frame retained stale shared lines"
+              )
+              for (base <- Seq(vo, fo))
+                assert(
+                  image.reads.contains(image.pa(base + NativeTextureFetchTestData.root)),
+                  "both shader stages must read their typed texture root"
+                )
+              assert(perf.nativeTexturePageWalks.map(_.peek().litValue).sum > 0)
+              axiWrite(d, GpuCommandMmioRegs.VECTOR_SATP, 0, expectedResponse = 2)
+              image.pop(); frames += 1
+            }
+            assert(frames == 2)
+            image.queryProbe.foreach(
+              _.report(
+                if (sharedTextureReset) "RESET" else "BINNED",
+                local,
+                frames,
+                if (sharedTextureReset) frames else 0
+              )
+            )
+            if (sharedTextureReset)
+              info(
+                s"NATIVE_SHARED_BINNED_RESET_AXI local=$local CUs=4 frames=$frames resets=$frames engines=2 exactMRTDepthResolve=true vertexAndFragmentResetCuts=true actualSharedDataWalks=true sameAddressNewPatternAfterReset=true modes1x4x=true queuedDMAAborted=true payloadAndPhysicalDrain=true"
+              )
+            else
+              info(
+                s"NATIVE_SHARED_BINNED_AXI local=$local CUs=4 frames=$frames engines=2 exactMRTDepthResolve=true bothStages=true realSv32=true actualSharedDataWalks=true sameAddressDMAPublication=true modes1x4x=true heldCompletionPinsVM=true"
+              )
+          }
+        }
+    if (getClass == classOf[NativeBinnedGraphicsHostAxiSpec])
+      for (local <- Seq(true, false))
+        it should s"discover and execute native uniform roots through binned draws and cached fragment states local=$local" in {
+          simulate(host(local)) { d =>
+            initialize(d); val image = new Image(d); vm(d)
+            for ((word, i) <- Vector[BigInt](BigInt("47554301", 16), 16, 1, 127, 3, 12, 24).zipWithIndex)
+              assert(axiRead(d, 0x3a0 + i * 4) == word, s"binned GUC1 word $i differs")
+            val drawFields = NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord)
+            val stateFields = TypedFragmentStateLayout.fields(new TypedFragmentState(f))
+            val uniformRed = fp(0.625)
+            for ((denied, frame) <- Seq(false, true, false).zipWithIndex) {
+              image.expectedSampledRed = Some(uniformRed); image.setup()
+              val region = image.region; val table = region + 0x27000; val vroot = region + 0x26000;
+              val froot = vroot + 64
+              val vdata = region + 0x300000; val fdata = vdata + 16384
+              def put(a: BigInt, v: BigInt): Unit = image.word(image.pa(a), v)
+              def record(a: BigInt, magic: BigInt, fields: Map[Int, BigInt]): Unit = {
+                for (i <- 0 until 16) put(a + 4 * i, fields.getOrElse(i, BigInt(0)))
+                for ((v, i) <- Seq[BigInt](magic, 64, 1, 7, 8, image.generation).zipWithIndex) put(a + 4 * i, v)
+              }
+              for ((root, stage, binding) <- Seq((vroot, 0, 0), (froot, 1, 23)))
+                record(
+                  root,
+                  BigInt("47555201", 16),
+                  Map(
+                    6 -> BigInt(stage),
+                    7 -> BigInt(1 << 11),
+                    9 -> (BigInt(binding) << 25),
+                    10 -> table,
+                    11 -> (table + 1536)
+                  )
+                )
+              for ((binding, data) <- Seq(0 -> vdata, 23 -> fdata))
+                record(
+                  table + binding * 64,
+                  BigInt("47554201", 16),
+                  Map(
+                    6 -> BigInt(binding),
+                    7 -> BigInt(3),
+                    8 -> data,
+                    9 -> (data + 16384),
+                    11 -> data,
+                    12 -> (data + 16384),
+                    14 -> BigInt(1)
+                  )
+                )
+              put(vdata + 16380, fp(1)); put(fdata + 16380, uniformRed)
+              val vp = region + 0x28000; val fs = region + 0x29000
+              val vcode = vertexProgram
+                .dropRight(1) ++ NativeUniformTestData.instructions(0, 32, 10, Some(Seq(11 -> 16380))) ++ Seq(
+                BigInt("30500073", 16)
+              )
+              val broadcast = (BigInt(0x17) << 26) | (BigInt(1) << 25) | (BigInt(4) << 12)
+              val query = Seq(
+                addi(14, 0, 11),
+                BigInt("000047b7", 16),
+                addi(15, 15, -4),
+                broadcast | (BigInt(14) << 15) | (BigInt(3) << 7) | 0x57,
+                broadcast | (BigInt(15) << 15) | (BigInt(4) << 7) | 0x57,
+                (BigInt(7) << 26) | (BigInt(1) << 25) | (BigInt(4) << 20) | (BigInt(3) << 15) | (BigInt(5) << 7) | 0x2b
+              )
+              val fcode = fragmentProgram.dropRight(1) ++ query ++ (0 until 4)
+                .flatMap(c => Seq(addi(6, 7, (10 + c * 4) * 32), vm(6, 5, true))) ++ Seq(BigInt("30500073", 16))
+              vcode.zipWithIndex.foreach { case (w, i) => put(vp + 4 * i, w) };
+              fcode.zipWithIndex.foreach { case (w, i) => put(fs + 4 * i, w) }
+              for (h <- 0 until 2) {
+                val draw = region + 0x12000 + h * 4096; val state = region + 0x20000 + h * 512
+                for (
+                  (name, value) <- Seq(
+                    "draw.vertex.geometry.vertex.shaderPc" -> vp,
+                    "draw.vertex.geometry.vertex.uniforms.version" -> BigInt(1),
+                    "draw.vertex.geometry.vertex.uniforms.address" -> vroot
+                  )
+                ) image.patchRecord(draw, drawFields, name, value)
+                for (
+                  (name, value) <- Seq(
+                    "fragment.shaderPc" -> fs,
+                    "fragment.uniforms.version" -> BigInt(1),
+                    "fragment.uniforms.address" -> froot
+                  )
+                )
+                  image.patchRecord(state, stateFields, name, value)
+              }
+              val page = (fdata + 16380) & ~BigInt(4095)
+              if (denied) {
+                val pt = BigInt(0x31000); image.word(0x30000 + (region >> 22) * 4, (pt >> 12) << 10 | 1)
+                for (p <- 0 until 1024) image.word(pt + p * 4, ((image.pa(region + p * 4096) >> 12) << 10) | 0xcf)
+                image.word(pt + ((page >> 12) & 1023) * 4, ((image.pa(page) >> 12) << 10) | 0x49)
+              }
+              axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1); image.submit(210 + frame);
+              image.run(if (denied) 3 else 0, id = 210 + frame)
+              if (denied)
+                assert(
+                  !image.reads.exists(a => a >= image.pa(page) && a < image.pa(page + 4096)),
+                  "denied binned uniform page reached physical AXI"
+                )
+              else {
+                image.verify()
+                for (
+                  a <- Seq(
+                    vroot,
+                    froot,
+                    table,
+                    table + 23 * 64,
+                    (vdata + 16380) & ~BigInt(63),
+                    (fdata + 16380) & ~BigInt(63)
+                  )
+                )
+                  assert(image.reads.contains(image.pa(a)), s"binned uniform address ${a.toString(16)} was not read")
+              }
+              axiWrite(d, GpuCommandMmioRegs.VECTOR_SATP, 0, expectedResponse = 2); image.pop()
+              d.io.performance.get.payloadReservedBytes.expect(0.U); d.io.performance.get.payloadPinsActive.expect(0.U)
+            }
+            info(
+              s"NATIVE_UNIFORM_BINNED local=$local frames3=true GUC1=true GND1VertexRoot=true GFS1FragmentRoot=true engines2=true scalarVertexVectorFragment=true binding0And23=true blockLastWord=true realSv32=true deniedDataNoPhysicalRead=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true healthyReuse=true"
+            )
+          }
+        }
 
-  if(!groupedTexture){
-  it should "expose exact GNX1 diagnostics for rejected envelopes through the production AXI registers" in {
-    simulate(host(false)){d=>initialize(d);val image=new Image(d);vm(d);image.setup(empty=true)
-      image.submit(201,bytes=256);image.run(status=1,id=201)
-      assert(image.reads.isEmpty && image.writes.isEmpty,"a rejected envelope must precede every memory access")
-      val expected=Vector[BigInt](BigInt("474e5801",16),9,image.region+0x10000,0,0,0,0,0,0,0,0,0)
-      for((v,i)<-expected.zipWithIndex)assert(axiRead(d,0x180+i*4)==v,s"rejected envelope GNX1 word $i differs")
-      axiWrite(d,0x180,0,expectedResponse=2);axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
-      for((v,i)<-expected.zipWithIndex)assert(axiRead(d,0x180+i*4)==v)
-      image.pop()
-      info("NATIVE_GNX1_AXI envelopeBeforeMemory=true exactRecordedAddress=true stage1=true heldImmutable=true readOnly=true VMProtected=true popClearsAllWords=true")
-    }
-  }
-  for(local<-Seq(true,false))
-  it should s"discover GNC${if(virtualImages)2 else 1} submit translated multi-tile shaders and publish exact cached source and resolve images local=$local" in {
-    simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d)
-      val perf=d.io.performance.get;val idleBefore=perf.fragmentPhaseWorkerCycles(0).peek().litValue
-      d.io.s_axi_aclk.step(7);perf.fragmentPhaseWorkerCycles(0).expect((idleBefore+14).U)
-      assert(axiRead(d,TileBinHostRegs.DISCOVERY)==0x160)
-      val expected=Vector[BigInt](BigInt(if(virtualImages)"474e4302"else"474e4301",16),8,BigInt("474e4a01",16),BigInt("08000200",16),
-        BigInt("88420800",16),BigInt("00090011",16),BigInt("d4908000",16),if(local)BigInt("020cb802",16)else BigInt("00000802",16))
-      for((word,i)<-expected.zipWithIndex)assert(axiRead(d,0x160+i*4)==word,s"GNC1 word $i differs")
-      for((word,i)<-Vector[BigInt](BigInt("47564901",16),4,0x3000502,0x1ffffff).zipWithIndex)
-        assert(axiRead(d,0x1b0+i*4)==word,s"GVI1 word $i differs")
-      axiWrite(d,0x1b0,0,expectedResponse=2)
-      for(i<-0 until 12)assert(axiRead(d,0x180+i*4)==0)
-      axiWrite(d,0x180,0,expectedResponse=2)
-      for(mode<-Seq(0,2)){image.setup(mode,vertexFormat=if(mode==0)VertexInputFormat.float16 else VertexInputFormat.snorm2101010)
-        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
-        assert(image.consumer(10+mode)==BigInt("a7a7a7a7",16));image.submit();image.run();image.verify()
-        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2);assert(axiRead(d,GpuCommandMmioRegs.VECTOR_SATP)==BigInt("80000030",16));image.pop()
-        val expected=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(image.expectedBytes(image.imageBase+60+b))<<(b*8)))
-        assert(image.consumer(30+mode)==expected);d.io.performance.get.payloadReservedBytes.expect(0.U)}
-      for(phase<-1 until 6)assert(perf.fragmentPhaseWorkerCycles(phase).peek().litValue>0,
-        s"native binned fragment phase $phase was not counted for local=$local")
-      info(s"NATIVE_BINNED_AXI local=$local CUs=2 GNJ1=true GVI1=true convertedVertexInputs=half,snorm2101010 Sv32=true virtualImages=$virtualImages draws=4 tiles=12 modes1x4x=true exactFourMRTDepthResolveGuards=true cachedConsumer=true heldCompletionPinsVM=true")}
-  }
-  for(local<-Seq(true,false))
-  it should s"publish native binned polygon offset depth and shader fragCoord from GPU-memory records local=$local" in {
-    simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d)
-      for((mode,version,sign,overrideDepth)<-Seq((1,3,1,false),(2,4,-1,true))){
-        image.setup(mode,fragmentVersion=version,polygon=true,sign=sign,shaderOverride=overrideDepth)
-        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
-        assert(image.consumer(100+version)==BigInt("a7a7a7a7",16))
-        image.submit(110+version);image.run(id=110+version);image.verify()
-        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
-        assert(axiRead(d,GpuCommandMmioRegs.VECTOR_SATP)==BigInt("80000030",16));image.pop()
-        val expected=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(image.expectedBytes(image.imageBase+60+b))<<(b*8)))
-        assert(image.consumer(120+version)==expected)
-        def word(a: BigInt): BigInt=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(image.memory(image.pa(a)+b))<<(b*8)))
-        for(h<-0 until 2;e<-0 until 2){val base=image.region+(if(e==0)0x40000 else 0x50000)+h*4096+image.fragmentPrefix
-          for(i<-0 until 4;c<-0 until 4)assert(word(base+i*16+c*4)==image.rgba(h)(c),"native polygon replay changed a uniform tail")
-          assert(word(base+64)==(if(overrideDepth && h==1)63 else 61) && word(base+68)==fp(0.125))}
-        assert(image.reads.exists(a=>a>=image.pa(image.region+0x100000) && a<image.pa(image.region+0x110000)),"prepared polygon records must be fetched from GPU-memory bins")
-        assert(image.reads.exists(a=>a>=image.pa(image.region+0x20000) && a<image.pa(image.region+0x20400)),"polygon shaders must fetch GFS1 state")
-        d.io.performance.get.payloadReservedBytes.expect(0.U)
+    if (!groupedTexture) {
+      it should "expose exact GNX1 diagnostics for rejected envelopes through the production AXI registers" in {
+        simulate(host(false)) { d =>
+          initialize(d); val image = new Image(d); vm(d); image.setup(empty = true)
+          image.submit(201, bytes = 256); image.run(status = 1, id = 201)
+          assert(image.reads.isEmpty && image.writes.isEmpty, "a rejected envelope must precede every memory access")
+          val expected = Vector[BigInt](BigInt("474e5801", 16), 9, image.region + 0x10000, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+          for ((v, i) <- expected.zipWithIndex)
+            assert(axiRead(d, 0x180 + i * 4) == v, s"rejected envelope GNX1 word $i differs")
+          axiWrite(d, 0x180, 0, expectedResponse = 2);
+          axiWrite(d, GpuCommandMmioRegs.VECTOR_SATP, 0, expectedResponse = 2)
+          for ((v, i) <- expected.zipWithIndex) assert(axiRead(d, 0x180 + i * 4) == v)
+          image.pop()
+          info(
+            "NATIVE_GNX1_AXI envelopeBeforeMemory=true exactRecordedAddress=true stage1=true heldImmutable=true readOnly=true VMProtected=true popClearsAllWords=true"
+          )
+        }
       }
-      info(s"NATIVE_BINNED_POLYGON_OFFSET local=$local CUs=2 GND1=true GFS1=true GPUResidentBins=true virtualImages=$virtualImages boundD32F=true rasterVersion2=true signedFactorUnits=true versions3And4=true modes2x4x=true shaderFragCoordZInMRT=true exactDefaultSampleDepth=true shaderDepthOverrideBypassesBias=true gradientMRTBlend=true exactSourceResolveGuards=true cachedConsumer=true uniformTails=true heldCompletionPinsVM=true")
-    }
-  }
-  for(local<-Seq(true,false))
-  it should s"replay native centroid gradients from GPU-memory bins and fragment states local=$local" in {
-    simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d)
-      for((word,i)<-Vector[BigInt](BigInt("47464901",16),4,0x1e,0x70f).zipWithIndex)
-        assert(axiRead(d,0x1c0+i*4)==word)
-      for((mode,version)<-Seq((1,3),(2,4))){
-        image.setup(mode,fragmentVersion=version);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
-        assert(image.consumer(40+version)==BigInt("a7a7a7a7",16))
-        image.submit(50+version);image.run(id=50+version);image.verify()
-        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
-        assert(axiRead(d,GpuCommandMmioRegs.VECTOR_SATP)==BigInt("80000030",16))
-        image.pop()
-        val expected=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(image.expectedBytes(image.imageBase+60+b))<<(b*8)))
-        assert(image.consumer(60+version)==expected)
-        def word(a: BigInt): BigInt=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(image.memory(image.pa(a)+b))<<(b*8)))
-        for(h<-0 until 2;e<-0 until 2){
-          val base=image.region+(if(e==0)0x40000 else 0x50000)+h*4096+image.fragmentPrefix
-          for(i<-0 until 4;c<-0 until 4)assert(word(base+i*16+c*4)==image.rgba(h)(c),"native replay changed a uniform tail")
-          assert(word(base+64)==61 && word(base+68)==fp(0.5))
+      for (local <- Seq(true, false))
+        it should s"discover GNC${if (virtualImages) 2 else 1} submit translated multi-tile shaders and publish exact cached source and resolve images local=$local" in {
+          simulate(host(local)) { d =>
+            initialize(d); val image = new Image(d); vm(d)
+            val perf = d.io.performance.get; val idleBefore = perf.fragmentPhaseWorkerCycles(0).peek().litValue
+            d.io.s_axi_aclk.step(7); perf.fragmentPhaseWorkerCycles(0).expect((idleBefore + 14).U)
+            assert(axiRead(d, TileBinHostRegs.DISCOVERY) == 0x160)
+            val expected = Vector[BigInt](
+              BigInt(if (virtualImages) "474e4302" else "474e4301", 16),
+              8,
+              BigInt("474e4a01", 16),
+              BigInt("08000200", 16),
+              BigInt("88420800", 16),
+              BigInt("00090011", 16),
+              BigInt("d4908000", 16),
+              if (local) BigInt("020cb802", 16) else BigInt("00000802", 16)
+            )
+            for ((word, i) <- expected.zipWithIndex) assert(axiRead(d, 0x160 + i * 4) == word, s"GNC1 word $i differs")
+            for ((word, i) <- Vector[BigInt](BigInt("47564901", 16), 4, 0x3000502, 0x1ffffff).zipWithIndex)
+              assert(axiRead(d, 0x1b0 + i * 4) == word, s"GVI1 word $i differs")
+            axiWrite(d, 0x1b0, 0, expectedResponse = 2)
+            for (i <- 0 until 12) assert(axiRead(d, 0x180 + i * 4) == 0)
+            axiWrite(d, 0x180, 0, expectedResponse = 2)
+            for (mode <- Seq(0, 2)) {
+              image.setup(
+                mode,
+                vertexFormat = if (mode == 0) VertexInputFormat.float16 else VertexInputFormat.snorm2101010
+              )
+              axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1)
+              assert(image.consumer(10 + mode) == BigInt("a7a7a7a7", 16)); image.submit(); image.run(); image.verify()
+              axiWrite(d, GpuCommandMmioRegs.VECTOR_SATP, 0, expectedResponse = 2);
+              assert(axiRead(d, GpuCommandMmioRegs.VECTOR_SATP) == BigInt("80000030", 16)); image.pop()
+              val expected = (0 until 4).foldLeft(BigInt(0))((v, b) =>
+                v | (BigInt(image.expectedBytes(image.imageBase + 60 + b)) << (b * 8))
+              )
+              assert(image.consumer(30 + mode) == expected); d.io.performance.get.payloadReservedBytes.expect(0.U)
+            }
+            for (phase <- 1 until 6)
+              assert(
+                perf.fragmentPhaseWorkerCycles(phase).peek().litValue > 0,
+                s"native binned fragment phase $phase was not counted for local=$local"
+              )
+            info(
+              s"NATIVE_BINNED_AXI local=$local CUs=2 GNJ1=true GVI1=true convertedVertexInputs=half,snorm2101010 Sv32=true virtualImages=$virtualImages draws=4 tiles=12 modes1x4x=true exactFourMRTDepthResolveGuards=true cachedConsumer=true heldCompletionPinsVM=true"
+            )
+          }
         }
-        assert(image.reads.exists(a=>a>=image.pa(image.region+0x100000) && a<image.pa(image.region+0x110000)),"prepared records must be fetched from the GPU-memory bin pool")
-        assert(image.reads.exists(a=>a>=image.pa(image.region+0x20000) && a<image.pa(image.region+0x20400)),"fragment states must be fetched from GFS1")
-        d.io.performance.get.payloadReservedBytes.expect(0.U)
+      for (local <- Seq(true, false))
+        it should s"publish native binned polygon offset depth and shader fragCoord from GPU-memory records local=$local" in {
+          simulate(host(local)) { d =>
+            initialize(d); val image = new Image(d); vm(d)
+            for ((mode, version, sign, overrideDepth) <- Seq((1, 3, 1, false), (2, 4, -1, true))) {
+              image.setup(mode, fragmentVersion = version, polygon = true, sign = sign, shaderOverride = overrideDepth)
+              axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1)
+              assert(image.consumer(100 + version) == BigInt("a7a7a7a7", 16))
+              image.submit(110 + version); image.run(id = 110 + version); image.verify()
+              axiWrite(d, GpuCommandMmioRegs.VECTOR_SATP, 0, expectedResponse = 2)
+              assert(axiRead(d, GpuCommandMmioRegs.VECTOR_SATP) == BigInt("80000030", 16)); image.pop()
+              val expected = (0 until 4).foldLeft(BigInt(0))((v, b) =>
+                v | (BigInt(image.expectedBytes(image.imageBase + 60 + b)) << (b * 8))
+              )
+              assert(image.consumer(120 + version) == expected)
+              def word(a: BigInt): BigInt =
+                (0 until 4).foldLeft(BigInt(0))((v, b) => v | (BigInt(image.memory(image.pa(a) + b)) << (b * 8)))
+              for (h <- 0 until 2; e <- 0 until 2) {
+                val base = image.region + (if (e == 0) 0x40000 else 0x50000) + h * 4096 + image.fragmentPrefix
+                for (i <- 0 until 4; c <- 0 until 4)
+                  assert(
+                    word(base + i * 16 + c * 4) == image.rgba(h)(c),
+                    "native polygon replay changed a uniform tail"
+                  )
+                assert(word(base + 64) == (if (overrideDepth && h == 1) 63 else 61) && word(base + 68) == fp(0.125))
+              }
+              assert(
+                image.reads
+                  .exists(a => a >= image.pa(image.region + 0x100000) && a < image.pa(image.region + 0x110000)),
+                "prepared polygon records must be fetched from GPU-memory bins"
+              )
+              assert(
+                image.reads.exists(a => a >= image.pa(image.region + 0x20000) && a < image.pa(image.region + 0x20400)),
+                "polygon shaders must fetch GFS1 state"
+              )
+              d.io.performance.get.payloadReservedBytes.expect(0.U)
+            }
+            info(
+              s"NATIVE_BINNED_POLYGON_OFFSET local=$local CUs=2 GND1=true GFS1=true GPUResidentBins=true virtualImages=$virtualImages boundD32F=true rasterVersion2=true signedFactorUnits=true versions3And4=true modes2x4x=true shaderFragCoordZInMRT=true exactDefaultSampleDepth=true shaderDepthOverrideBypassesBias=true gradientMRTBlend=true exactSourceResolveGuards=true cachedConsumer=true uniformTails=true heldCompletionPinsVM=true"
+            )
+          }
+        }
+      for (local <- Seq(true, false))
+        it should s"replay native centroid gradients from GPU-memory bins and fragment states local=$local" in {
+          simulate(host(local)) { d =>
+            initialize(d); val image = new Image(d); vm(d)
+            for ((word, i) <- Vector[BigInt](BigInt("47464901", 16), 4, 0x1e, 0x70f).zipWithIndex)
+              assert(axiRead(d, 0x1c0 + i * 4) == word)
+            for ((mode, version) <- Seq((1, 3), (2, 4))) {
+              image.setup(mode, fragmentVersion = version); axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1)
+              assert(image.consumer(40 + version) == BigInt("a7a7a7a7", 16))
+              image.submit(50 + version); image.run(id = 50 + version); image.verify()
+              axiWrite(d, GpuCommandMmioRegs.VECTOR_SATP, 0, expectedResponse = 2)
+              assert(axiRead(d, GpuCommandMmioRegs.VECTOR_SATP) == BigInt("80000030", 16))
+              image.pop()
+              val expected = (0 until 4).foldLeft(BigInt(0))((v, b) =>
+                v | (BigInt(image.expectedBytes(image.imageBase + 60 + b)) << (b * 8))
+              )
+              assert(image.consumer(60 + version) == expected)
+              def word(a: BigInt): BigInt =
+                (0 until 4).foldLeft(BigInt(0))((v, b) => v | (BigInt(image.memory(image.pa(a) + b)) << (b * 8)))
+              for (h <- 0 until 2; e <- 0 until 2) {
+                val base = image.region + (if (e == 0) 0x40000 else 0x50000) + h * 4096 + image.fragmentPrefix
+                for (i <- 0 until 4; c <- 0 until 4)
+                  assert(word(base + i * 16 + c * 4) == image.rgba(h)(c), "native replay changed a uniform tail")
+                assert(word(base + 64) == 61 && word(base + 68) == fp(0.5))
+              }
+              assert(
+                image.reads
+                  .exists(a => a >= image.pa(image.region + 0x100000) && a < image.pa(image.region + 0x110000)),
+                "prepared records must be fetched from the GPU-memory bin pool"
+              )
+              assert(
+                image.reads.exists(a => a >= image.pa(image.region + 0x20000) && a < image.pa(image.region + 0x20400)),
+                "fragment states must be fetched from GFS1"
+              )
+              d.io.performance.get.payloadReservedBytes.expect(0.U)
+            }
+            info(
+              s"NATIVE_BINNED_CENTROID local=$local CUs=2 GNJ1=true GFS1=true GPUResidentBins=true virtualImages=$virtualImages versions3And4=true modes2x4x=true stateMasks5And3=true mixedCenterCentroidFlat=true gradientMRTs=4 blendedSecondDraw=true exactSourceResolveGuards=true cachedConsumer=true freshProgramAndVertexAllocations=true uniformTails=true heldCompletionPinsVM=true"
+            )
+          }
+        }
+      it should "publish every empty tile and execute indexed instanced native draws through Sv32" in {
+        simulate(host(false)) { d =>
+          initialize(d); val image = new Image(d); vm(d)
+          for (mode <- Seq(0, 2)) {
+            image.setup(mode, empty = true); axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1)
+            image.submit(); image.run(); image.verify(); image.pop()
+            assert(!image.reads.contains(image.pa(0x401000)), "an empty frame must not execute a vertex shader")
+          }
+          image.setup(2, indexedInstances = 2); axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1)
+          image.submit(); image.run(); image.verify(); image.pop()
+          assert(
+            image.reads.exists(a => a >= image.pa(image.region + 0x22000) && a < image.pa(image.region + 0x22040)),
+            "indexed instances must fetch translated indices"
+          )
+          d.io.performance.get.payloadReservedBytes.expect(0.U)
+          info(
+            "NATIVE_BINNED_AXI emptyFrames=2 allSixTiles=true modes1x4x=true indexedInstances=2 exactMRTDepthResolveGuards=true"
+          )
+        }
       }
-      info(s"NATIVE_BINNED_CENTROID local=$local CUs=2 GNJ1=true GFS1=true GPUResidentBins=true virtualImages=$virtualImages versions3And4=true modes2x4x=true stateMasks5And3=true mixedCenterCentroidFlat=true gradientMRTs=4 blendedSecondDraw=true exactSourceResolveGuards=true cachedConsumer=true freshProgramAndVertexAllocations=true uniformTails=true heldCompletionPinsVM=true")
-    }
-  }
-  it should "publish every empty tile and execute indexed instanced native draws through Sv32" in {
-    simulate(host(false)){d=>initialize(d);val image=new Image(d);vm(d)
-      for(mode<-Seq(0,2)){
-        image.setup(mode,empty=true);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
-        image.submit();image.run();image.verify();image.pop()
-        assert(!image.reads.contains(image.pa(0x401000)),"an empty frame must not execute a vertex shader")
+      it should "attribute envelope descriptor Sv32 shader and physical publication faults and permit exact healthy reuse" in {
+        simulate(host(false)) { d =>
+          initialize(d); val image = new Image(d); vm(d)
+          val cases = Seq(
+            ("envelope", 1),
+            ("header", 1),
+            ("descriptor-read", 3),
+            ("draw-read", 3),
+            ("write-permission", 3),
+            ("execute-permission", 5),
+            ("shader-trap", 5),
+            ("physical-store", 3)
+          ) ++
+            (if (virtualImages)
+               Seq(
+                 ("image-write-permission", 3),
+                 ("image-read-permission", 3),
+                 ("image-alias-job", 1),
+                 ("image-alias-state", 1),
+                 ("image-alias-bin", 1),
+                 ("scratch-image-alias", 1)
+               )
+             else Seq.empty)
+          val selected = sys.props.get("opengpu.nativeFaultCase").map(_.split(",").toSet)
+          require(selected.forall(_.subsetOf(cases.map(_._1).toSet)), "unknown native fault-case selection")
+          val work = cases.zipWithIndex.filter { case ((name, _), _) => selected.forall(_(name)) }
+          require(work.nonEmpty)
+          info(
+            s"NATIVE_BINNED_FAULT_SELECTION virtualImages=$virtualImages cases=${work.map(_._1._1).mkString(",")} filtered=${selected.nonEmpty}"
+          )
+          for (((name, status), index) <- work) {
+            image.setup(badShader = name == "shader-trap", loadImages = name == "image-read-permission")
+            image.word(0x30004, ((BigInt(0x800000) >> 12) << 10) | (if (name == "execute-permission") 0xc7 else 0xcf))
+            if (name == "header") image.word(image.pa(image.region + 0x10000 + 508), 1)
+            if (name == "write-permission") {
+              // Deny only the vertex staging page. Bins, descriptors and states
+              // stay writable, so a bin failure cannot win the first-fault race.
+              val table = BigInt(0x50000) + index * 4096
+              image.word(0x30000 + (image.region >> 22) * 4, ((table >> 12) << 10) | 1)
+              for (page <- 0 until 1024)
+                image.word(
+                  table + page * 4,
+                  ((image.pa(image.region + page * 4096) >> 12) << 10) | (if (page == 0x30) 0x4b else 0xcf)
+                )
+            }
+            if (name == "image-write-permission" || name == "image-read-permission")
+              image.word(
+                0x30000 + (image.imageVaBase >> 22) * 4,
+                ((image.imageBase >> 12) << 10) | (if (name == "image-write-permission") 0x4b else 0xc9)
+              )
+            if (name.startsWith("image-alias-")) {
+              val resolve = name == "image-alias-bin"
+              val alloc = image.region + (if (name == "image-alias-job") 0x10000
+                                          else if (name == "image-alias-state") 0x20000
+                                          else 0x100000)
+              val base = alloc + (if (resolve) 59 else 61); val pitch = 75; val limit = base + 8 * pitch + 68;
+              val end = (limit + 63) & ~BigInt(63)
+              val k = if (resolve) "frame.image.resolves[0].destination." else "frame.image.views[0]."
+              for ((n, v) <- Seq("base" -> base, "limit" -> limit, "allocationBase" -> alloc, "allocationLimit" -> end))
+                image.patchFrame(k + n, v)
+            }
+            if (name == "scratch-image-alias") {
+              val base = image.imageVaBase + 128; val k = "draw.vertex.geometry.vertex.scratch."
+              for (
+                (n, v) <- Seq(
+                  "base" -> base,
+                  "limit" -> (base + 480),
+                  "allocationBase" -> image.imageVaBase,
+                  "allocationLimit" -> (image.imageVaBase + 768)
+                )
+              ) image.patchDraw(k + n, v)
+            }
+            axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1)
+            val id = 70 + index; image.submit(id, if (name == "envelope") 256 else 512)
+            val denied =
+              if (name == "descriptor-read") Set(image.pa(image.region + 0x10040))
+              else if (name == "draw-read") Set(image.pa(image.region + 0x13000))
+              else Set.empty[BigInt]
+            var failedReads = 0; var failedWrites = 0
+            image.run(
+              status,
+              id,
+              a => { val fail = denied(a); if (fail) failedReads += 1; fail },
+              (a, _, _) => {
+                val fail = name == "physical-store" && a >= image.imageBase && a < image.imageBase + 0x100000
+                if (fail) failedWrites += 1; fail
+              }
+            )
+            val flags = axiRead(d, 0x184); val statuses = axiRead(d, 0x194)
+            assert(
+              ((flags >> 3) & 3) == (if (
+                                       Set("envelope", "header")(name) || name
+                                         .startsWith("image-alias-") || name == "scratch-image-alias"
+                                     ) 1
+                                     else if (denied.nonEmpty) 2
+                                     else 3),
+              s"native reader fault stage differs: $name"
+            )
+            if (name == "write-permission" || name == "execute-permission") {
+              assert(
+                ((flags >> 7) & 3) == 2 && ((flags >> 11) & 1) == 1,
+                "vertex faults must preserve their source stage"
+              )
+              assert(((statuses >> 24) & 7) == status, "vertex fault status must not be confused with bin rejection")
+            }
+            if (Set("shader-trap", "physical-store", "image-write-permission", "image-read-permission")(name))
+              assert(
+                ((flags >> 5) & 3) == 3 && ((flags >> 9) & 1) == 1,
+                "image execution/publication faults must retain the fault tile"
+              )
+            if (name == "image-read-permission")
+              assert(
+                !image.reads.exists(a => a >= image.imageBase && a < image.imageBase + 0x100000),
+                "read-denied image data must not reach physical AXI"
+              )
+            if (name.startsWith("image-alias-"))
+              assert(image.writes.isEmpty, "frame image-role aliases must be rejected before child writes")
+            if (name == "envelope") assert(image.reads.isEmpty && image.writes.isEmpty)
+            if (denied.nonEmpty) assert(failedReads > 0, s"fault injection was not reached: $name")
+            if (name == "physical-store") assert(failedWrites > 0)
+            if (name == "execute-permission")
+              assert(!image.reads.contains(image.pa(0x401000)), "execute-denied code must not reach physical AXI")
+            if (name == "write-permission")
+              assert(
+                !image.writes
+                  .exists(a => a >= image.pa(image.region + 0x30000) && a < image.pa(image.region + 0x31000)),
+                "write-denied vertex staging must not reach physical AXI"
+              )
+            if (!Set("shader-trap", "physical-store")(name))
+              assert(!image.writes.exists(a => a >= image.imageBase), s"early fault published an image: $name")
+            axiWrite(d, GpuCommandMmioRegs.VECTOR_SATP, 0, expectedResponse = 2); image.pop()
+            image.word(0x30004, ((BigInt(0x800000) >> 12) << 10) | 0xcf)
+            image.setup(); axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1)
+            image.submit(90 + index); image.run(id = 90 + index); image.verify(); image.pop()
+            d.io.performance.get.payloadReservedBytes.expect(0.U)
+            info(s"NATIVE_BINNED_FAULT case=$name status=$status attributedCommand=true exactHealthyReuse=true")
+          }
+        }
       }
-      image.setup(2,indexedInstances=2);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
-      image.submit();image.run();image.verify();image.pop()
-      assert(image.reads.exists(a=>a>=image.pa(image.region+0x22000) && a<image.pa(image.region+0x22040)),"indexed instances must fetch translated indices")
-      d.io.performance.get.payloadReservedBytes.expect(0.U)
-      info("NATIVE_BINNED_AXI emptyFrames=2 allSixTiles=true modes1x4x=true indexedInstances=2 exactMRTDepthResolveGuards=true")
-    }
-  }
-  it should "attribute envelope descriptor Sv32 shader and physical publication faults and permit exact healthy reuse" in {
-    simulate(host(false)){d=>initialize(d);val image=new Image(d);vm(d)
-      val cases=Seq(("envelope",1),("header",1),("descriptor-read",3),("draw-read",3),
-        ("write-permission",3),("execute-permission",5),("shader-trap",5),("physical-store",3))++
-        (if(virtualImages)Seq(("image-write-permission",3),("image-read-permission",3),
-          ("image-alias-job",1),("image-alias-state",1),("image-alias-bin",1),("scratch-image-alias",1))else Seq.empty)
-      val selected=sys.props.get("opengpu.nativeFaultCase").map(_.split(",").toSet)
-      require(selected.forall(_.subsetOf(cases.map(_._1).toSet)),"unknown native fault-case selection")
-      val work=cases.zipWithIndex.filter{case((name,_),_)=>selected.forall(_(name))}
-      require(work.nonEmpty)
-      info(s"NATIVE_BINNED_FAULT_SELECTION virtualImages=$virtualImages cases=${work.map(_._1._1).mkString(",")} filtered=${selected.nonEmpty}")
-      for(((name,status),index)<-work){
-        image.setup(badShader=name=="shader-trap",loadImages=name=="image-read-permission")
-        image.word(0x30004,((BigInt(0x800000)>>12)<<10)|(if(name=="execute-permission")0xc7 else 0xcf))
-        if(name=="header")image.word(image.pa(image.region+0x10000+508),1)
-        if(name=="write-permission"){
-          // Deny only the vertex staging page. Bins, descriptors and states
-          // stay writable, so a bin failure cannot win the first-fault race.
-          val table=BigInt(0x50000)+index*4096
-          image.word(0x30000+(image.region>>22)*4,((table>>12)<<10)|1)
-          for(page<-0 until 1024)image.word(table+page*4,((image.pa(image.region+page*4096)>>12)<<10)|(if(page==0x30)0x4b else 0xcf))
+      it should "retain shader and physical acknowledgement ownership through reset and discard queued DMA" in {
+        simulate(host(true)) { d =>
+          initialize(d); val image = new Image(d); val perf = d.io.performance.get; vm(d)
+          for (phase <- 0 until 2) {
+            image.setup(if (phase == 0) 0 else 2, empty = phase == 1); axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1)
+            image.submit(110 + phase)
+            val dma = image.region + 0x140000
+            axiWrite(d, GpuCommandMmioRegs.COMMAND_ID, 120 + phase);
+            axiWrite(d, GpuCommandMmioRegs.OPCODE, GpuCommandOpcode.fill.litValue.toInt)
+            axiWrite(d, GpuCommandMmioRegs.DESTINATION, dma.toInt); axiWrite(d, GpuCommandMmioRegs.BYTES, 64)
+            axiWrite(d, GpuCommandMmioRegs.PATTERN, 0xdeadbeef); axiWrite(d, GpuCommandMmioRegs.SUBMIT, 1)
+            var requested = false; var live = BigInt(0)
+            def resetAtBoundary(): Unit = {
+              requested = true; live = perf.payloadReservedBytes.peek().litValue
+              if (phase == 0) assert(live > 0, "the live vertex shader must retain its payload reservation")
+              else assert(live == 0, "empty-frame publication must not depend on a shader payload")
+              axiWrite(d, GpuCommandMmioRegs.RESET, 1)
+              axiWrite(d, GpuCommandMmioRegs.VECTOR_SATP, 0, expectedResponse = 2)
+            }
+            serviceMemoryMaster(
+              d,
+              image.read,
+              writeAckDelay = 29,
+              readResponseDelay = 17,
+              maxCycles = 1000000,
+              onReadAccepted = a => if (phase == 0 && !requested && a == image.pa(0x401000)) resetAtBoundary(),
+              onWriteAccepted = a => if (phase == 1 && !requested && a >= image.imageBase) resetAtBoundary()
+            )(image.write) { d.io.m_irq.peek().litToBoolean }
+            assert(
+              requested,
+              s"native reset phase=$phase completed before the required shader/publication boundary; completion=${axiRead(d, GpuCommandMmioRegs.COMPLETION).toString(16)}"
+            )
+            assert((axiRead(d, GpuCommandMmioRegs.STATUS) & 10) == 0)
+            assert(
+              !image.writes.exists(a => a >= image.pa(dma) && a < image.pa(dma + 64)),
+              "reset must discard the queued DMA command"
+            )
+            perf.payloadReservedBytes.expect(0.U); perf.payloadPinsActive.expect(0.U)
+            assert(perf.payloadAllocations.peek().litValue == perf.payloadReleases.peek().litValue)
+            for (i <- 0 until 12) assert(axiRead(d, 0x180 + i * 4) == 0, "reset must discard aborted native details")
+            axiWrite(d, RenderHostRegs.IRQ, 3)
+            image.setup(if (phase == 0) 0 else 2); axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1)
+            image.submit(140 + phase); image.run(id = 140 + phase); image.verify(); image.pop()
+            perf.payloadReservedBytes.expect(0.U)
+            info(
+              s"NATIVE_BINNED_RESET phase=$phase livePayloadBytes=$live queuedDMAAborted=true oldCompletionsDiscarded=true physicalAckDrain=true VMWriteRejected=true exactHealthyReuse=true"
+            )
+          }
         }
-        if(name=="image-write-permission" || name=="image-read-permission")image.word(0x30000+(image.imageVaBase>>22)*4,
-          ((image.imageBase>>12)<<10)|(if(name=="image-write-permission")0x4b else 0xc9))
-        if(name.startsWith("image-alias-")){
-          val resolve=name=="image-alias-bin"
-          val alloc=image.region+(if(name=="image-alias-job")0x10000 else if(name=="image-alias-state")0x20000 else 0x100000)
-          val base=alloc+(if(resolve)59 else 61);val pitch=75;val limit=base+8*pitch+68;val end=(limit+63)& ~BigInt(63)
-          val k=if(resolve)"frame.image.resolves[0].destination."else"frame.image.views[0]."
-          for((n,v)<-Seq("base"->base,"limit"->limit,"allocationBase"->alloc,"allocationLimit"->end))image.patchFrame(k+n,v)
-        }
-        if(name=="scratch-image-alias"){
-          val base=image.imageVaBase+128;val k="draw.vertex.geometry.vertex.scratch."
-          for((n,v)<-Seq("base"->base,"limit"->(base+480),"allocationBase"->image.imageVaBase,"allocationLimit"->(image.imageVaBase+768)))image.patchDraw(k+n,v)
-        }
-        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
-        val id=70+index;image.submit(id,if(name=="envelope")256 else 512)
-        val denied=if(name=="descriptor-read")Set(image.pa(image.region+0x10040))
-          else if(name=="draw-read")Set(image.pa(image.region+0x13000))else Set.empty[BigInt]
-        var failedReads=0;var failedWrites=0
-        image.run(status,id,a=>{val fail=denied(a);if(fail)failedReads+=1;fail},(a,_,_)=>{
-          val fail=name=="physical-store" && a>=image.imageBase && a<image.imageBase+0x100000
-          if(fail)failedWrites+=1;fail})
-        val flags=axiRead(d,0x184);val statuses=axiRead(d,0x194)
-        assert(((flags>>3)&3)==(if(Set("envelope","header")(name) || name.startsWith("image-alias-") || name=="scratch-image-alias")1 else if(denied.nonEmpty)2 else 3),s"native reader fault stage differs: $name")
-        if(name=="write-permission" || name=="execute-permission"){
-          assert(((flags>>7)&3)==2 && ((flags>>11)&1)==1,"vertex faults must preserve their source stage")
-          assert(((statuses>>24)&7)==status,"vertex fault status must not be confused with bin rejection")
-        }
-        if(Set("shader-trap","physical-store","image-write-permission","image-read-permission")(name))assert(((flags>>5)&3)==3 && ((flags>>9)&1)==1,
-          "image execution/publication faults must retain the fault tile")
-        if(name=="image-read-permission")assert(!image.reads.exists(a=>a>=image.imageBase && a<image.imageBase+0x100000),"read-denied image data must not reach physical AXI")
-        if(name.startsWith("image-alias-"))assert(image.writes.isEmpty,"frame image-role aliases must be rejected before child writes")
-        if(name=="envelope")assert(image.reads.isEmpty && image.writes.isEmpty)
-        if(denied.nonEmpty)assert(failedReads>0,s"fault injection was not reached: $name")
-        if(name=="physical-store")assert(failedWrites>0)
-        if(name=="execute-permission")assert(!image.reads.contains(image.pa(0x401000)),"execute-denied code must not reach physical AXI")
-        if(name=="write-permission")assert(!image.writes.exists(a=>a>=image.pa(image.region+0x30000) && a<image.pa(image.region+0x31000)),
-          "write-denied vertex staging must not reach physical AXI")
-        if(!Set("shader-trap","physical-store")(name))assert(!image.writes.exists(a=>a>=image.imageBase),s"early fault published an image: $name")
-        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2);image.pop()
-        image.word(0x30004,((BigInt(0x800000)>>12)<<10)|0xcf)
-        image.setup();axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
-        image.submit(90+index);image.run(id=90+index);image.verify();image.pop()
-        d.io.performance.get.payloadReservedBytes.expect(0.U)
-        info(s"NATIVE_BINNED_FAULT case=$name status=$status attributedCommand=true exactHealthyReuse=true")
       }
     }
-  }
-  it should "retain shader and physical acknowledgement ownership through reset and discard queued DMA" in {
-    simulate(host(true)){d=>initialize(d);val image=new Image(d);val perf=d.io.performance.get;vm(d)
-      for(phase<-0 until 2){
-        image.setup(if(phase==0)0 else 2,empty=phase==1);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
-        image.submit(110+phase)
-        val dma=image.region+0x140000
-        axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,120+phase);axiWrite(d,GpuCommandMmioRegs.OPCODE,GpuCommandOpcode.fill.litValue.toInt)
-        axiWrite(d,GpuCommandMmioRegs.DESTINATION,dma.toInt);axiWrite(d,GpuCommandMmioRegs.BYTES,64)
-        axiWrite(d,GpuCommandMmioRegs.PATTERN,0xdeadbeef);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
-        var requested=false;var live=BigInt(0)
-        def resetAtBoundary(): Unit={requested=true;live=perf.payloadReservedBytes.peek().litValue
-          if(phase==0)assert(live>0,"the live vertex shader must retain its payload reservation")
-          else assert(live==0,"empty-frame publication must not depend on a shader payload")
-          axiWrite(d,GpuCommandMmioRegs.RESET,1)
-          axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
-        }
-        serviceMemoryMaster(d,image.read,writeAckDelay=29,readResponseDelay=17,maxCycles=1000000,
-          onReadAccepted=a=>if(phase==0 && !requested && a==image.pa(0x401000))resetAtBoundary(),
-          onWriteAccepted=a=>if(phase==1 && !requested && a>=image.imageBase)resetAtBoundary())(image.write){d.io.m_irq.peek().litToBoolean}
-        assert(requested,s"native reset phase=$phase completed before the required shader/publication boundary; completion=${axiRead(d,GpuCommandMmioRegs.COMPLETION).toString(16)}")
-        assert((axiRead(d,GpuCommandMmioRegs.STATUS)&10)==0)
-        assert(!image.writes.exists(a=>a>=image.pa(dma) && a<image.pa(dma+64)),"reset must discard the queued DMA command")
-        perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
-        assert(perf.payloadAllocations.peek().litValue==perf.payloadReleases.peek().litValue)
-        for(i<-0 until 12)assert(axiRead(d,0x180+i*4)==0,"reset must discard aborted native details")
-        axiWrite(d,RenderHostRegs.IRQ,3)
-        image.setup(if(phase==0)0 else 2);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
-        image.submit(140+phase);image.run(id=140+phase);image.verify();image.pop()
-        perf.payloadReservedBytes.expect(0.U)
-        info(s"NATIVE_BINNED_RESET phase=$phase livePayloadBytes=$live queuedDMAAborted=true oldCompletionsDiscarded=true physicalAckDrain=true VMWriteRejected=true exactHealthyReuse=true")
-      }
-    }
-  }
-  }
 
   }
 }
@@ -1509,35 +2838,35 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
 class NativeBinnedGraphicsHostAxiSpec extends NativeBinnedGraphicsHostBaseSpec
 
 class TessellationNativeHostLegacyCompatibilitySpec extends NativeBinnedGraphicsHostBaseSpec {
-  override protected def tessellationHostCompatibility: Boolean=true
+  override protected def tessellationHostCompatibility: Boolean = true
 }
 
 class TessellationNativeFragmentImageHostAxiSpec extends NativeBinnedGraphicsHostBaseSpec {
-  override protected def tessellationHostCompatibility: Boolean=true
-  override protected def fragmentImagesWithTessellation: Boolean=true
+  override protected def tessellationHostCompatibility: Boolean = true
+  override protected def fragmentImagesWithTessellation: Boolean = true
 }
 
 class TessellationNativeVisibilityQueryHostAxiSpec extends NativeBinnedGraphicsHostBaseSpec {
-  override protected def tessellationHostCompatibility: Boolean=true
-  override protected def visibilityQueries: Boolean=true
+  override protected def tessellationHostCompatibility: Boolean = true
+  override protected def visibilityQueries: Boolean = true
 }
 
 class TessellationFeedbackHostAxiSpec extends NativeBinnedGraphicsHostBaseSpec {
-  override protected def tessellationHostCompatibility: Boolean=true
-  override protected def transformFeedback: Boolean=true
+  override protected def tessellationHostCompatibility: Boolean = true
+  override protected def transformFeedback: Boolean = true
 }
 
 class TessellationFeedbackVisibilityHostAxiSpec extends NativeBinnedGraphicsHostBaseSpec {
-  override protected def tessellationHostCompatibility: Boolean=true
-  override protected def transformFeedback: Boolean=true
-  override protected def visibilityQueries: Boolean=true
-  override protected def combinedTessellationFeedbackQuery: Boolean=true
+  override protected def tessellationHostCompatibility: Boolean = true
+  override protected def transformFeedback: Boolean = true
+  override protected def visibilityQueries: Boolean = true
+  override protected def combinedTessellationFeedbackQuery: Boolean = true
 }
 
 class TessellationPrimitiveFeedbackVisibilityHostAxiSpec extends NativeBinnedGraphicsHostBaseSpec {
-  override protected def tessellationHostCompatibility: Boolean=true
-  override protected def transformFeedback: Boolean=true
-  override protected def visibilityQueries: Boolean=true
-  override protected def primitiveQueries: Boolean=true
-  override protected def combinedTessellationFeedbackQuery: Boolean=true
+  override protected def tessellationHostCompatibility: Boolean = true
+  override protected def transformFeedback: Boolean = true
+  override protected def visibilityQueries: Boolean = true
+  override protected def primitiveQueries: Boolean = true
+  override protected def combinedTessellationFeedbackQuery: Boolean = true
 }

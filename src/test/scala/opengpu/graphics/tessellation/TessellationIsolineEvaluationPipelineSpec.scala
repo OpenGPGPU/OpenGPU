@@ -42,14 +42,14 @@ class TessellationIsolineEvaluationPipelineSpec extends AnyFlatSpec {
           val responseFire = pending.nonEmpty && d.io.response.ready.peek().litToBoolean
           if (responseFire && mode == 2 && !failed) failed = true
           val nextPending = if (requestValid && requestReady) {
-            val task=d.io.request.bits.taskId.peek().litValue; val seq=d.io.request.bits.sequence.peek().litValue
-            val vertex=d.io.request.bits.vertex.peek().litValue
+            val task = d.io.request.bits.taskId.peek().litValue; val seq = d.io.request.bits.sequence.peek().litValue
+            val vertex = d.io.request.bits.vertex.peek().litValue
             coords += ((seq, vertex, d.io.request.bits.tessCoord(0).peek().litValue))
             Some((task, seq, vertex))
           } else None
           if (d.io.out.valid.peek().litToBoolean && outputReady) {
             d.io.out.bits.taskId.expect(55.U)
-            val seq=d.io.out.bits.sequence.peek().litValue
+            val seq = d.io.out.bits.sequence.peek().litValue
             for (v <- 0 until 2; i <- Seq(0, 63))
               d.io.out.bits.vertices(v)(i).expect((seq * 1000 + v * 100 + i).U)
             published += 1
@@ -65,10 +65,16 @@ class TessellationIsolineEvaluationPipelineSpec extends AnyFlatSpec {
         if (mode == 2) d.io.completion.bits.evaluationFault.expect(2.U)
         if (mode == 0) {
           d.io.completion.bits.generated.expect(2.U); assert(published == 2)
-          assert(coords.toVector == Vector((0,0,0), (0,1,BigInt(0x3f000000)),
-            (1,0,BigInt(0x3f000000)), (1,1,BigInt(0x3f800000))))
+          assert(
+            coords.toVector == Vector(
+              (0, 0, 0),
+              (0, 1, BigInt(0x3f000000)),
+              (1, 0, BigInt(0x3f000000)),
+              (1, 1, BigInt(0x3f800000))
+            )
+          )
         }
-        val held=d.io.completion.bits.peek().litValue; d.clock.step(3)
+        val held = d.io.completion.bits.peek().litValue; d.clock.step(3)
         d.io.completion.valid.expect(true.B); assert(d.io.completion.bits.peek().litValue == held)
         d.io.completion.ready.poke(true.B); d.clock.step(); d.io.completion.ready.poke(false.B)
         d.io.cancel.poke(false.B); d.io.busy.expect(false.B)
@@ -80,7 +86,7 @@ class TessellationIsolineEvaluationPipelineSpec extends AnyFlatSpec {
         d.io.begin.bits.outer(0).poke(level.U); d.io.begin.bits.outer(1).poke(0x40000000L.U)
         d.io.begin.bits.pointMode.poke(true.B); d.io.begin.valid.poke(true.B)
         d.io.begin.ready.expect(true.B); d.clock.step(); d.io.begin.valid.poke(false.B)
-        var cycles=0
+        var cycles = 0
         while (!d.io.completion.valid.peek().litToBoolean && cycles < 1000) {
           d.io.request.valid.expect(false.B); d.io.out.valid.expect(false.B); d.clock.step(); cycles += 1
         }

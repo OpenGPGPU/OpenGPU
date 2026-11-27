@@ -10,13 +10,13 @@ class ScalarBranchExecuteStageSpec extends AnyFlatSpec {
   behavior of "ScalarBranchExecuteStage"
 
   private def drive(
-    dut: ScalarBranchExecuteStage,
-    branchOp: UInt,
-    jump: Boolean,
-    useRs1: Boolean,
-    lhs: BigInt,
-    rhs: BigInt,
-    immediate: BigInt
+      dut: ScalarBranchExecuteStage,
+      branchOp: UInt,
+      jump: Boolean,
+      useRs1: Boolean,
+      lhs: BigInt,
+      rhs: BigInt,
+      immediate: BigInt
   ): Unit = {
     dut.io.in.valid.poke(true.B)
     dut.io.in.bits.decode.executionType.poke(ExecutionType.branch)
@@ -34,53 +34,52 @@ class ScalarBranchExecuteStageSpec extends AnyFlatSpec {
   }
 
   it should "resolve conditional and JALR paths while preserving metadata" in {
-    simulate(new ScalarBranchExecuteStage(GpuConfig(lanes = 4, warps = 2))) {
-      dut =>
-        dut.reset.poke(true.B)
-        dut.clock.step()
-        dut.reset.poke(false.B)
-        dut.io.out.ready.poke(false.B)
+    simulate(new ScalarBranchExecuteStage(GpuConfig(lanes = 4, warps = 2))) { dut =>
+      dut.reset.poke(true.B)
+      dut.clock.step()
+      dut.reset.poke(false.B)
+      dut.io.out.ready.poke(false.B)
 
-        drive(
-          dut,
-          BranchOp.lt,
-          jump = false,
-          useRs1 = true,
-          lhs = BigInt("ffffffff", 16),
-          rhs = 1,
-          immediate = 0x20
-        )
-        dut.clock.step()
-        dut.io.in.valid.poke(false.B)
-        dut.clock.step()
-        dut.io.out.valid.expect(true.B)
-        dut.io.out.bits.nextPc.expect(0x120.U)
-        dut.io.out.bits.activeMask.expect(0xb.U)
-        dut.io.out.bits.writeLink.expect(false.B)
-        dut.clock.step(2)
-        dut.io.out.bits.nextPc.expect(0x120.U)
+      drive(
+        dut,
+        BranchOp.lt,
+        jump = false,
+        useRs1 = true,
+        lhs = BigInt("ffffffff", 16),
+        rhs = 1,
+        immediate = 0x20
+      )
+      dut.clock.step()
+      dut.io.in.valid.poke(false.B)
+      dut.clock.step()
+      dut.io.out.valid.expect(true.B)
+      dut.io.out.bits.nextPc.expect(0x120.U)
+      dut.io.out.bits.activeMask.expect(0xb.U)
+      dut.io.out.bits.writeLink.expect(false.B)
+      dut.clock.step(2)
+      dut.io.out.bits.nextPc.expect(0x120.U)
 
-        dut.io.out.ready.poke(true.B)
-        dut.clock.step()
-        dut.io.out.ready.poke(false.B)
+      dut.io.out.ready.poke(true.B)
+      dut.clock.step()
+      dut.io.out.ready.poke(false.B)
 
-        drive(
-          dut,
-          BranchOp.none,
-          jump = true,
-          useRs1 = true,
-          lhs = 0x203,
-          rhs = 0,
-          immediate = 4
-        )
-        dut.clock.step()
-        dut.io.in.valid.poke(false.B)
-        dut.clock.step()
-        dut.io.out.valid.expect(true.B)
-        dut.io.out.bits.nextPc.expect(0x206.U)
-        dut.io.out.bits.linkPc.expect(0x104.U)
-        dut.io.out.bits.rd.expect(5.U)
-        dut.io.out.bits.writeLink.expect(true.B)
+      drive(
+        dut,
+        BranchOp.none,
+        jump = true,
+        useRs1 = true,
+        lhs = 0x203,
+        rhs = 0,
+        immediate = 4
+      )
+      dut.clock.step()
+      dut.io.in.valid.poke(false.B)
+      dut.clock.step()
+      dut.io.out.valid.expect(true.B)
+      dut.io.out.bits.nextPc.expect(0x206.U)
+      dut.io.out.bits.linkPc.expect(0x104.U)
+      dut.io.out.bits.rd.expect(5.U)
+      dut.io.out.bits.writeLink.expect(true.B)
     }
   }
 }

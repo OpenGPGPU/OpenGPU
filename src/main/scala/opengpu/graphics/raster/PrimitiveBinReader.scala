@@ -34,41 +34,39 @@ class PrimitiveBinReadCompletion extends Bundle {
   val readLines = UInt(32.W)
 }
 
-/** Replay a completed PrimitiveBinWriter chain through one cached64-byte line.
-  * Descriptor and page ownership, bounds, counts, ordinal and forward-only
-  * links are checked before following a page. Reference sequences must grow.
-  * No faulted or invalid reference is replaced by a successful zero value.
+/** Replay a completed PrimitiveBinWriter chain through one cached64-byte line. Descriptor and page ownership, bounds,
+  * counts, ordinal and forward-only links are checked before following a page. Reference sequences must grow. No
+  * faulted or invalid reference is replaced by a successful zero value.
   *
-  * One tagged read can be outstanding. Offered requests and reference outputs
-  * are irrevocable; cancel drains both before completion/rebinding. A caller
-  * must publish writer stores to this memory domain before beginning replay,
-  * retain the arena until completion, and discard a failed pass's outputs.
-  * This block does not fetch primitive/state handles or schedule tile engines.
+  * One tagged read can be outstanding. Offered requests and reference outputs are irrevocable; cancel drains both
+  * before completion/rebinding. A caller must publish writer stores to this memory domain before beginning replay,
+  * retain the arena until completion, and discard a failed pass's outputs. This block does not fetch primitive/state
+  * handles or schedule tile engines.
   */
 class PrimitiveBinReader(
-  config: GpuConfig = GpuConfig(),
-  pageBytes: Int = 4096,
-  memoryTransactions: Int = 1,
-  transactionId: Int = 0
+    config: GpuConfig = GpuConfig(),
+    pageBytes: Int = 4096,
+    memoryTransactions: Int = 1,
+    transactionId: Int = 0
 ) extends Module {
   require(config.xLen == 32)
-  require(pageBytes >= 64 && pageBytes <= 65536 && (pageBytes & (pageBytes-1)) == 0)
+  require(pageBytes >= 64 && pageBytes <= 65536 && (pageBytes & (pageBytes - 1)) == 0)
   require(transactionId >= 0 && transactionId < memoryTransactions)
   private val pageBits = log2Ceil(pageBytes)
   private val capacity = PrimitiveBinPageLayout.recordsPerPage(pageBytes)
-  private val indexBits = log2Ceil(capacity+1).max(1)
+  private val indexBits = log2Ceil(capacity + 1).max(1)
   val io = IO(new Bundle {
     val begin = Flipped(Decoupled(new PrimitiveBinReadDescriptor))
     val reference = Decoupled(new PrimitiveBinReference)
     val cancel = Input(Bool())
     val completion = Decoupled(new PrimitiveBinReadCompletion)
-    val memoryRequest = Decoupled(new ComputeMemoryRequest(config,64,memoryTransactions))
-    val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64,memoryTransactions)))
+    val memoryRequest = Decoupled(new ComputeMemoryRequest(config, 64, memoryTransactions))
+    val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64, memoryTransactions)))
     val busy = Output(Bool())
     val readBytes = Output(UInt(7.W))
   })
-  private val Seq(idle,bounds,boundsCheck,headerPrepare,offer,waiting,
-    headerCheck,emit,finish,done,segments) = Enum(11)
+  private val Seq(idle, bounds, boundsCheck, headerPrepare, offer, waiting, headerCheck, emit, finish, done, segments) =
+    Enum(11)
   private val state = RegInit(idle)
   private val descriptor = Reg(new PrimitiveBinReadDescriptor)
   private val poolLegal = Reg(Bool())
@@ -76,8 +74,8 @@ class PrimitiveBinReader(
   // Arena page count is registered separately so the constant-capacity
   // multiply that bounds the descriptor does not follow the 33-bit subtract
   // and shift in one cycle.
-  private val segmentIndex=Reg(UInt(3.W))
-  private val previousLimit=Reg(UInt(33.W))
+  private val segmentIndex = Reg(UInt(3.W))
+  private val previousLimit = Reg(UInt(33.W))
   private val pageCapacity = Reg(UInt(33.W))
   private val page = Reg(UInt(32.W))
   private val expectedPageOrdinal = Reg(UInt(32.W))
@@ -106,11 +104,11 @@ class PrimitiveBinReader(
   private val status = RegInit(PrimitiveBinStatus.success.U(PrimitiveBinStatus.width.W))
   private val faultNow = io.memoryResponse.fire && io.memoryResponse.bits.fault
   private val stop = cancelled || io.cancel || faultNow
-  private val effectiveStatus = Mux((cancelled || io.cancel) && status === PrimitiveBinStatus.success.U,
-    PrimitiveBinStatus.cancelled.U,status)
+  private val effectiveStatus =
+    Mux((cancelled || io.cancel) && status === PrimitiveBinStatus.success.U, PrimitiveBinStatus.cancelled.U, status)
 
   private def pageInBounds(address: UInt): Bool =
-    BinPagePoolRules.pageInBounds(address,descriptor.pool,pageBytes)
+    BinPagePoolRules.pageInBounds(address, descriptor.pool, pageBytes)
 
   io.begin.ready := state === idle && !io.cancel
   io.reference.valid := referenceValid
@@ -126,10 +124,10 @@ class PrimitiveBinReader(
   io.memoryRequest.bits.transactionId := transactionId.U
   io.memoryResponse.ready := state === waiting &&
     io.memoryResponse.bits.transactionId === transactionId.U
-  io.readBytes := Mux(io.memoryRequest.fire,64.U,0.U)
+  io.readBytes := Mux(io.memoryRequest.fire, 64.U, 0.U)
 
-  when(io.reference.fire) { referenceValid := false.B; emitted := emitted+1.U }
-  when(io.memoryRequest.fire) { readLines := readLines+1.U }
+  when(io.reference.fire) { referenceValid := false.B; emitted := emitted + 1.U }
+  when(io.memoryRequest.fire) { readLines := readLines + 1.U }
   switch(state) {
     is(idle) {
       when(io.begin.fire) {
@@ -147,27 +145,35 @@ class PrimitiveBinReader(
       }
     }
     is(bounds) {
-      poolLegal := descriptor.version === 1.U && BinPagePoolRules.headerLegal(descriptor.pool,pageBytes)
+      poolLegal := descriptor.version === 1.U && BinPagePoolRules.headerLegal(descriptor.pool, pageBytes)
       headLegal := pageInBounds(descriptor.head)
-      pageCapacity := (Mux(descriptor.pool.version===2.U,descriptor.pool.initialLimit,descriptor.pool.limit)-descriptor.pool.base.pad(33)) >> pageBits
-      segmentIndex:=0.U; previousLimit:=descriptor.pool.initialLimit
-      state := Mux(descriptor.pool.version===2.U,segments,boundsCheck)
+      pageCapacity := (Mux(
+        descriptor.pool.version === 2.U,
+        descriptor.pool.initialLimit,
+        descriptor.pool.limit
+      ) - descriptor.pool.base.pad(33)) >> pageBits
+      segmentIndex := 0.U; previousLimit := descriptor.pool.initialLimit
+      state := Mux(descriptor.pool.version === 2.U, segments, boundsCheck)
     }
     is(segments) {
-      val p=descriptor.pool
-      val valid=BinPagePoolRules.segmentLegal(p,segmentIndex,previousLimit,pageBytes)
-      val last=Mux(segmentIndex<p.spillCount,p.spills(segmentIndex).limit,previousLimit)
-      when(!valid || (segmentIndex===(BinPagePoolRules.maxSpills-1).U && last=/=p.limit)) { poolLegal:=false.B }
-      when(segmentIndex<p.spillCount) {
-        pageCapacity:=pageCapacity+((p.spills(segmentIndex).limit-p.spills(segmentIndex).base.pad(33))>>pageBits)
+      val p = descriptor.pool
+      val valid = BinPagePoolRules.segmentLegal(p, segmentIndex, previousLimit, pageBytes)
+      val last = Mux(segmentIndex < p.spillCount, p.spills(segmentIndex).limit, previousLimit)
+      when(!valid || (segmentIndex === (BinPagePoolRules.maxSpills - 1).U && last =/= p.limit)) { poolLegal := false.B }
+      when(segmentIndex < p.spillCount) {
+        pageCapacity := pageCapacity + ((p
+          .spills(segmentIndex)
+          .limit - p.spills(segmentIndex).base.pad(33)) >> pageBits)
       }
-      previousLimit:=last; segmentIndex:=segmentIndex+1.U
-      when(segmentIndex===(BinPagePoolRules.maxSpills-1).U) { state:=boundsCheck }
+      previousLimit := last; segmentIndex := segmentIndex + 1.U
+      when(segmentIndex === (BinPagePoolRules.maxSpills - 1).U) { state := boundsCheck }
     }
     is(boundsCheck) {
       val maximumReferences = pageCapacity * capacity.U
-      when(!poolLegal || descriptor.headValid =/= (descriptor.count =/= 0.U) ||
-          descriptor.count > maximumReferences || (descriptor.headValid && !headLegal)) {
+      when(
+        !poolLegal || descriptor.headValid =/= (descriptor.count =/= 0.U) ||
+          descriptor.count > maximumReferences || (descriptor.headValid && !headLegal)
+      ) {
         status := PrimitiveBinStatus.invalidDescriptor.U
         state := finish
       }.elsewhen(!descriptor.headValid) { state := finish }
@@ -176,7 +182,7 @@ class PrimitiveBinReader(
     is(headerPrepare) {
       requestAddress := page
       requestHeader := true.B
-      expectedPageOrdinal := (page-descriptor.pool.base) >> pageBits
+      expectedPageOrdinal := (page - descriptor.pool.base) >> pageBits
       state := offer
     }
     is(offer) { when(io.memoryRequest.fire) { state := waiting } }
@@ -191,18 +197,18 @@ class PrimitiveBinReader(
             line := io.memoryResponse.bits.readData
             lineAddress := requestAddress
             lineValid := true.B
-            state := Mux(requestHeader,headerCheck,emit)
+            state := Mux(requestHeader, headerCheck, emit)
           }
       }
     }
     is(headerCheck) {
-      val words = (0 until 8).map(i => line(32*i+31,32*i))
+      val words = (0 until 8).map(i => line(32 * i + 31, 32 * i))
       val owner = words(3) === descriptor.pool.identity.context &&
         words(4) === descriptor.pool.identity.pass && words(5) === descriptor.pool.identity.generation &&
         words(6) === descriptor.tile && words(7) === expectedPageOrdinal
       val countValid = words(2) > 0.U && words(2) <= capacity.U && words(2) <= remaining
-      val linkValid = Mux(words(1) === 0.U,words(2) === remaining,
-        words(2) < remaining && words(1) > page && pageInBounds(words(1)))
+      val linkValid =
+        Mux(words(1) === 0.U, words(2) === remaining, words(2) < remaining && words(1) > page && pageInBounds(words(1)))
       when(words(0) =/= PrimitiveBinPageLayout.magic.U || !owner || !countValid || !linkValid) {
         status := PrimitiveBinReadStatus.invalidPage.U
         state := finish
@@ -210,7 +216,7 @@ class PrimitiveBinReader(
         nextPage := words(1)
         pageCount := words(2)
         index := 0.U
-        pages := pages+1.U
+        pages := pages + 1.U
         state := emit
       }
     }
@@ -219,39 +225,39 @@ class PrimitiveBinReader(
         page + PrimitiveBinPageLayout.headerBytes.U + (i << 4)
       def recordHit(i: UInt): Bool = {
         val address = recordAddress(i)
-        lineValid && address(31,6) === lineAddress(31,6)
+        lineValid && address(31, 6) === lineAddress(31, 6)
       }
       def recordWords(i: UInt) = {
         val address = recordAddress(i)
-        val groups = VecInit((0 until 4).map(g => VecInit((0 until 4).map(w =>
-          line(128*g+32*w+31,128*g+32*w)))))
-        groups(address(5,4))
+        val groups =
+          VecInit((0 until 4).map(g => VecInit((0 until 4).map(w => line(128 * g + 32 * w + 31, 128 * g + 32 * w)))))
+        groups(address(5, 4))
       }
       // One record is staged while the previous one is admitted. The wide
       // sequence compare and line selection therefore end at the staged
       // registers instead of feeding the 32-bit counter carry chains in the
       // same cycle.
-      val nextIndex = index+1.U
+      val nextIndex = index + 1.U
       val nextWords = recordWords(nextIndex)
-      val nextSequence = Mux(stagedValid,stagedSequence,lastSequence)
+      val nextSequence = Mux(stagedValid, stagedSequence, lastSequence)
       val nextHasOrder = stagedValid || haveSequence
-      val nextRemaining = Mux(stagedValid,remaining-1.U,remaining)
+      val nextRemaining = Mux(stagedValid, remaining - 1.U, remaining)
       val nextEligible = nextRemaining =/= 0.U && nextIndex < pageCount &&
         recordHit(nextIndex) && !(nextHasOrder && nextWords(2) <= nextSequence)
       when(stagedValid) {
         when(!stop && (!referenceValid || io.reference.ready)) {
           reference := staged
           referenceValid := true.B
-          index := index+1.U
-          remaining := remaining-1.U
-          admitted := admitted+1.U
+          index := index + 1.U
+          remaining := remaining - 1.U
+          admitted := admitted + 1.U
           lastSequence := stagedSequence
           haveSequence := true.B
           stagedValid := nextEligible
           when(nextEligible) {
             staged.identity := descriptor.pool.identity
             staged.tile := descriptor.tile
-            staged.ordinal := admitted+1.U
+            staged.ordinal := admitted + 1.U
             staged.reference.primitive := nextWords(0)
             staged.reference.state := nextWords(1)
             staged.reference.sequence := nextWords(2)
@@ -261,20 +267,23 @@ class PrimitiveBinReader(
         }
       }.otherwise {
         val address = recordAddress(index)
-        val hit = lineValid && address(31,6) === lineAddress(31,6)
+        val hit = lineValid && address(31, 6) === lineAddress(31, 6)
         val words = recordWords(index)
         when(remaining === 0.U) { state := finish }
           .elsewhen(index === pageCount) {
             when(nextPage === 0.U) { status := PrimitiveBinReadStatus.invalidPage.U; state := finish }
               .otherwise { page := nextPage; state := headerPrepare }
-          }.elsewhen(!hit) {
-            requestAddress := Cat(address(31,6),0.U(6.W))
+          }
+          .elsewhen(!hit) {
+            requestAddress := Cat(address(31, 6), 0.U(6.W))
             requestHeader := false.B
             state := offer
-          }.elsewhen(haveSequence && words(2) <= lastSequence) {
+          }
+          .elsewhen(haveSequence && words(2) <= lastSequence) {
             status := PrimitiveBinStatus.invalidOrder.U
             state := finish
-          }.otherwise {
+          }
+          .otherwise {
             staged.identity := descriptor.pool.identity
             staged.tile := descriptor.tile
             staged.ordinal := admitted
@@ -302,8 +311,10 @@ class PrimitiveBinReader(
   }
   // Neither an offered read nor an offered reference may be withdrawn.
   // Finish owns no memory request; it waits for the remaining output reply.
-  when(stop && state =/= idle && state =/= done && state =/= offer &&
-      state =/= waiting && state =/= finish) { state := finish }
+  when(
+    stop && state =/= idle && state =/= done && state =/= offer &&
+      state =/= waiting && state =/= finish
+  ) { state := finish }
   when(io.cancel && state =/= idle && state =/= done) {
     cancelled := true.B
     when(status === PrimitiveBinStatus.success.U && !faultNow) {

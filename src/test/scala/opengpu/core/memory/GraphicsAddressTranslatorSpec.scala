@@ -8,8 +8,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 class GraphicsAddressTranslatorSpec extends AnyFlatSpec {
   behavior of "GraphicsAddressTranslator"
 
-  private def request(dut: GraphicsAddressTranslator, address: BigInt,
-                      id: Int): Unit = {
+  private def request(dut: GraphicsAddressTranslator, address: BigInt, id: Int): Unit = {
     dut.io.in.bits.poke(0.U.asTypeOf(dut.io.in.bits))
     dut.io.in.bits.address.poke(address.U)
     dut.io.in.bits.sizeLog2.poke(6.U)
@@ -27,8 +26,8 @@ class GraphicsAddressTranslatorSpec extends AnyFlatSpec {
     dut.io.out.valid.expect(true.B)
   }
 
-  /** Consume the response held on `out` (ready is normally held low so a test
-    * can inspect it before it is retired). */
+  /** Consume the response held on `out` (ready is normally held low so a test can inspect it before it is retired).
+    */
   private def consumeOut(dut: GraphicsAddressTranslator): Unit = {
     dut.io.out.ready.poke(true.B)
     dut.clock.step()
@@ -43,11 +42,16 @@ class GraphicsAddressTranslatorSpec extends AnyFlatSpec {
     dut.io.pageWalk.valid.expect(true.B)
   }
 
-  /** Pulse a scoped shootdown while the translation port is idle. Both scope
-    * bits clear is a full flush, matching the CU TLB contract. */
-  private def flushTlb(dut: GraphicsAddressTranslator,
-                       vpnValid: Boolean = false, vpn: BigInt = 0,
-                       asidValid: Boolean = false, asid: BigInt = 0): Unit = {
+  /** Pulse a scoped shootdown while the translation port is idle. Both scope bits clear is a full flush, matching the
+    * CU TLB contract.
+    */
+  private def flushTlb(
+      dut: GraphicsAddressTranslator,
+      vpnValid: Boolean = false,
+      vpn: BigInt = 0,
+      asidValid: Boolean = false,
+      asid: BigInt = 0
+  ): Unit = {
     dut.io.flush.bits.virtualPageNumberValid.poke(vpnValid.B)
     dut.io.flush.bits.virtualPageNumber.poke(vpn.U)
     dut.io.flush.bits.asidValid.poke(asidValid.B)
@@ -58,8 +62,7 @@ class GraphicsAddressTranslatorSpec extends AnyFlatSpec {
   }
 
   it should "pass a request through with the cached policy when disabled" in {
-    simulate(new GraphicsAddressTranslator(
-      GpuConfig(lanes = 2, warps = 1), entries = 4, maxOutstanding = 4)) { dut =>
+    simulate(new GraphicsAddressTranslator(GpuConfig(lanes = 2, warps = 1), entries = 4, maxOutstanding = 4)) { dut =>
       dut.reset.poke(true.B)
       dut.io.in.valid.poke(false.B)
       dut.io.in.bits.poke(0.U.asTypeOf(dut.io.in.bits))
@@ -83,8 +86,7 @@ class GraphicsAddressTranslatorSpec extends AnyFlatSpec {
   }
 
   it should "attach the identity page's cache policy when enabled" in {
-    simulate(new GraphicsAddressTranslator(
-      GpuConfig(lanes = 2, warps = 1), entries = 4, maxOutstanding = 4)) { dut =>
+    simulate(new GraphicsAddressTranslator(GpuConfig(lanes = 2, warps = 1), entries = 4, maxOutstanding = 4)) { dut =>
       dut.reset.poke(true.B)
       dut.io.in.valid.poke(false.B)
       dut.io.in.bits.poke(0.U.asTypeOf(dut.io.in.bits))
@@ -106,8 +108,7 @@ class GraphicsAddressTranslatorSpec extends AnyFlatSpec {
       dut.io.pageWalk.bits.cachePolicy.expect(2.U)
       dut.io.pageWalk.bits.sizeLog2.expect(2.U)
       dut.io.pageWalkResp.valid.poke(true.B)
-      dut.io.pageWalkResp.bits.readData.poke(
-        ((BigInt(2) << 8) | 0xcf).U)
+      dut.io.pageWalkResp.bits.readData.poke(((BigInt(2) << 8) | 0xcf).U)
       dut.io.pageWalkResp.bits.fault.poke(false.B)
       waitOut(dut)
       dut.io.pageWalkResp.valid.poke(false.B)
@@ -119,14 +120,16 @@ class GraphicsAddressTranslatorSpec extends AnyFlatSpec {
     }
   }
 
-  for ((name, pte, busFault) <- Seq(
-    ("invalid PTE", BigInt(0), false),
-    ("misaligned superpage", (BigInt(2) << 10) | 0xcf, false),
-    ("unreadable page", BigInt(0xc9), false),
-    ("page-table bus error", BigInt(0xcf), true))) {
+  for (
+    (name, pte, busFault) <- Seq(
+      ("invalid PTE", BigInt(0), false),
+      ("misaligned superpage", (BigInt(2) << 10) | 0xcf, false),
+      ("unreadable page", BigInt(0xc9), false),
+      ("page-table bus error", BigInt(0xcf), true)
+    )
+  ) {
     it should s"return a fault without physical access for $name" in {
-      simulate(new GraphicsAddressTranslator(
-        GpuConfig(lanes = 2, warps = 1), entries = 4, maxOutstanding = 4)) { dut =>
+      simulate(new GraphicsAddressTranslator(GpuConfig(lanes = 2, warps = 1), entries = 4, maxOutstanding = 4)) { dut =>
         dut.io.in.valid.poke(false.B)
         dut.io.out.ready.poke(true.B)
         dut.io.faultResponse.ready.poke(false.B)
@@ -169,8 +172,7 @@ class GraphicsAddressTranslatorSpec extends AnyFlatSpec {
   }
 
   it should "translate a nonidentity page and enforce cached write permission" in {
-    simulate(new GraphicsAddressTranslator(
-      GpuConfig(lanes = 2, warps = 1), entries = 4, maxOutstanding = 4)) { dut =>
+    simulate(new GraphicsAddressTranslator(GpuConfig(lanes = 2, warps = 1), entries = 4, maxOutstanding = 4)) { dut =>
       dut.io.in.valid.poke(false.B)
       dut.io.out.ready.poke(false.B)
       dut.io.faultResponse.ready.poke(false.B)
@@ -207,11 +209,10 @@ class GraphicsAddressTranslatorSpec extends AnyFlatSpec {
     }
   }
 
-  /** Drive a cached miss to a fresh leaf at `ppn` (superpage at PA `ppn<<12`).
-    * Leaves the translated response pending on `out` for the caller to check
-    * and retire with `consumeOut`. */
-  private def fillPage(dut: GraphicsAddressTranslator, address: BigInt,
-                       id: Int, ppn: BigInt, global: Boolean): Unit = {
+  /** Drive a cached miss to a fresh leaf at `ppn` (superpage at PA `ppn<<12`). Leaves the translated response pending
+    * on `out` for the caller to check and retire with `consumeOut`.
+    */
+  private def fillPage(dut: GraphicsAddressTranslator, address: BigInt, id: Int, ppn: BigInt, global: Boolean): Unit = {
     request(dut, address, id)
     waitPageWalk(dut)
     val leaf = (ppn << 10) | (if (global) BigInt(0xef) else BigInt(0xcf))
@@ -223,8 +224,7 @@ class GraphicsAddressTranslatorSpec extends AnyFlatSpec {
   }
 
   it should "not reuse a private page across an ASID switch" in {
-    simulate(new GraphicsAddressTranslator(
-      GpuConfig(lanes = 2, warps = 1), entries = 4, maxOutstanding = 4)) { dut =>
+    simulate(new GraphicsAddressTranslator(GpuConfig(lanes = 2, warps = 1), entries = 4, maxOutstanding = 4)) { dut =>
       dut.io.in.valid.poke(false.B)
       dut.io.in.bits.poke(0.U.asTypeOf(dut.io.in.bits))
       // Hold `out` until the test inspects it, so a response cannot retire
@@ -260,8 +260,7 @@ class GraphicsAddressTranslatorSpec extends AnyFlatSpec {
   }
 
   it should "reuse a global page across an ASID switch" in {
-    simulate(new GraphicsAddressTranslator(
-      GpuConfig(lanes = 2, warps = 1), entries = 4, maxOutstanding = 4)) { dut =>
+    simulate(new GraphicsAddressTranslator(GpuConfig(lanes = 2, warps = 1), entries = 4, maxOutstanding = 4)) { dut =>
       dut.io.in.valid.poke(false.B)
       dut.io.in.bits.poke(0.U.asTypeOf(dut.io.in.bits))
       dut.io.out.ready.poke(false.B)
@@ -288,8 +287,7 @@ class GraphicsAddressTranslatorSpec extends AnyFlatSpec {
   }
 
   it should "drop only a matching private ASID on an ASID-scoped flush" in {
-    simulate(new GraphicsAddressTranslator(
-      GpuConfig(lanes = 2, warps = 1), entries = 4, maxOutstanding = 4)) { dut =>
+    simulate(new GraphicsAddressTranslator(GpuConfig(lanes = 2, warps = 1), entries = 4, maxOutstanding = 4)) { dut =>
       dut.io.in.valid.poke(false.B)
       dut.io.in.bits.poke(0.U.asTypeOf(dut.io.in.bits))
       dut.io.out.ready.poke(false.B)
@@ -336,8 +334,7 @@ class GraphicsAddressTranslatorSpec extends AnyFlatSpec {
   }
 
   it should "drop only a matching VPN on a VPN-scoped flush" in {
-    simulate(new GraphicsAddressTranslator(
-      GpuConfig(lanes = 2, warps = 1), entries = 4, maxOutstanding = 4)) { dut =>
+    simulate(new GraphicsAddressTranslator(GpuConfig(lanes = 2, warps = 1), entries = 4, maxOutstanding = 4)) { dut =>
       dut.io.in.valid.poke(false.B)
       dut.io.in.bits.poke(0.U.asTypeOf(dut.io.in.bits))
       dut.io.out.ready.poke(false.B)
@@ -372,8 +369,7 @@ class GraphicsAddressTranslatorSpec extends AnyFlatSpec {
   }
 
   it should "drop every entry on a full flush" in {
-    simulate(new GraphicsAddressTranslator(
-      GpuConfig(lanes = 2, warps = 1), entries = 4, maxOutstanding = 4)) { dut =>
+    simulate(new GraphicsAddressTranslator(GpuConfig(lanes = 2, warps = 1), entries = 4, maxOutstanding = 4)) { dut =>
       dut.io.in.valid.poke(false.B)
       dut.io.in.bits.poke(0.U.asTypeOf(dut.io.in.bits))
       dut.io.out.ready.poke(false.B)
@@ -403,8 +399,7 @@ class GraphicsAddressTranslatorSpec extends AnyFlatSpec {
   }
 
   it should "queue TLB hits while the translated port is backed up" in {
-    simulate(new GraphicsAddressTranslator(
-      GpuConfig(lanes = 2, warps = 1), entries = 4, maxOutstanding = 4)) { dut =>
+    simulate(new GraphicsAddressTranslator(GpuConfig(lanes = 2, warps = 1), entries = 4, maxOutstanding = 4)) { dut =>
       dut.io.in.valid.poke(false.B)
       dut.io.in.bits.poke(0.U.asTypeOf(dut.io.in.bits))
       dut.io.out.ready.poke(false.B)

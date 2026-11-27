@@ -10,6 +10,7 @@ object EmitVectorSramRtl {
     ChiselStage.emitSystemVerilogFile(
       new VectorRegisterManager(GpuConfig(), useBlackBox = true),
       Array("--target-dir", args(0)),
-      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays"))
+      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays")
+    )
   }
 }

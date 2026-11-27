@@ -6,20 +6,15 @@ import opengpu.system.GpuHostAxi
 
 /** Emits the standalone graphics host (`GpuHostAxi`) as SystemVerilog.
   *
-  * Use [[EmitGpuTop]] for the complete GPU. This standalone target exposes the
-  * standard AXI4 memory-mapped control channels
-  * (`s_axi_aw*`, w, b, `s_axi_ar*`) and a completion interrupt (`m_irq`),
-  * so ARTI's naming-based inferencer detects an AXI4 slave and generates the
-  * embedded QEMU device model and device-tree node.  The renderer's shared
-  * memory ports are passed through; ARTI treats them as unknown ports and the
-  * SoC attaches them to the coherent off-chip hierarchy separately.
+  * Use [[EmitGpuTop]] for the complete GPU. This standalone target exposes the standard AXI4 memory-mapped control
+  * channels (`s_axi_aw*`, w, b, `s_axi_ar*`) and a completion interrupt (`m_irq`), so ARTI's naming-based inferencer
+  * detects an AXI4 slave and generates the embedded QEMU device model and device-tree node. The renderer's shared
+  * memory ports are passed through; ARTI treats them as unknown ports and the SoC attaches them to the coherent
+  * off-chip hierarchy separately.
   *
-  * Arguments (after the optional target directory):
-  *   --frag-core        fragment shader runs on the SIMT core
-  *   --vert-core        vertex shader runs on the SIMT core (needs --frag-core)
-  *   --width N          render target width in pixels (default 64)
-  *   --height N         render target height in pixels (default 64)
-  * The resolution must be at least 16x16.
+  * Arguments (after the optional target directory): --frag-core fragment shader runs on the SIMT core --vert-core
+  * vertex shader runs on the SIMT core (needs --frag-core) --width N render target width in pixels (default 64)
+  * --height N render target height in pixels (default 64) The resolution must be at least 16x16.
   */
 object EmitGpuHostAxi {
   def main(args: Array[String]): Unit = {
@@ -27,8 +22,7 @@ object EmitGpuHostAxi {
     val rest = args.drop(1).toIndexedSeq
     val fragCore = rest.contains("--frag-core")
     val vertCore = rest.contains("--vert-core")
-    require(!vertCore || fragCore,
-      "--vert-core requires --frag-core because both stages share the shader CU")
+    require(!vertCore || fragCore, "--vert-core requires --frag-core because both stages share the shader CU")
 
     def intOption(name: String): Option[Int] = {
       val i = rest.indexOf(name)
@@ -40,11 +34,12 @@ object EmitGpuHostAxi {
     }
     val width = intOption("--width").getOrElse(64)
     val height = intOption("--height").getOrElse(64)
-    require(width >= 16 && height >= 16,
-      s"resolution must be at least 16x16, got ${width}x${height}")
+    require(width >= 16 && height >= 16, s"resolution must be at least 16x16, got ${width}x${height}")
 
     val gfx = GraphicsConfig(screenWidth = width, screenHeight = height, subPixelBits = 8)
-    EmitRtl.emit(new GpuHostAxi(gfx, GpuConfig(lanes = 4, warps = 2),
-      fragCore = fragCore, vertCore = vertCore), targetDir)
+    EmitRtl.emit(
+      new GpuHostAxi(gfx, GpuConfig(lanes = 4, warps = 2), fragCore = fragCore, vertCore = vertCore),
+      targetDir
+    )
   }
 }

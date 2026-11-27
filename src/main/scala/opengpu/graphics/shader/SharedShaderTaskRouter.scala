@@ -8,44 +8,90 @@ import opengpu.dispatch.TaggedKernelLaunch
 import opengpu.core.memory.ShaderPayloadBinding
 import opengpu.system.SharedCuGraphicsPort
 
-/** Connect independent shader clients to one physical CU pool. Each client
-  * owns a bounded task window (one task by default).
-  * Pool tags identify reserved task slots; local tags are retained through completion and
-  * fault consumption. Texture traffic follows the executing task's client,
-  * regardless of which CU the shared scheduler selected for it.
+/** Connect independent shader clients to one physical CU pool. Each client owns a bounded task window (one task by
+  * default). Pool tags identify reserved task slots; local tags are retained through completion and fault consumption.
+  * Texture traffic follows the executing task's client, regardless of which CU the shared scheduler selected for it.
   */
 class SharedShaderTaskRouter(
-  config: GpuConfig,
-  numComputeUnits: Int,
-  numClients: Int,
-  taskIdWidth: Int = 8,
-  tasksPerClient: Int = 1,
-  shaderPayload: Option[ShaderPayloadConfig] = None,
-  geometryAvailable: Boolean = false,
-  tessellationAvailable: Boolean = false,
-  imageAvailable: Boolean = false,evaluationPatchAvailable:Boolean=false
-, tessellationInfoAvailable: Boolean = false) extends Module {
+    config: GpuConfig,
+    numComputeUnits: Int,
+    numClients: Int,
+    taskIdWidth: Int = 8,
+    tasksPerClient: Int = 1,
+    shaderPayload: Option[ShaderPayloadConfig] = None,
+    geometryAvailable: Boolean = false,
+    tessellationAvailable: Boolean = false,
+    imageAvailable: Boolean = false,
+    evaluationPatchAvailable: Boolean = false,
+    tessellationInfoAvailable: Boolean = false
+) extends Module {
   // Preserve the previous full JVM constructor for frozen default-off callers.
-  def this(config: GpuConfig, numComputeUnits: Int, numClients: Int, taskIdWidth: Int, tasksPerClient: Int, shaderPayload: Option[ShaderPayloadConfig], geometryAvailable: Boolean, tessellationAvailable: Boolean, imageAvailable: Boolean, evaluationPatchAvailable:Boolean) =
-    this(config, numComputeUnits, numClients, taskIdWidth, tasksPerClient, shaderPayload, geometryAvailable, tessellationAvailable, imageAvailable, evaluationPatchAvailable, false)
+  def this(
+      config: GpuConfig,
+      numComputeUnits: Int,
+      numClients: Int,
+      taskIdWidth: Int,
+      tasksPerClient: Int,
+      shaderPayload: Option[ShaderPayloadConfig],
+      geometryAvailable: Boolean,
+      tessellationAvailable: Boolean,
+      imageAvailable: Boolean,
+      evaluationPatchAvailable: Boolean
+  ) =
+    this(
+      config,
+      numComputeUnits,
+      numClients,
+      taskIdWidth,
+      tasksPerClient,
+      shaderPayload,
+      geometryAvailable,
+      tessellationAvailable,
+      imageAvailable,
+      evaluationPatchAvailable,
+      false
+    )
 
   require(numComputeUnits > 0 && numClients > 0)
   require(taskIdWidth > 0 && tasksPerClient > 0)
   require(!tessellationAvailable || (config.warps >= 2 && isPow2(config.warps) && config.lanes <= 32))
-  private val slots = numClients*tasksPerClient
+  private val slots = numClients * tasksPerClient
   require(BigInt(slots) <= (BigInt(1) << taskIdWidth))
   private val ownerWidth = math.max(1, log2Ceil(numClients))
   private val slotWidth = math.max(1, log2Ceil(slots))
   val io = IO(new Bundle {
-    val clients = Vec(numClients, new SharedCuGraphicsPort(config, taskIdWidth, numComputeUnits, geometryAvailable, tessellationAvailable, imageAvailable,evaluationPatchAvailable,tessellationInfoAvailable))
-    val pool = Flipped(new SharedCuGraphicsPort(config, taskIdWidth, numComputeUnits, geometryAvailable, tessellationAvailable, imageAvailable,evaluationPatchAvailable,tessellationInfoAvailable))
-    val clientPayload=shaderPayload.map(p=>Input(Vec(numClients,Valid(new ShaderPayloadBinding(config,p)))))
-    val poolPayload=shaderPayload.map(p=>Output(Valid(new ShaderPayloadBinding(config,p))))
-    /** Accepted queued/executing tasks and each prospective client offer.
-      * Connect these to the shared store's producer pins across every router
-      * tier, so a lease cannot recycle before its launch reaches the CUs.
+    val clients = Vec(
+      numClients,
+      new SharedCuGraphicsPort(
+        config,
+        taskIdWidth,
+        numComputeUnits,
+        geometryAvailable,
+        tessellationAvailable,
+        imageAvailable,
+        evaluationPatchAvailable,
+        tessellationInfoAvailable
+      )
+    )
+    val pool = Flipped(
+      new SharedCuGraphicsPort(
+        config,
+        taskIdWidth,
+        numComputeUnits,
+        geometryAvailable,
+        tessellationAvailable,
+        imageAvailable,
+        evaluationPatchAvailable,
+        tessellationInfoAvailable
+      )
+    )
+    val clientPayload = shaderPayload.map(p => Input(Vec(numClients, Valid(new ShaderPayloadBinding(config, p)))))
+    val poolPayload = shaderPayload.map(p => Output(Valid(new ShaderPayloadBinding(config, p))))
+
+    /** Accepted queued/executing tasks and each prospective client offer. Connect these to the shared store's producer
+      * pins across every router tier, so a lease cannot recycle before its launch reaches the CUs.
       */
-    val payloadPins=shaderPayload.map(p=>Output(Vec(slots+numClients,Valid(new ShaderPayloadPin(p)))))
+    val payloadPins = shaderPayload.map(p => Output(Vec(slots + numClients, Valid(new ShaderPayloadPin(p)))))
     val drained = Output(Bool())
   })
   private val active = RegInit(VecInit(Seq.fill(slots)(false.B)))
@@ -53,29 +99,40 @@ class SharedShaderTaskRouter(
   private def clientActive(tag: UInt): Bool =
     if (slots == 1) active(0) else active(tag(slotWidth - 1, 0))
   private val tags = Reg(Vec(slots, UInt(taskIdWidth.W)))
-  private val nativeProviders = Reg(Vec(slots,Bool()))
-  private val uniformProviders = Reg(Vec(slots,Bool()))
+  private val nativeProviders = Reg(Vec(slots, Bool()))
+  private val uniformProviders = Reg(Vec(slots, Bool()))
   private val imageTasks = if (imageAvailable) Some(Reg(Vec(slots, new ShaderImageTask))) else None
-  private val geometryTasks = if (geometryAvailable) Some(Reg(Vec(slots, Valid(new GeometryInvocationLaunch)))) else None
-  private val tessellationTasks = if(tessellationInfoAvailable) Some(Reg(Vec(slots,Valid(new opengpu.graphics.tessellation.TessellationShaderTaskBinding)))) else None
-  private val evaluationBindings=if(evaluationPatchAvailable)Some(Reg(Vec(slots,Valid(new opengpu.graphics.tessellation.TessellationEvaluationPatchBinding))))else None
-  private val tessellationBases = if (tessellationAvailable) Some(Reg(Vec(slots, Valid(Vec(config.warps, UInt(5.W)))))) else None
-  private val payloads=shaderPayload.map(p=>Reg(Vec(slots,Valid(new ShaderPayloadBinding(config,p)))))
+  private val geometryTasks =
+    if (geometryAvailable) Some(Reg(Vec(slots, Valid(new GeometryInvocationLaunch)))) else None
+  private val tessellationTasks =
+    if (tessellationInfoAvailable)
+      Some(Reg(Vec(slots, Valid(new opengpu.graphics.tessellation.TessellationShaderTaskBinding))))
+    else None
+  private val evaluationBindings =
+    if (evaluationPatchAvailable)
+      Some(Reg(Vec(slots, Valid(new opengpu.graphics.tessellation.TessellationEvaluationPatchBinding))))
+    else None
+  private val tessellationBases =
+    if (tessellationAvailable) Some(Reg(Vec(slots, Valid(Vec(config.warps, UInt(5.W)))))) else None
+  private val payloads = shaderPayload.map(p => Reg(Vec(slots, Valid(new ShaderPayloadBinding(config, p)))))
   private def localTag(tag: UInt): UInt =
-    if (slots == 1) tags(0) else tags(tag(slotWidth-1,0))
-  private def belongs(tag: UInt,client: Int): Bool =
-    tag >= (client*tasksPerClient).U && tag < ((client+1)*tasksPerClient).U
+    if (slots == 1) tags(0) else tags(tag(slotWidth - 1, 0))
+  private def belongs(tag: UInt, client: Int): Bool =
+    tag >= (client * tasksPerClient).U && tag < ((client + 1) * tasksPerClient).U
   private val launches = Module(new RRArbiter(new TaggedKernelLaunch(config, taskIdWidth), numClients))
-  private val launchQueue = Module(new Queue(new TaggedKernelLaunch(config,taskIdWidth),2,pipe=true))
+  private val launchQueue = Module(new Queue(new TaggedKernelLaunch(config, taskIdWidth), 2, pipe = true))
   for (client <- 0 until numClients) {
     val port = io.clients(client)
-    val free = VecInit((0 until tasksPerClient).map(i => !active(client*tasksPerClient+i)))
-    val duplicate = port.launch.valid && (0 until tasksPerClient).map { i =>
-      val slot = client*tasksPerClient+i
-      active(slot) && tags(slot) === port.launch.bits.commandId
-    }.reduce(_ || _)
-    val chosen = if (tasksPerClient == 1) (client*tasksPerClient).U(slotWidth.W)
-      else (client*tasksPerClient).U(slotWidth.W)+PriorityEncoder(free).pad(slotWidth)
+    val free = VecInit((0 until tasksPerClient).map(i => !active(client * tasksPerClient + i)))
+    val duplicate = port.launch.valid && (0 until tasksPerClient)
+      .map { i =>
+        val slot = client * tasksPerClient + i
+        active(slot) && tags(slot) === port.launch.bits.commandId
+      }
+      .reduce(_ || _)
+    val chosen =
+      if (tasksPerClient == 1) (client * tasksPerClient).U(slotWidth.W)
+      else (client * tasksPerClient).U(slotWidth.W) + PriorityEncoder(free).pad(slotWidth)
     launches.io.in(client).valid := port.launch.valid && free.asUInt.orR && !duplicate
     launches.io.in(client).bits.launch := port.launch.bits.launch
     launches.io.in(client).bits.commandId := chosen
@@ -87,27 +144,27 @@ class SharedShaderTaskRouter(
       nativeProviders(chosen) := port.nativeResources
       uniformProviders(chosen) := port.uniformResources
       if (imageAvailable) imageTasks.get(chosen) := port.imageTask.get
-      if(tessellationInfoAvailable) tessellationTasks.get(chosen) := port.tessellationTask.get
-      if(evaluationPatchAvailable)evaluationBindings.get(chosen):=port.evaluationPatchBinding.get
+      if (tessellationInfoAvailable) tessellationTasks.get(chosen) := port.tessellationTask.get
+      if (evaluationPatchAvailable) evaluationBindings.get(chosen) := port.evaluationPatchBinding.get
       if (geometryAvailable) geometryTasks.get(chosen) := port.geometryTask.get
       if (tessellationAvailable) tessellationBases.get(chosen) := port.tessellationBases.get
-      shaderPayload.foreach { _=>payloads.get(chosen):=io.clientPayload.get(client) }
+      shaderPayload.foreach { _ => payloads.get(chosen) := io.clientPayload.get(client) }
     }
-    port.completion.valid := io.pool.completion.valid && belongs(io.pool.completion.bits.commandId,client)
+    port.completion.valid := io.pool.completion.valid && belongs(io.pool.completion.bits.commandId, client)
     port.completion.bits.commandId := localTag(io.pool.completion.bits.commandId)
     port.completion.bits.success := io.pool.completion.bits.success
     when(port.completion.fire) {
       if (slots == 1) active(0) := false.B
-      else active(io.pool.completion.bits.commandId(slotWidth-1,0)) := false.B
+      else active(io.pool.completion.bits.commandId(slotWidth - 1, 0)) := false.B
       if (slots == 1) issued(0) := false.B
-      else issued(io.pool.completion.bits.commandId(slotWidth-1,0)) := false.B
+      else issued(io.pool.completion.bits.commandId(slotWidth - 1, 0)) := false.B
     }
-    port.trap.valid := io.pool.trap.valid && belongs(io.pool.trap.bits.taskId,client)
+    port.trap.valid := io.pool.trap.valid && belongs(io.pool.trap.bits.taskId, client)
     port.trap.bits := io.pool.trap.bits
     port.trap.bits.taskId := localTag(io.pool.trap.bits.taskId)
 
     val owned = VecInit((0 until numComputeUnits).map { cu =>
-      io.pool.owned(cu) && belongs(io.pool.taskIds(cu),client)
+      io.pool.owned(cu) && belongs(io.pool.taskIds(cu), client)
     })
     port.owned := owned.asUInt
     for (cu <- 0 until numComputeUnits) {
@@ -118,15 +175,19 @@ class SharedShaderTaskRouter(
       }
       if (tessellationAvailable) {
         val clientPatch = port.tessellation.get(cu); val poolPatch = io.pool.tessellation.get(cu)
-        clientPatch.request.valid := poolPatch.request.valid && owned(cu); clientPatch.request.bits := poolPatch.request.bits
+        clientPatch.request.valid := poolPatch.request.valid && owned(cu);
+        clientPatch.request.bits := poolPatch.request.bits
         clientPatch.park.valid := poolPatch.park.valid && owned(cu); clientPatch.park.bits := poolPatch.park.bits
-        clientPatch.finish.valid := poolPatch.finish.valid && owned(cu); clientPatch.finish.bits := poolPatch.finish.bits
+        clientPatch.finish.valid := poolPatch.finish.valid && owned(cu);
+        clientPatch.finish.bits := poolPatch.finish.bits
         clientPatch.result.ready := poolPatch.result.ready && owned(cu)
         clientPatch.resume.ready := poolPatch.resume.ready && owned(cu)
       }
-      if(evaluationPatchAvailable){val a=port.evaluationPatch.get(cu);val b=io.pool.evaluationPatch.get(cu)
-        a.request.valid:=b.request.valid && owned(cu);a.request.bits:=b.request.bits
-        a.result.ready:=b.result.ready && owned(cu)}
+      if (evaluationPatchAvailable) {
+        val a = port.evaluationPatch.get(cu); val b = io.pool.evaluationPatch.get(cu)
+        a.request.valid := b.request.valid && owned(cu); a.request.bits := b.request.bits
+        a.result.ready := b.result.ready && owned(cu)
+      }
       val texture = port.texture(cu)
       val pool = io.pool.texture(cu)
       texture.scalar.valid := pool.scalar.valid && owned(cu)
@@ -142,19 +203,20 @@ class SharedShaderTaskRouter(
   }
   launchQueue.io.enq <> launches.io.out
   io.pool.launch <> launchQueue.io.deq
-  private val providerHead=if(slots==1)0.U else io.pool.launch.bits.commandId(slotWidth-1,0)
-  io.pool.nativeResources:=nativeProviders(providerHead)
-  io.pool.uniformResources:=uniformProviders(providerHead)
+  private val providerHead = if (slots == 1) 0.U else io.pool.launch.bits.commandId(slotWidth - 1, 0)
+  io.pool.nativeResources := nativeProviders(providerHead)
+  io.pool.uniformResources := uniformProviders(providerHead)
   if (imageAvailable) {
-    io.pool.imageTask.get := Mux(io.pool.launch.valid, imageTasks.get(providerHead),
-      0.U.asTypeOf(new ShaderImageTask))
+    io.pool.imageTask.get := Mux(io.pool.launch.valid, imageTasks.get(providerHead), 0.U.asTypeOf(new ShaderImageTask))
   }
-  if(tessellationInfoAvailable) {
+  if (tessellationInfoAvailable) {
     io.pool.tessellationTask.get.valid := io.pool.launch.valid && tessellationTasks.get(providerHead).valid
     io.pool.tessellationTask.get.bits := tessellationTasks.get(providerHead).bits
   }
-  if(evaluationPatchAvailable){io.pool.evaluationPatchBinding.get.valid:=io.pool.launch.valid && evaluationBindings.get(providerHead).valid
-    io.pool.evaluationPatchBinding.get.bits:=evaluationBindings.get(providerHead).bits}
+  if (evaluationPatchAvailable) {
+    io.pool.evaluationPatchBinding.get.valid := io.pool.launch.valid && evaluationBindings.get(providerHead).valid
+    io.pool.evaluationPatchBinding.get.bits := evaluationBindings.get(providerHead).bits
+  }
   if (geometryAvailable) {
     io.pool.geometryTask.get.valid := io.pool.launch.valid && geometryTasks.get(providerHead).valid
     io.pool.geometryTask.get.bits := geometryTasks.get(providerHead).bits
@@ -163,54 +225,57 @@ class SharedShaderTaskRouter(
     io.pool.tessellationBases.get.valid := io.pool.launch.valid && tessellationBases.get(providerHead).valid
     io.pool.tessellationBases.get.bits := tessellationBases.get(providerHead).bits
   }
-  shaderPayload.foreach { _=>
-    val head=if(slots==1)0.U else io.pool.launch.bits.commandId(slotWidth-1,0)
-    io.poolPayload.get.bits:=payloads.get(head).bits
-    io.poolPayload.get.valid:=io.pool.launch.valid && payloads.get(head).valid
-    def assign(pin: ShaderPayloadPin,binding: ShaderPayloadBinding): Unit={
-      pin.handle:=binding.handle;pin.generation:=binding.generation
-      pin.context:=binding.context;pin.owner:=binding.owner
+  shaderPayload.foreach { _ =>
+    val head = if (slots == 1) 0.U else io.pool.launch.bits.commandId(slotWidth - 1, 0)
+    io.poolPayload.get.bits := payloads.get(head).bits
+    io.poolPayload.get.valid := io.pool.launch.valid && payloads.get(head).valid
+    def assign(pin: ShaderPayloadPin, binding: ShaderPayloadBinding): Unit = {
+      pin.handle := binding.handle; pin.generation := binding.generation
+      pin.context := binding.context; pin.owner := binding.owner
     }
-    for(slot <- 0 until slots) {
-      io.payloadPins.get(slot).valid:=active(slot) && payloads.get(slot).valid
-      assign(io.payloadPins.get(slot).bits,payloads.get(slot).bits)
+    for (slot <- 0 until slots) {
+      io.payloadPins.get(slot).valid := active(slot) && payloads.get(slot).valid
+      assign(io.payloadPins.get(slot).bits, payloads.get(slot).bits)
     }
-    for(client <- 0 until numClients) {
-      io.payloadPins.get(slots+client).valid:=io.clients(client).launch.valid && io.clientPayload.get(client).valid
-      assign(io.payloadPins.get(slots+client).bits,io.clientPayload.get(client).bits)
+    for (client <- 0 until numClients) {
+      io.payloadPins.get(slots + client).valid := io.clients(client).launch.valid && io.clientPayload.get(client).valid
+      assign(io.payloadPins.get(slots + client).bits, io.clientPayload.get(client).bits)
     }
   }
   when(io.pool.launch.fire) {
     if (slots == 1) issued(0) := true.B
-    else issued(io.pool.launch.bits.commandId(slotWidth-1,0)) := true.B
+    else issued(io.pool.launch.bits.commandId(slotWidth - 1, 0)) := true.B
   }
-  io.pool.completion.ready := (0 until numClients).map(i =>
-    belongs(io.pool.completion.bits.commandId,i) && io.clients(i).completion.ready).reduce(_ || _)
-  io.pool.trap.ready := (0 until numClients).map(i =>
-    belongs(io.pool.trap.bits.taskId,i) && io.clients(i).trap.ready).reduce(_ || _)
+  io.pool.completion.ready := (0 until numClients)
+    .map(i => belongs(io.pool.completion.bits.commandId, i) && io.clients(i).completion.ready)
+    .reduce(_ || _)
+  io.pool.trap.ready := (0 until numClients)
+    .map(i => belongs(io.pool.trap.bits.taskId, i) && io.clients(i).trap.ready)
+    .reduce(_ || _)
   when(io.pool.completion.valid) {
-    assert(io.pool.completion.bits.commandId < slots.U,
-      "pool completion named an invalid shader client")
-    assert(clientActive(io.pool.completion.bits.commandId),
-      "pool completion named an inactive shader client")
-    assert(if (slots == 1) issued(0) else issued(io.pool.completion.bits.commandId(slotWidth-1,0)),
-      "pool completion named a task which has not launched")
+    assert(io.pool.completion.bits.commandId < slots.U, "pool completion named an invalid shader client")
+    assert(clientActive(io.pool.completion.bits.commandId), "pool completion named an inactive shader client")
+    assert(
+      if (slots == 1) issued(0) else issued(io.pool.completion.bits.commandId(slotWidth - 1, 0)),
+      "pool completion named a task which has not launched"
+    )
   }
   when(io.pool.trap.valid) {
-    assert(io.pool.trap.bits.taskId < slots.U,
-      "pool trap named an invalid shader client")
+    assert(io.pool.trap.bits.taskId < slots.U, "pool trap named an invalid shader client")
     assert(clientActive(io.pool.trap.bits.taskId), "pool trap named an inactive shader client")
-    assert(if (slots == 1) issued(0) else issued(io.pool.trap.bits.taskId(slotWidth-1,0)),
-      "pool trap named a task which has not launched")
+    assert(
+      if (slots == 1) issued(0) else issued(io.pool.trap.bits.taskId(slotWidth - 1, 0)),
+      "pool trap named a task which has not launched"
+    )
   }
 
   for (cu <- 0 until numComputeUnits) {
     val pool = io.pool.texture(cu)
     val owner = io.pool.taskIds(cu)
-    if(tessellationInfoAvailable) {
+    if (tessellationInfoAvailable) {
       io.pool.tessellationInfoCancel.get(cu) := false.B
-      for(client <- 0 until numClients) {
-        when(io.pool.owned(cu) && belongs(owner,client)) {
+      for (client <- 0 until numClients) {
+        when(io.pool.owned(cu) && belongs(owner, client)) {
           io.pool.tessellationInfoCancel.get(cu) := io.clients(client).tessellationInfoCancel.get(cu)
         }
       }
@@ -219,7 +284,7 @@ class SharedShaderTaskRouter(
       io.pool.geometryEvent.get(cu).ready := false.B
       io.pool.geometryCancel.get(cu) := false.B
       for (client <- 0 until numClients) {
-        when(io.pool.owned(cu) && belongs(owner,client)) {
+        when(io.pool.owned(cu) && belongs(owner, client)) {
           io.pool.geometryEvent.get(cu).ready := io.clients(client).geometryEvent.get(cu).ready
           io.pool.geometryCancel.get(cu) := io.clients(client).geometryCancel.get(cu)
         }
@@ -232,7 +297,7 @@ class SharedShaderTaskRouter(
       patch.resume.valid := false.B; patch.resume.bits := 0.U.asTypeOf(patch.resume.bits)
       patch.cancel := false.B; patch.terminal := false.B
       for (client <- 0 until numClients) {
-        when(io.pool.owned(cu) && belongs(owner,client)) {
+        when(io.pool.owned(cu) && belongs(owner, client)) {
           val selected = io.clients(client).tessellation.get(cu)
           patch.request.ready := selected.request.ready; patch.park.ready := selected.park.ready
           patch.finish.ready := selected.finish.ready
@@ -242,11 +307,16 @@ class SharedShaderTaskRouter(
         }
       }
     }
-    if(evaluationPatchAvailable){val a=io.pool.evaluationPatch.get(cu)
-      a.request.ready:=false.B;a.result.valid:=false.B;a.result.bits:=0.U.asTypeOf(a.result.bits);a.cancel:=false.B
-      for(client<-0 until numClients)when(io.pool.owned(cu) && belongs(owner,client)){
-        val b=io.clients(client).evaluationPatch.get(cu)
-        a.request.ready:=b.request.ready;a.result.valid:=b.result.valid;a.result.bits:=b.result.bits;a.cancel:=b.cancel}}
+    if (evaluationPatchAvailable) {
+      val a = io.pool.evaluationPatch.get(cu)
+      a.request.ready := false.B; a.result.valid := false.B; a.result.bits := 0.U.asTypeOf(a.result.bits);
+      a.cancel := false.B
+      for (client <- 0 until numClients) when(io.pool.owned(cu) && belongs(owner, client)) {
+        val b = io.clients(client).evaluationPatch.get(cu)
+        a.request.ready := b.request.ready; a.result.valid := b.result.valid; a.result.bits := b.result.bits;
+        a.cancel := b.cancel
+      }
+    }
     pool.scalar.ready := false.B
     pool.vector.ready := false.B
     pool.scalarWriteback.valid := false.B
@@ -254,7 +324,7 @@ class SharedShaderTaskRouter(
     pool.vectorWriteback.valid := false.B
     pool.vectorWriteback.bits := 0.U.asTypeOf(pool.vectorWriteback.bits)
     for (client <- 0 until numClients) {
-      when(io.pool.owned(cu) && belongs(owner,client)) {
+      when(io.pool.owned(cu) && belongs(owner, client)) {
         val texture = io.clients(client).texture(cu)
         pool.scalar.ready := texture.scalar.ready
         pool.vector.ready := texture.vector.ready

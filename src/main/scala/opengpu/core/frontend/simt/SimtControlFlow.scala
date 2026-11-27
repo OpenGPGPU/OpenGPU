@@ -7,18 +7,17 @@ import opengpu.core.execute.control._
 
 /** Branch resolution and independent per-warp SIMT stack state.
   *
-  * A divergent result reserves space in the addressed warp's stack, writes
-  * reconvergence and alternate entries in LIFO order, then emits the path to
-  * execute. `restore` pops exactly one saved path for a join/completed path.
+  * A divergent result reserves space in the addressed warp's stack, writes reconvergence and alternate entries in LIFO
+  * order, then emits the path to execute. `restore` pops exactly one saved path for a join/completed path.
   */
 class SimtControlFlow(config: GpuConfig = GpuConfig(), instructionSimt: Boolean = false) extends Module {
   private val countWidth = math.max(1, log2Ceil(config.simtStackDepth + 1))
 
   val io = IO(new Bundle {
     val branch = Flipped(Decoupled(new SimtBranchRequest(config)))
-    val instructionBranch = if(instructionSimt) Some(Flipped(Decoupled(new SimtBranchRequest(config)))) else None
-    val sync = if(instructionSimt) Some(Flipped(Decoupled(new SimtSyncRequest(config)))) else None
-    val fault = if(instructionSimt) Some(Decoupled(new opengpu.core.trap.CoreTrapEvent(config))) else None
+    val instructionBranch = if (instructionSimt) Some(Flipped(Decoupled(new SimtBranchRequest(config)))) else None
+    val sync = if (instructionSimt) Some(Flipped(Decoupled(new SimtSyncRequest(config)))) else None
+    val fault = if (instructionSimt) Some(Decoupled(new opengpu.core.trap.CoreTrapEvent(config))) else None
     val current = Decoupled(new SimtPath(config))
     val overflow = Decoupled(new SimtPath(config))
     val restoreWarpId = Input(UInt(config.warpIdWidth.W))
@@ -47,7 +46,7 @@ class SimtControlFlow(config: GpuConfig = GpuConfig(), instructionSimt: Boolean 
   io.restore.bits.pc := stacks.io.pop.bits.entry.pc
   io.restore.bits.activeMask := stacks.io.pop.bits.entry.activeMask
 
-  if(instructionSimt) {
+  if (instructionSimt) {
     val structured = Module(new StructuredSimtControl(config))
     val legacyBusy = RegInit(false.B)
     val legacyOwner = Reg(UInt(config.warpIdWidth.W))
@@ -71,11 +70,11 @@ class SimtControlFlow(config: GpuConfig = GpuConfig(), instructionSimt: Boolean 
     when(sequencer.io.current.fire || sequencer.io.overflow.fire || (legacyBusy && clearingLegacy)) {
       legacyBusy := false.B
     }
-    val paths = Module(new RRArbiter(new SimtPath(config),2))
+    val paths = Module(new RRArbiter(new SimtPath(config), 2))
     paths.io.in(0) <> sequencer.io.current
     paths.io.in(1) <> structured.io.current
     io.current <> paths.io.out
-    stacks.io.push.valid := Mux(structured.io.busy,structured.io.push.valid,sequencer.io.stackPush.valid)
+    stacks.io.push.valid := Mux(structured.io.busy, structured.io.push.valid, sequencer.io.stackPush.valid)
     stacks.io.push.bits := structured.io.push.bits
     when(!structured.io.busy) {
       stacks.io.push.bits.warpId := sequencer.io.current.bits.warpId
@@ -83,7 +82,7 @@ class SimtControlFlow(config: GpuConfig = GpuConfig(), instructionSimt: Boolean 
     }
     structured.io.push.ready := stacks.io.push.ready && structured.io.busy
     sequencer.io.stackPush.ready := stacks.io.push.ready && !structured.io.busy
-    stacks.io.popWarpId := Mux(structured.io.busy,structured.io.selectWarpId,io.restoreWarpId)
+    stacks.io.popWarpId := Mux(structured.io.busy, structured.io.selectWarpId, io.restoreWarpId)
     structured.io.top.valid := stacks.io.pop.valid
     structured.io.top.bits := stacks.io.pop.bits
     structured.io.freeEntries := stacks.io.freeEntries(structured.io.selectWarpId)

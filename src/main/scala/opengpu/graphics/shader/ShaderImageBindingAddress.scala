@@ -4,9 +4,8 @@ import chisel3._
 import chisel3.util._
 import chisel3.experimental.hierarchy.Instantiate
 
-/** A resolved image-unit snapshot. Its parent must obtain the level view from
-  * checked, immutable GPU descriptors and retain that snapshot and its VM lease
-  * through the eventual memory result. This is not a descriptor-memory reader.
+/** A resolved image-unit snapshot. Its parent must obtain the level view from checked, immutable GPU descriptors and
+  * retain that snapshot and its VM lease through the eventual memory result. This is not a descriptor-memory reader.
   */
 class ShaderImageBindingSnapshot extends Bundle {
   val identity = new GraphicsWorkIdentity
@@ -33,20 +32,23 @@ class ShaderImageBindingAddressRequest extends Bundle {
   val unitIndex = UInt(32.W)
   val stage = UInt(GraphicsStage.width.W)
   val isWrite = Bool()
-  /** Require both binding permissions for a read-modify-write consumer. This
-    * validates access only; it does not make an ordinary memory transfer atomic.
+
+  /** Require both binding permissions for a read-modify-write consumer. This validates access only; it does not make an
+    * ordinary memory transfer atomic.
     */
   val requireReadWrite = Bool()
-  /** Buffer imageSize validates the complete view without reading texel data.
-    * It accepts either binding access mode and never authorizes an atomic.
+
+  /** Buffer imageSize validates the complete view without reading texel data. It accepts either binding access mode and
+    * never authorizes an atomic.
     */
   val sizeQuery = Bool()
   val shaderTarget = UInt(3.W)
   val colorType = UInt(2.W)
   val hasFormatQualifier = Bool()
   val shaderFormat = UInt(TextureImageFormat.width.W)
-  /** Signed shader coordinates retain their complete two's-complement bits.
-    * Negative coordinates compare out of bounds before any narrowing.
+
+  /** Signed shader coordinates retain their complete two's-complement bits. Negative coordinates compare out of bounds
+    * before any narrowing.
     */
   val x = UInt(32.W)
   val y = UInt(32.W)
@@ -74,14 +76,13 @@ class ShaderImageBindingAddressResult extends Bundle {
   val status = UInt(3.W)
 }
 
-/** Resolve image-unit semantics before an image memory owner may publish a
-  * request. GLES 3.1 section 8.22 distinguishes invalid texels (zero/no-op) from
-  * undefined permission/type mismatches; this implementation rejects the latter.
-  * Layered array/cube/3D coordinates and single-layer 2D views share the existing
-  * full-width level address checks. No filtering, sampler state or swizzle applies.
+/** Resolve image-unit semantics before an image memory owner may publish a request. GLES 3.1 section 8.22 distinguishes
+  * invalid texels (zero/no-op) from undefined permission/type mismatches; this implementation rejects the latter.
+  * Layered array/cube/3D coordinates and single-layer 2D views share the existing full-width level address checks. No
+  * filtering, sampler state or swizzle applies.
   */
-class ShaderImageBindingAddress(p: TextureImageAddressConfig = TextureImageAddressConfig(),
-    imageUnits: Int = 4) extends Module {
+class ShaderImageBindingAddress(p: TextureImageAddressConfig = TextureImageAddressConfig(), imageUnits: Int = 4)
+    extends Module {
   require(imageUnits >= 4)
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new ShaderImageBindingAddressRequest))
@@ -115,8 +116,16 @@ class ShaderImageBindingAddress(p: TextureImageAddressConfig = TextureImageAddre
   address.io.in.bits.x := Mux(request.sizeQuery, 0.U, request.x)
   address.io.in.bits.y := Mux(request.sizeQuery, 0.U, request.y)
   address.io.in.bits.z := Mux(!request.sizeQuery && view.target === TextureImageTarget.image3D.U, selectedLayer, 0.U)
-  address.io.in.bits.layer := Mux(!request.sizeQuery && view.target === TextureImageTarget.array2D.U, selectedLayer, 0.U)
-  address.io.in.bits.face := Mux(!request.sizeQuery && view.target === TextureImageTarget.cube.U, selectedLayer(2, 0), 0.U)
+  address.io.in.bits.layer := Mux(
+    !request.sizeQuery && view.target === TextureImageTarget.array2D.U,
+    selectedLayer,
+    0.U
+  )
+  address.io.in.bits.face := Mux(
+    !request.sizeQuery && view.target === TextureImageTarget.cube.U,
+    selectedLayer(2, 0),
+    0.U
+  )
   address.io.out.ready := phase === State.waitAddress
 
   when(active && io.cancel && status === 0.U) { status := ShaderImageBindingAddressStatus.cancelled.U }
@@ -133,17 +142,26 @@ class ShaderImageBindingAddress(p: TextureImageAddressConfig = TextureImageAddre
       }
     }
     is(State.check) {
-      val buffer=view.target===TextureImageTarget.buffer.U
+      val buffer = view.target === TextureImageTarget.buffer.U
       val validLevel = binding.level < 16.U && binding.level >= binding.baseLevel && binding.level <= binding.maxLevel
       val validImage = binding.complete && validLevel &&
-        Mux(buffer,ShaderImageFormat.compatibleBuffer(binding.storageFormat,binding.imageFormat,binding.compatibleBySize),
-          ShaderImageFormat.compatible(binding.storageFormat, binding.imageFormat, binding.compatibleBySize))
-      val bufferBinding= !buffer || (binding.level===0.U && binding.baseLevel===0.U && binding.maxLevel===0.U &&
-        !binding.layered && binding.layer===0.U)
+        Mux(
+          buffer,
+          ShaderImageFormat.compatibleBuffer(binding.storageFormat, binding.imageFormat, binding.compatibleBySize),
+          ShaderImageFormat.compatible(binding.storageFormat, binding.imageFormat, binding.compatibleBySize)
+        )
+      val bufferBinding = !buffer || (binding.level === 0.U && binding.baseLevel === 0.U && binding.maxLevel === 0.U &&
+        !binding.layered && binding.layer === 0.U)
       val permittedStage = request.stage < 6.U && binding.stageMask(Mux(request.stage < 6.U, request.stage, 0.U))
-      val permittedAccess = Mux(request.sizeQuery, binding.readable || binding.writable, Mux(request.requireReadWrite,
-        binding.readable && binding.writable,
-        Mux(request.isWrite, binding.writable, binding.readable)))
+      val permittedAccess = Mux(
+        request.sizeQuery,
+        binding.readable || binding.writable,
+        Mux(
+          request.requireReadWrite,
+          binding.readable && binding.writable,
+          Mux(request.isWrite, binding.writable, binding.readable)
+        )
+      )
       val queryType = !request.sizeQuery || (buffer && !request.isWrite && !request.requireReadWrite)
       val shaderType = request.shaderTarget === effectiveTarget &&
         request.colorType === TextureImageFormat.kind(binding.imageFormat) &&
@@ -155,18 +173,25 @@ class ShaderImageBindingAddress(p: TextureImageAddressConfig = TextureImageAddre
       when(stop) { phase := State.finish }
         .elsewhen(request.unitIndex >= imageUnits.U) {
           status := ShaderImageBindingAddressStatus.descriptor.U; phase := State.finish
-        }.elsewhen(!binding.bound) { phase := State.finish }
+        }
+        .elsewhen(!binding.bound) { phase := State.finish }
         .elsewhen(binding.identity.asUInt =/= request.identity.asUInt || binding.unitIndex =/= request.unitIndex) {
           status := ShaderImageBindingAddressStatus.identity.U; phase := State.finish
-        }.elsewhen(!permittedStage || !permittedAccess) {
+        }
+        .elsewhen(!permittedStage || !permittedAccess) {
           status := ShaderImageBindingAddressStatus.permission.U; phase := State.finish
-        }.elsewhen(!validImage || !bufferBinding) { phase := State.finish }
-        .elsewhen(view.level =/= binding.level || view.block4x4 ||
-          view.blockBytes =/= TextureImageFormat.bytes(binding.storageFormat)) {
+        }
+        .elsewhen(!validImage || !bufferBinding) { phase := State.finish }
+        .elsewhen(
+          view.level =/= binding.level || view.block4x4 ||
+            view.blockBytes =/= TextureImageFormat.bytes(binding.storageFormat)
+        ) {
           status := ShaderImageBindingAddressStatus.descriptor.U; phase := State.finish
-        }.elsewhen(!queryType || !shaderType) {
+        }
+        .elsewhen(!queryType || !shaderType) {
           status := ShaderImageBindingAddressStatus.shaderType.U; phase := State.finish
-        }.elsewhen(invalidFace) { phase := State.finish }
+        }
+        .elsewhen(invalidFace) { phase := State.finish }
         .otherwise { phase := State.offer }
     }
     is(State.offer) { when(address.io.in.fire) { phase := State.waitAddress } }

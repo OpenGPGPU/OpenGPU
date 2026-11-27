@@ -16,9 +16,8 @@ class SimtStackRead(config: GpuConfig) extends Bundle {
 
 /** One independent divergence stack per hardware warp.
   *
-  * Only the addressed bank participates in a push or pop. A same-cycle clear
-  * blocks handshakes to the cleared warp so no transaction is acknowledged
-  * and then discarded by the stack's clear priority.
+  * Only the addressed bank participates in a push or pop. A same-cycle clear blocks handshakes to the cleared warp so
+  * no transaction is acknowledged and then discarded by the stack's clear priority.
   */
 class SimtStackBank(config: GpuConfig = GpuConfig()) extends Module {
   private val countWidth = math.max(1, log2Ceil(config.simtStackDepth + 1))

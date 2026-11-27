@@ -70,10 +70,15 @@ abstract class BufferedTranslatedWordClientChecks(texture: Boolean) extends AnyF
     def flush(): Unit = { d.io.flush.valid.poke(true.B); step(); d.io.flush.valid.poke(false.B) }
     def invalidateJob(): Unit = { invalidate.poke(true.B); step(); invalidate.poke(false.B) }
   }
-  private def client = new TranslatedWordClient(GpuConfig(lanes = 4, warps = 2),
-    wordTransactions = 4, outstanding = 32, uncached = !texture,
-    preserveCachePolicy = !texture, bufferCommandReads = !texture,
-    bufferTextureReads = texture)
+  private def client = new TranslatedWordClient(
+    GpuConfig(lanes = 4, warps = 2),
+    wordTransactions = 4,
+    outstanding = 32,
+    uncached = !texture,
+    preserveCachePolicy = !texture,
+    bufferCommandReads = !texture,
+    bufferTextureReads = texture
+  )
 
   it should "reuse a command line only until the job boundary and observe a CPU update" in {
     simulate(client) { d =>
@@ -146,19 +151,19 @@ abstract class BufferedTranslatedWordClientChecks(texture: Boolean) extends AnyF
     it should "retain a word fault through reply backpressure, invalidation and recovery without repeating the line pulse" in {
       simulate(client) { d =>
         val h = new Harness(d); d.io.out.ready.poke(false.B)
-        h.send(0x40000c); h.physical(0x400000, 100, fault=true)
+        h.send(0x40000c); h.physical(0x400000, 100, fault = true)
         h.until(d.io.out.valid.peek().litToBoolean)
-        assert(h.faults==1 && h.wordFaults==0)
-        val bits=d.io.out.bits.peek().litValue
+        assert(h.faults == 1 && h.wordFaults == 0)
+        val bits = d.io.out.bits.peek().litValue
         for (_ <- 0 until 5) {
           h.invalidateJob(); d.io.commandResponseFault.get.expect(true.B)
-          assert(d.io.out.bits.peek().litValue==bits && h.faults==1 && h.wordFaults==0)
+          assert(d.io.out.bits.peek().litValue == bits && h.faults == 1 && h.wordFaults == 0)
         }
-        d.io.out.ready.poke(true.B); h.step(); assert(h.wordFaults==1)
+        d.io.out.ready.poke(true.B); h.step(); assert(h.wordFaults == 1)
         d.io.commandResponseFault.get.expect(false.B)
-        h.send(0x400010); h.physical(0x400000, 200); h.expectReply(2,0x400010,204)
-        h.send(0x400014); h.expectReply(3,0x400014,205)
-        assert(h.faults==1 && h.wordFaults==1)
+        h.send(0x400010); h.physical(0x400000, 200); h.expectReply(2, 0x400010, 204)
+        h.send(0x400014); h.expectReply(3, 0x400014, 205)
+        assert(h.faults == 1 && h.wordFaults == 1)
       }
     }
   }

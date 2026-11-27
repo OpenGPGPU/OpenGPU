@@ -5,11 +5,10 @@ import chisel3.util._
 
 /** One 16x16, per-sample RGBA8 + D24S8 tile behind the OutputMerger.
   *
-  * A full-word write allocates without fetching old data. Reads fetch a word
-  * only on a miss, and subsequent depth/blend operations use the local copy.
-  * Dirty words are written back when a fragment changes tile or the draw
-  * finishes. The OM must drain before the tile is evicted, because its entries
-  * may still refer to the old tile after the next fragment becomes visible.
+  * A full-word write allocates without fetching old data. Reads fetch a word only on a miss, and subsequent depth/blend
+  * operations use the local copy. Dirty words are written back when a fragment changes tile or the draw finishes. The
+  * OM must drain before the tile is evicted, because its entries may still refer to the old tile after the next
+  * fragment becomes visible.
   */
 class TileAttachmentStore(maxSampleCount: Int = 4) extends Module {
   require(Set(1, 2, 4)(maxSampleCount))
@@ -28,9 +27,11 @@ class TileAttachmentStore(maxSampleCount: Int = 4) extends Module {
     val stride = Input(UInt(32.W))
     val sampleMode = Input(UInt(2.W))
     val omDrained = Input(Bool())
+
     /** All upstream stages have drained; the last tile can be stored. */
     val finish = Input(Bool())
     val permit = Output(Bool())
+
     /** All dirty words have been acknowledged by external memory. */
     val drained = Output(Bool())
     val wordIndex = Input(UInt(10.W))
@@ -45,8 +46,7 @@ class TileAttachmentStore(maxSampleCount: Int = 4) extends Module {
     }
   })
 
-  private val Seq(idle, active, drain, missRequest, missResponse,
-    flushRequest, flushResponse) = Enum(7)
+  private val Seq(idle, active, drain, missRequest, missResponse, flushRequest, flushResponse) = Enum(7)
   private val state = RegInit(idle)
   private val tileX = Reg(UInt(12.W))
   private val tileY = Reg(UInt(12.W))
@@ -92,8 +92,7 @@ class TileAttachmentStore(maxSampleCount: Int = 4) extends Module {
   io.drained := state === idle && !responseValid
   when(io.fragmentFire) {
     assert(io.permit, "a fragment cannot enter the OM before its tile is ready")
-    assert(io.sampleMode <= log2Ceil(maxSampleCount).U,
-      "tile sample mode exceeds the configured sample count")
+    assert(io.sampleMode <= log2Ceil(maxSampleCount).U, "tile sample mode exceeds the configured sample count")
   }
 
   private val missAddr = Reg(UInt(32.W))
@@ -109,13 +108,11 @@ class TileAttachmentStore(maxSampleCount: Int = 4) extends Module {
   private val nextDepth = nextDirty(wordIndexBits)
   private val nextBase = Mux(nextDepth, depthTileBase, colorTileBase)
   private val nextRow = MuxLookup(sampleModeReg, nextIndex(7, 4))(
-    Seq(0.U -> nextIndex(7, 4), 1.U -> nextIndex(8, 5),
-      2.U -> nextIndex(9, 6)))
-  private val nextColumnSample = MuxLookup(sampleModeReg,
-    Cat(0.U(2.W), nextIndex(3, 0)))(
-    Seq(0.U -> Cat(0.U(2.W), nextIndex(3, 0)),
-      1.U -> Cat(0.U(1.W), nextIndex(4, 0)),
-      2.U -> nextIndex(5, 0)))
+    Seq(0.U -> nextIndex(7, 4), 1.U -> nextIndex(8, 5), 2.U -> nextIndex(9, 6))
+  )
+  private val nextColumnSample = MuxLookup(sampleModeReg, Cat(0.U(2.W), nextIndex(3, 0)))(
+    Seq(0.U -> Cat(0.U(2.W), nextIndex(3, 0)), 1.U -> Cat(0.U(1.W), nextIndex(4, 0)), 2.U -> nextIndex(5, 0))
+  )
   private val nextAddr = (nextBase + nextRow * strideReg +
     (nextColumnSample << 2))(31, 0)
 
@@ -123,8 +120,7 @@ class TileAttachmentStore(maxSampleCount: Int = 4) extends Module {
   io.mem.req.valid := state === missRequest || (state === flushRequest && dirtyAny)
   io.mem.req.bits.write := state === flushRequest
   io.mem.req.bits.addr := Mux(state === missRequest, missAddr, nextAddr)
-  io.mem.req.bits.data := Mux(nextDepth,
-    depthWords.read(nextIndex), colorWords.read(nextIndex))
+  io.mem.req.bits.data := Mux(nextDepth, depthWords.read(nextIndex), colorWords.read(nextIndex))
   io.mem.resp.ready := state === missResponse || state === flushResponse
 
   when(state === idle && io.fragmentFire) {
@@ -169,11 +165,9 @@ class TileAttachmentStore(maxSampleCount: Int = 4) extends Module {
         }
         responseValid := true.B
       }.otherwise {
-        val hit = Mux(io.depthPlane, depthValid(wordIndex),
-          colorValid(wordIndex))
+        val hit = Mux(io.depthPlane, depthValid(wordIndex), colorValid(wordIndex))
         when(hit) {
-          responseData := Mux(io.depthPlane,
-            depthWords.read(wordIndex), colorWords.read(wordIndex))
+          responseData := Mux(io.depthPlane, depthWords.read(wordIndex), colorWords.read(wordIndex))
           responseValid := true.B
         }.otherwise {
           missAddr := io.om.req.bits.addr
@@ -188,8 +182,10 @@ class TileAttachmentStore(maxSampleCount: Int = 4) extends Module {
 
   when(state === missRequest && io.mem.req.fire) { state := missResponse }
   when(state === missResponse && io.mem.resp.fire) {
-    assert(!io.mem.resp.bits.write && io.mem.resp.bits.addr === missAddr,
-      "tile read response must match its outstanding miss")
+    assert(
+      !io.mem.resp.bits.write && io.mem.resp.bits.addr === missAddr,
+      "tile read response must match its outstanding miss"
+    )
     when(missDepth) {
       depthWords.write(missIndex, io.mem.resp.bits.data)
       depthValid := depthValid.bitSet(missIndex, true.B)
@@ -217,8 +213,10 @@ class TileAttachmentStore(maxSampleCount: Int = 4) extends Module {
     }
   }
   when(state === flushResponse && io.mem.resp.fire) {
-    assert(io.mem.resp.bits.write && io.mem.resp.bits.addr === flushAddr,
-      "tile store response must acknowledge the selected word")
+    assert(
+      io.mem.resp.bits.write && io.mem.resp.bits.addr === flushAddr,
+      "tile store response must acknowledge the selected word"
+    )
     dirty := dirty.bitSet(flushWord, false.B)
     flushCursor := flushCursor + 1.U
     state := flushRequest

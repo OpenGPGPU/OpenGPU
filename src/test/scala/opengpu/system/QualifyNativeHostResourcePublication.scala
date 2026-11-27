@@ -4,9 +4,16 @@ import chisel3._
 import java.security.MessageDigest
 import opengpu.command.GpuCommandOpcode
 import opengpu.config.GpuConfig
-import opengpu.graphics.{AtomicCounterCommandMmioRegs => C, ComputeTextureCommandMmioRegs => T,
-  ComputeUniformCommandMmioRegs => U, GpuCommandMmioRegs => R, GraphicsConfig,
-  RenderHostRegs, ShaderImageCommandMmioRegs => I, StorageCommandMmioRegs => S}
+import opengpu.graphics.{
+  AtomicCounterCommandMmioRegs => C,
+  ComputeTextureCommandMmioRegs => T,
+  ComputeUniformCommandMmioRegs => U,
+  GpuCommandMmioRegs => R,
+  GraphicsConfig,
+  RenderHostRegs,
+  ShaderImageCommandMmioRegs => I,
+  StorageCommandMmioRegs => S
+}
 import opengpu.testutil.GpuSim._
 import org.scalatest.DoNotDiscover
 import org.scalatest.flatspec.AnyFlatSpec
@@ -16,14 +23,26 @@ import scala.collection.mutable
 private class NativeHostResourcePublicationHarness extends RawModule {
   private val config = GpuConfig()
   require(config.lanes == 16 && config.warps == 8 && config.sharedMemoryBytes == 16384)
-  private val host = Module(new GpuHostSystemAxi(
-    GraphicsConfig(screenWidth = 16, screenHeight = 16), config,
-    numComputeUnits = 2, transactionsPerCu = 16,
-    useBlackBoxes = true, enableFpuBackend = true, exposePerformance = true,
-    memoryAxiDataBytes = 32, enableIndirectCompute = true,
-    imageAvailable = true, storageAvailable = true, computeUniformAvailable = true,
-    computeTextureAvailable = true, atomicCounterAvailable = true,
-    imageAtomicAvailable = true, storageAtomicAvailable = true))
+  private val host = Module(
+    new GpuHostSystemAxi(
+      GraphicsConfig(screenWidth = 16, screenHeight = 16),
+      config,
+      numComputeUnits = 2,
+      transactionsPerCu = 16,
+      useBlackBoxes = true,
+      enableFpuBackend = true,
+      exposePerformance = true,
+      memoryAxiDataBytes = 32,
+      enableIndirectCompute = true,
+      imageAvailable = true,
+      storageAvailable = true,
+      computeUniformAvailable = true,
+      computeTextureAvailable = true,
+      atomicCounterAvailable = true,
+      imageAtomicAvailable = true,
+      storageAtomicAvailable = true
+    )
+  )
   val io = IO(new Bundle {
     val axi = chiselTypeOf(host.io)
     val modelsPresent = Output(Bool())
@@ -34,17 +53,32 @@ private class NativeHostResourcePublicationHarness extends RawModule {
 
 private object HostPublicationBus {
   case class Write(id: BigInt, address: BigInt, data: BigInt, mask: BigInt)
-  case class Counts(ar: Int, r: Int, readLines: Int, aw: Int, w: Int, b: Int, writeLines: Int,
-      heldAr: Int, heldAw: Int, heldW: Int)
+  case class Counts(
+      ar: Int,
+      r: Int,
+      readLines: Int,
+      aw: Int,
+      w: Int,
+      b: Int,
+      writeLines: Int,
+      heldAr: Int,
+      heldAw: Int,
+      heldW: Int
+  )
 }
 
-/** One clock owner services real lower AXI while MMIO is active too. Byte
-  * memory changes only on an accepted B, never merely on AW/W acceptance.
+/** One clock owner services real lower AXI while MMIO is active too. Byte memory changes only on an accepted B, never
+  * merely on AW/W acceptance.
   */
-private class HostPublicationBus(port: Record, readLine: BigInt => BigInt,
+private class HostPublicationBus(
+    port: Record,
+    readLine: BigInt => BigInt,
     acknowledge: HostPublicationBus.Write => Unit,
-    onRead: BigInt => Unit = _ => (), onAw: BigInt => Unit = _ => (),
-    onWrite: HostPublicationBus.Write => Unit = _ => (), onCycle: () => Unit = () => ()) {
+    onRead: BigInt => Unit = _ => (),
+    onAw: BigInt => Unit = _ => (),
+    onWrite: HostPublicationBus.Write => Unit = _ => (),
+    onCycle: () => Unit = () => ()
+) {
   import HostPublicationBus._
   private def bit(name: String): Bool = port.elements(name).asInstanceOf[Bool]
   private def word(name: String): UInt = port.elements(name).asInstanceOf[UInt]
@@ -55,8 +89,7 @@ private class HostPublicationBus(port: Record, readLine: BigInt => BigInt,
   private val clock = port.elements("s_axi_aclk").asInstanceOf[Clock]
   require(word("m_axi_wstrb").getWidth == 32)
   private val beatMask = (BigInt(1) << 256) - 1
-  private case class Read(id: BigInt, address: BigInt, data: BigInt, beats: Int,
-      var due: Int, var beat: Int = 0)
+  private case class Read(id: BigInt, address: BigInt, data: BigInt, beats: Int, var due: Int, var beat: Int = 0)
   private case class PendingWrite(write: Write, due: Int)
   private val reads = mutable.ArrayBuffer.empty[Read]
   private val writes = mutable.ArrayBuffer.empty[PendingWrite]
@@ -114,8 +147,34 @@ private class HostPublicationBus(port: Record, readLine: BigInt => BigInt,
     enable("m_axi_bvalid", offeredWrite.nonEmpty); set("m_axi_bresp", 0)
     offeredWrite.foreach(w => set("m_axi_bid", w.write.id))
     observe()
-    stable("AR", "m_axi_arvalid", "m_axi_arready", "m_axi_arid", "m_axi_araddr", "m_axi_arlen", "m_axi_arsize", "m_axi_arburst", "m_axi_arlock", "m_axi_arcache", "m_axi_arprot", "m_axi_arqos")
-    stable("AW", "m_axi_awvalid", "m_axi_awready", "m_axi_awid", "m_axi_awaddr", "m_axi_awlen", "m_axi_awsize", "m_axi_awburst", "m_axi_awlock", "m_axi_awcache", "m_axi_awprot", "m_axi_awqos")
+    stable(
+      "AR",
+      "m_axi_arvalid",
+      "m_axi_arready",
+      "m_axi_arid",
+      "m_axi_araddr",
+      "m_axi_arlen",
+      "m_axi_arsize",
+      "m_axi_arburst",
+      "m_axi_arlock",
+      "m_axi_arcache",
+      "m_axi_arprot",
+      "m_axi_arqos"
+    )
+    stable(
+      "AW",
+      "m_axi_awvalid",
+      "m_axi_awready",
+      "m_axi_awid",
+      "m_axi_awaddr",
+      "m_axi_awlen",
+      "m_axi_awsize",
+      "m_axi_awburst",
+      "m_axi_awlock",
+      "m_axi_awcache",
+      "m_axi_awprot",
+      "m_axi_awqos"
+    )
     stable("W", "m_axi_wvalid", "m_axi_wready", "m_axi_wdata", "m_axi_wstrb", "m_axi_wlast")
     stable("MMIO-R", "s_axi_rvalid", "s_axi_rready", "s_axi_rdata", "s_axi_rresp", "s_axi_rlast")
     stable("MMIO-B", "s_axi_bvalid", "s_axi_bready", "s_axi_bresp")
@@ -173,7 +232,10 @@ private class HostPublicationBus(port: Record, readLine: BigInt => BigInt,
       arCount += 1; onRead(address); progress = true
     }
     if (progress) lastProgress = cycle
-    assert(cycle - lastProgress < 50000, s"AXI stalled at $cycle reads=${reads.size} writes=${writes.size} aw=$aw W=$writeBeats")
+    assert(
+      cycle - lastProgress < 50000,
+      s"AXI stalled at $cycle reads=${reads.size} writes=${writes.size} aw=$aw W=$writeBeats"
+    )
     onCycle(); clock.step(); cycle += 1
   }
 
@@ -221,10 +283,13 @@ private class HostPublicationBus(port: Record, readLine: BigInt => BigInt,
 }
 
 /** Independent byte/result checks use only accepted external AXI events. */
-private class HostPublicationLedger(epoch: Int, fault: Boolean,
+private class HostPublicationLedger(
+    epoch: Int,
+    fault: Boolean,
     program: SystemResourcePublicationProgram.Program,
     publication: SystemResourcePublicationProgram.PublicationMemory,
-    memory: mutable.Map[BigInt, Int]) {
+    memory: mutable.Map[BigInt, Int]
+) {
   import SystemResourcePublicationProgram._
   import HostPublicationBus.Write
   private val physical = publication.physical
@@ -251,7 +316,8 @@ private class HostPublicationLedger(epoch: Int, fault: Boolean,
   private def isRecord(a: BigInt): Boolean = a >= recordPhysical && a < recordPhysical + 2 * resultGroupBytes
   private def checkWarmTraffic(a: BigInt): Unit = if (!fault && cachedWarmReads > 0) {
     def within(base: BigInt, bytes: Int): Boolean = a >= base && a < base + bytes
-    val category = if (within(publication.pageTable, (publication.secondLevels.size + 1) * 4096)) "page-table"
+    val category =
+      if (within(publication.pageTable, (publication.secondLevels.size + 1) * 4096)) "page-table"
       else if (within(physical, 40960) || within(physical + 0x10000, 8192)) "checked-descriptor"
       else if (within(physical + 0x100000, 65536)) "resource-alias"
       else if (within(physical + 0x1e0000, 12288)) "instruction"
@@ -259,8 +325,15 @@ private class HostPublicationLedger(epoch: Int, fault: Boolean,
         assert(Set(64, 128, readyOffset, publishedOffset)((a - flagPhysical).toInt)); "ordinary-flag"
       } else if (isRecord(a)) {
         val column = ((a - recordPhysical).toInt % resultGroupBytes) / resultPlaneBytes
-        assert((57 to 62).contains(column) || Set(warmFirstColumn, warmSecondColumn,
-          freshColumn, readyObservedColumn, flagObservedColumn)(column))
+        assert(
+          (57 to 62).contains(column) || Set(
+            warmFirstColumn,
+            warmSecondColumn,
+            freshColumn,
+            readyObservedColumn,
+            flagObservedColumn
+          )(column)
+        )
         assert(((a >> 6) & 63) != 0); "result"
       } else throw new AssertionError(s"unexpected post-warm lower address 0x${a.toString(16)}")
     // AXI has no translated cachePolicy signal. Cacheable instruction/flag
@@ -271,8 +344,11 @@ private class HostPublicationLedger(epoch: Int, fault: Boolean,
   }
   def onRead(a: BigInt): Unit = {
     checkWarmTraffic(a)
-    if (fault) assert(a < physical + 0x100000 || a >= physical + 0x1c0000,
-      "bounds failure reached resource or publication backing")
+    if (fault)
+      assert(
+        a < physical + 0x100000 || a >= physical + 0x1c0000,
+        "bounds failure reached resource or publication backing"
+      )
     if (!fault && commonComplete && !aliasStarted && a == watchedLine) cachedWarmReads += 1
     if (a == physical + 0x1b0000) argumentReads += 1
   }
@@ -287,8 +363,8 @@ private class HostPublicationLedger(epoch: Int, fault: Boolean,
       val offset = (a - flagPhysical).toInt
       assert(Set(64, 128, readyOffset, publishedOffset)(offset) && !flagRequests(offset))
       flagRequests += offset
-      if (offset == publishedOffset) assert(dataAcks == 512 && readyObserved,
-        "publication flag overtook a prior data B acknowledgement")
+      if (offset == publishedOffset)
+        assert(dataAcks == 512 && readyObserved, "publication flag overtook a prior data B acknowledgement")
     }
   }
   private def recordWord(group: Int, id: Int, column: Int, value: BigInt): Unit = {
@@ -301,23 +377,26 @@ private class HostPublicationLedger(epoch: Int, fault: Boolean,
       if (check.label.startsWith("peer-")) assert(dataAcks == 512 && readyObserved && flagObserved)
     } else if (column >= scalarFirstColumn && column < scalarFirstColumn + 12) {
       assert(value == blockValue(epoch, column - scalarFirstColumn, 0))
-    } else column match {
-      case `localColumn` => assert(value == id)
-      case `ownerColumn` => assert(value == group * 256 + (id & ~15))
-      case `capacityColumn` => assert(value == 128)
-      case `warmFirstColumn` | `warmSecondColumn` =>
-        assert(commonComplete && counterAcks == 256 && value == texel(epoch, 3, 15))
-      case `freshColumn` =>
-        assert(value == finalWord(epoch, program.producer, 15) && dataAcks == 512)
-        assert(if (group == program.producer) flagAck else flagObserved)
-      case `readyObservedColumn` =>
-        assert(group == program.producer && id < 16 && value == epoch + 1 && warm(0) && warm(1))
-        readyObserved = true
-      case `flagObservedColumn` =>
-        assert(group != program.producer && id < 16 && value == epoch + 1 && readyAck && readyObserved && dataAcks == 512)
-        flagObserved = true
-      case _ => throw new AssertionError(s"unexpected record column=$column group=$group id=$id")
-    }
+    } else
+      column match {
+        case `localColumn`                          => assert(value == id)
+        case `ownerColumn`                          => assert(value == group * 256 + (id & ~15))
+        case `capacityColumn`                       => assert(value == 128)
+        case `warmFirstColumn` | `warmSecondColumn` =>
+          assert(commonComplete && counterAcks == 256 && value == texel(epoch, 3, 15))
+        case `freshColumn` =>
+          assert(value == finalWord(epoch, program.producer, 15) && dataAcks == 512)
+          assert(if (group == program.producer) flagAck else flagObserved)
+        case `readyObservedColumn` =>
+          assert(group == program.producer && id < 16 && value == epoch + 1 && warm(0) && warm(1))
+          readyObserved = true
+        case `flagObservedColumn` =>
+          assert(
+            group != program.producer && id < 16 && value == epoch + 1 && readyAck && readyObserved && dataAcks == 512
+          )
+          flagObserved = true
+        case _ => throw new AssertionError(s"unexpected record column=$column group=$group id=$id")
+      }
     values(key) = value
     if (column < 57 || (column >= scalarFirstColumn && column < scalarFirstColumn + 12)) commonWords += 1
   }
@@ -330,8 +409,7 @@ private class HostPublicationLedger(epoch: Int, fault: Boolean,
       val group = offset / resultGroupBytes; val within = offset % resultGroupBytes
       val column = within / resultPlaneBytes; val base = within % resultPlaneBytes / 4
       assert(base % 16 == 0 && base < 128)
-      for (lane <- 0 until 16) recordWord(group, base + lane, column,
-        (write.data >> (32 * lane)) & mask32)
+      for (lane <- 0 until 16) recordWord(group, base + lane, column, (write.data >> (32 * lane)) & mask32)
       recordLines += 1
     } else {
       val shift = write.mask.lowestSetBit
@@ -370,31 +448,42 @@ private class HostPublicationLedger(epoch: Int, fault: Boolean,
       assert(values.isEmpty && originalLines == 0 && recordLines == 0)
     } else {
       assert(originalLines == 772 && dataAcks == 512 && counterAcks == 256 && recordLines == 1274)
-      assert(commonComplete && capacityAcks.size == 2 && flagRequests.size == 4 && readyAck && readyObserved && flagAck && flagObserved)
+      assert(
+        commonComplete && capacityAcks.size == 2 && flagRequests.size == 4 && readyAck && readyObserved && flagAck && flagObserved
+      )
       assert(cachedWarmReads == 1 && argumentReads == (if (indirect) 1 else 0))
       assert(warmTraffic("resource-alias") > 0 && warmTraffic("result") > 0 && warmTraffic("ordinary-flag") > 0)
       val expected = (for (group <- 0 until 2; id <- 0 until 128) yield {
         val columns = program.checks(group).indices.toVector ++ (scalarFirstColumn until scalarFirstColumn + 12) ++
           Vector(localColumn, ownerColumn, capacityColumn, warmFirstColumn, warmSecondColumn, freshColumn) ++
-          (if (id < 16) Vector(if (group == program.producer) readyObservedColumn else flagObservedColumn) else Vector.empty)
+          (if (id < 16) Vector(if (group == program.producer) readyObservedColumn else flagObservedColumn)
+           else Vector.empty)
         columns.map(c => (group, id, c))
       }).flatten.toSet
       assert(values.keySet.toSet == expected && values.size == 20384)
-      for (index <- 0 until 8) assert(counterValues(index).sorted ==
-        (0 until 32).map(n => BigInt(epoch * 1000 + index * 100 + n)))
+      for (index <- 0 until 8)
+        assert(
+          counterValues(index).sorted ==
+            (0 until 32).map(n => BigInt(epoch * 1000 + index * 100 + n))
+        )
       def bytes(a: BigInt, count: Int): BigInt =
         (0 until count).map(b => BigInt(memory.getOrElse(a + b, 0xa5)) << (8 * b)).sum
       for (index <- 0 until 8) assert(bytes(physical + 0x190000 + index * 4, 4) == epoch * 1000 + index * 100 + 32)
       for (offset <- 32 until 64) assert(memory.getOrElse(physical + 0x190000 + offset, 0xa5) == 0xa5)
       for (unit <- 0 until 16; offset <- 0 until 4096) {
         val id = offset / 4
-        val expectedWord = if (unit < 4 && id < 128 && (id & 3) == unit) finalWord(epoch, program.producer, id)
-          else if (id < 128) texel(epoch, unit, id) else BigInt("a5a5a5a5", 16)
-        assert(memory.getOrElse(physical + 0x100000 + unit * 4096 + offset, 0xa5) ==
-          ((expectedWord >> ((offset & 3) * 8)) & 255).toInt)
+        val expectedWord =
+          if (unit < 4 && id < 128 && (id & 3) == unit) finalWord(epoch, program.producer, id)
+          else if (id < 128) texel(epoch, unit, id)
+          else BigInt("a5a5a5a5", 16)
+        assert(
+          memory.getOrElse(physical + 0x100000 + unit * 4096 + offset, 0xa5) ==
+            ((expectedWord >> ((offset & 3) * 8)) & 255).toInt
+        )
       }
       for (offset <- 0 until 4096) {
-        val word = if (Set(64, 128, readyOffset, publishedOffset)(offset & ~3)) BigInt(epoch + 1) else BigInt("a5a5a5a5", 16)
+        val word =
+          if (Set(64, 128, readyOffset, publishedOffset)(offset & ~3)) BigInt(epoch + 1) else BigInt("a5a5a5a5", 16)
         assert(memory.getOrElse(flagPhysical + offset, 0xa5) == ((word >> ((offset & 3) * 8)) & 255).toInt)
       }
       for (offset <- 0 until 2 * resultGroupBytes) {
@@ -412,8 +501,10 @@ class NativeHostResourcePublicationQualification extends AnyFlatSpec {
   import SystemResourcePublicationProgram._
 
   it should "publish every required resource and every result through native host MMIO and two-beat AXI" in {
-    require(sys.props.get("opengpu.nativeHostResourcePublicationQualification").contains("1"),
-      "requires -Dopengpu.nativeHostResourcePublicationQualification=1")
+    require(
+      sys.props.get("opengpu.nativeHostResourcePublicationQualification").contains("1"),
+      "requires -Dopengpu.nativeHostResourcePublicationQualification=1"
+    )
     simulate(new NativeHostResourcePublicationHarness) { top =>
       val d = top.io.axi
       val memory = mutable.Map.empty[BigInt, Int]
@@ -424,7 +515,9 @@ class NativeHostResourcePublicationQualification extends AnyFlatSpec {
       var concurrent = false
       var sawIrq = false
       var bus: HostPublicationBus = null
-      bus = new HostPublicationBus(d, a => bytes(a, 64),
+      bus = new HostPublicationBus(
+        d,
+        a => bytes(a, 64),
         w => current.get.acknowledge(w),
         onRead = a => current.foreach(_.onRead(a & ~BigInt(63))),
         onAw = a => current.foreach(_.onAw(a)),
@@ -433,18 +526,31 @@ class NativeHostResourcePublicationQualification extends AnyFlatSpec {
             concurrent ||= d.performance.get.activeComputeUnits.peek().litValue == 2
             if (d.m_irq.peek().litToBoolean) { sawIrq = true; assert(bus.drained) }
           }
-        })
+        }
+      )
       bus.initialize(); top.io.modelsPresent.expect(true.B)
       bus.write(RenderHostRegs.IRQ, 1)
       val flags = bus.read(ComputeResourceCapabilities.base + 8)
       assert((flags & 0x7f0) == 0x7f0)
       for ((offset, expected) <- Seq(12 -> 2, 16 -> 16, 20 -> 8, 24 -> 128, 36 -> 16384))
         assert(bus.read(ComputeResourceCapabilities.base + offset) == expected)
-      for ((address, magic) <- Seq(U.MAGIC -> U.magic, T.MAGIC -> T.magic,
-          I.MAGIC -> I.magic, S.MAGIC -> S.magic, C.MAGIC -> C.magic)) assert(bus.read(address) == magic)
+      for (
+        (address, magic) <- Seq(
+          U.MAGIC -> U.magic,
+          T.MAGIC -> T.magic,
+          I.MAGIC -> I.magic,
+          S.MAGIC -> S.magic,
+          C.MAGIC -> C.magic
+        )
+      ) assert(bus.read(address) == magic)
 
-      for ((mode, epoch, indirect, fault) <- Seq(("direct", 0, false, false),
-          ("bounds", 1, false, true), ("indirect", 3, true, false))) {
+      for (
+        (mode, epoch, indirect, fault) <- Seq(
+          ("direct", 0, false, false),
+          ("bounds", 1, false, true),
+          ("indirect", 3, true, false)
+        )
+      ) {
         assert(bus.drained && !d.m_irq.peek().litToBoolean)
         val publication = new PublicationMemory(memory, epoch, withResultPages = true, executableCode = true)
         val program = build(epoch, fault, recordResults = true)
@@ -454,9 +560,9 @@ class NativeHostResourcePublicationQualification extends AnyFlatSpec {
         val recordPhysical = publication.physical + 0x1c0000
         def mutableByte(a: BigInt): Boolean =
           (a >= publication.physical + 0x100000 && a < publication.physical + 0x104000) ||
-          (a >= publication.physical + 0x190000 && a < publication.physical + 0x190020) ||
-          (a >= publication.physical + 0x1a0000 && a < publication.physical + 0x1a1000) ||
-          (a >= recordPhysical && a < recordPhysical + 2 * resultGroupBytes)
+            (a >= publication.physical + 0x190000 && a < publication.physical + 0x190020) ||
+            (a >= publication.physical + 0x1a0000 && a < publication.physical + 0x1a1000) ||
+            (a >= recordPhysical && a < recordPhysical + 2 * resultGroupBytes)
         val readOnly = memory.iterator.filterNot { case (a, _) => mutableByte(a) }.toMap
         val ledger = new HostPublicationLedger(epoch, fault, program, publication, memory)
         current = Some(ledger); concurrent = false; sawIrq = false
@@ -466,23 +572,93 @@ class NativeHostResourcePublicationQualification extends AnyFlatSpec {
         bus.write(R.VECTOR_SATP, satp); bus.write(R.INSTRUCTION_SATP, satp); bus.write(R.TLB_FLUSH, 1)
         assert(bus.read(R.VECTOR_SATP) == satp && bus.read(R.INSTRUCTION_SATP) == satp)
         def stage(entries: Seq[(Int, BigInt)]): Unit = entries.foreach { case (a, v) => bus.write(a, v) }
-        stage(Seq(U.CONTROL -> BigInt(0x101), U.ROOT -> uniformRoot, U.CONTEXT -> BigInt(7),
-          U.PASS -> BigInt(11), U.GENERATION -> BigInt(13 + epoch), U.PRIVATE_BASE -> resultBase,
-          U.PRIVATE_LIMIT_LO -> (resultBase + 2 * resultGroupBytes), U.PRIVATE_LIMIT_HI -> BigInt(0)))
-        stage(Seq(T.CONTROL -> BigInt(0x101), T.ROOT -> textureRoot, T.CONTEXT -> BigInt(7),
-          T.PASS -> BigInt(11), T.GENERATION -> BigInt(13 + epoch)))
-        for ((control, base, limitLo, limitHi, context, pass, generation, table, size) <- Seq(
-            (I.CONTROL, I.TABLE_BASE, I.TABLE_LIMIT_LO, I.TABLE_LIMIT_HI, I.CONTEXT, I.PASS, I.GENERATION, imageTable, 1024),
-            (S.CONTROL, S.TABLE_BASE, S.TABLE_LIMIT_LO, S.TABLE_LIMIT_HI, S.CONTEXT, S.PASS, S.GENERATION, storageTable, 256),
-            (C.CONTROL, C.TABLE_BASE, C.TABLE_LIMIT_LO, C.TABLE_LIMIT_HI, C.CONTEXT, C.PASS, C.GENERATION, counterTable, 64)))
-          stage(Seq(control -> BigInt(0x101), base -> table, limitLo -> (table + size), limitHi -> BigInt(0),
-            context -> BigInt(7), pass -> BigInt(11), generation -> BigInt(13 + epoch)))
+        stage(
+          Seq(
+            U.CONTROL -> BigInt(0x101),
+            U.ROOT -> uniformRoot,
+            U.CONTEXT -> BigInt(7),
+            U.PASS -> BigInt(11),
+            U.GENERATION -> BigInt(13 + epoch),
+            U.PRIVATE_BASE -> resultBase,
+            U.PRIVATE_LIMIT_LO -> (resultBase + 2 * resultGroupBytes),
+            U.PRIVATE_LIMIT_HI -> BigInt(0)
+          )
+        )
+        stage(
+          Seq(
+            T.CONTROL -> BigInt(0x101),
+            T.ROOT -> textureRoot,
+            T.CONTEXT -> BigInt(7),
+            T.PASS -> BigInt(11),
+            T.GENERATION -> BigInt(13 + epoch)
+          )
+        )
+        for (
+          (control, base, limitLo, limitHi, context, pass, generation, table, size) <- Seq(
+            (
+              I.CONTROL,
+              I.TABLE_BASE,
+              I.TABLE_LIMIT_LO,
+              I.TABLE_LIMIT_HI,
+              I.CONTEXT,
+              I.PASS,
+              I.GENERATION,
+              imageTable,
+              1024
+            ),
+            (
+              S.CONTROL,
+              S.TABLE_BASE,
+              S.TABLE_LIMIT_LO,
+              S.TABLE_LIMIT_HI,
+              S.CONTEXT,
+              S.PASS,
+              S.GENERATION,
+              storageTable,
+              256
+            ),
+            (
+              C.CONTROL,
+              C.TABLE_BASE,
+              C.TABLE_LIMIT_LO,
+              C.TABLE_LIMIT_HI,
+              C.CONTEXT,
+              C.PASS,
+              C.GENERATION,
+              counterTable,
+              64
+            )
+          )
+        )
+          stage(
+            Seq(
+              control -> BigInt(0x101),
+              base -> table,
+              limitLo -> (table + size),
+              limitHi -> BigInt(0),
+              context -> BigInt(7),
+              pass -> BigInt(11),
+              generation -> BigInt(13 + epoch)
+            )
+          )
         val opcode = if (indirect) GpuCommandOpcode.kernelIndirect.litValue else GpuCommandOpcode.kernel.litValue
-        stage(Seq(R.COMMAND_ID -> BigInt(5), R.OPCODE -> opcode, R.KERNEL_PC -> pc,
-          R.KERNARG -> resultBase, R.FLAGS -> BigInt(0), R.SOURCE -> indirectArguments,
-          R.BYTES -> BigInt(if (indirect) 12 else 0), R.GRID_X -> BigInt(if (indirect) 0xdead else if (fault) 1 else 2),
-          R.GRID_Y -> BigInt(1), R.GRID_Z -> BigInt(1), R.LOCAL_X -> BigInt(128),
-          R.LOCAL_Y -> BigInt(1), R.LOCAL_Z -> BigInt(1)))
+        stage(
+          Seq(
+            R.COMMAND_ID -> BigInt(5),
+            R.OPCODE -> opcode,
+            R.KERNEL_PC -> pc,
+            R.KERNARG -> resultBase,
+            R.FLAGS -> BigInt(0),
+            R.SOURCE -> indirectArguments,
+            R.BYTES -> BigInt(if (indirect) 12 else 0),
+            R.GRID_X -> BigInt(if (indirect) 0xdead else if (fault) 1 else 2),
+            R.GRID_Y -> BigInt(1),
+            R.GRID_Z -> BigInt(1),
+            R.LOCAL_X -> BigInt(128),
+            R.LOCAL_Y -> BigInt(1),
+            R.LOCAL_Z -> BigInt(1)
+          )
+        )
         bus.write(R.SUBMIT, 1)
         // Mutation attempts are rejected while queued/running and while the
         // public result is retained; staged resource bits are otherwise live.
@@ -490,7 +666,8 @@ class NativeHostResourcePublicationQualification extends AnyFlatSpec {
         bus.write(R.INSTRUCTION_SATP, 0, expected = 2)
         bus.write(R.TLB_FLUSH, 1, expected = 2)
         for (control <- Seq(U.CONTROL, T.CONTROL, I.CONTROL, S.CONTROL, C.CONTROL)) bus.write(control, 0)
-        for (root <- Seq(U.ROOT, T.ROOT, I.TABLE_BASE, S.TABLE_BASE, C.TABLE_BASE)) bus.write(root, BigInt("dead0000", 16))
+        for (root <- Seq(U.ROOT, T.ROOT, I.TABLE_BASE, S.TABLE_BASE, C.TABLE_BASE))
+          bus.write(root, BigInt("dead0000", 16))
         bus.write(R.KERNEL_PC, BigInt("dead0000", 16)); bus.write(R.LOCAL_X, 1); bus.write(R.GRID_X, 0)
         bus.waitUntil(s"$mode public IRQ")(d.m_irq.peek().litToBoolean)
         // waitUntil can return on the edge that raises IRQ, before the next
@@ -523,15 +700,18 @@ class NativeHostResourcePublicationQualification extends AnyFlatSpec {
         var status = bus.read(R.STATUS); val drainBegin = bus.cycle
         while (status.testBit(5) && bus.cycle - drainBegin < 512) { bus.tick(); status = bus.read(R.STATUS) }
         assert((status & 34) == 0 && !d.m_irq.peek().litToBoolean && bus.drained)
-        info(s"NATIVE_HOST_RESOURCE_PUBLICATION mode=$mode epoch=$epoch nativeCUs=2 lanes=16 warps=8 groupItems=128 fullResources=true originalLineACKs=${ledger.originalLines} resultLineACKs=${ledger.recordLines} checkedRecordWords=${ledger.values.size} AW=${end.aw - begin.aw} Wbeats=${end.w - begin.w} B=${end.b - begin.b} heldAR=${end.heldAr - begin.heldAr} heldAW=${end.heldAw - begin.heldAw} heldW=${end.heldW - begin.heldW} cachedWarmReads=${ledger.cachedWarmReads} warmTraffic=${ledger.warmTraffic.toVector.sortBy(_._1).mkString(",")} concurrent=$concurrent heldMmioCompletion=true protectedDataAndCodeVm=true freshReuse=true preciseWarpTrapQualified=false")
+        info(
+          s"NATIVE_HOST_RESOURCE_PUBLICATION mode=$mode epoch=$epoch nativeCUs=2 lanes=16 warps=8 groupItems=128 fullResources=true originalLineACKs=${ledger.originalLines} resultLineACKs=${ledger.recordLines} checkedRecordWords=${ledger.values.size} AW=${end.aw - begin.aw} Wbeats=${end.w - begin.w} B=${end.b - begin.b} heldAR=${end.heldAr - begin.heldAr} heldAW=${end.heldAw - begin.heldAw} heldW=${end.heldW - begin.heldW} cachedWarmReads=${ledger.cachedWarmReads} warmTraffic=${ledger.warmTraffic.toVector.sortBy(_._1).mkString(",")} concurrent=$concurrent heldMmioCompletion=true protectedDataAndCodeVm=true freshReuse=true preciseWarpTrapQualified=false"
+        )
       }
     }
   }
 }
 
 object QualifyNativeHostResourcePublication {
-  /** Pure checks retain the pre-extraction program/publication baselines. They
-    * neither instantiate the harness nor elaborate or run a hardware model.
+
+  /** Pure checks retain the pre-extraction program/publication baselines. They neither instantiate the harness nor
+    * elaborate or run a hardware model.
     */
   private def checkProgram(): Unit = {
     import SystemResourcePublicationProgram._
@@ -542,10 +722,31 @@ object QualifyNativeHostResourcePublication {
       md.digest().map(b => f"${b & 255}%02x").mkString
     }
     val originals = Seq(
-      (0, false, "d8ac3be0c6c393d2fe5471217d0165329e2fdfd2544513163093f2ef67309878", "6d7410201990b9378827e41b7d1db06d3988370586526a3953b16c5282548751"),
-      (0, true, "c8c793f7112b72990c01ca9dfe20cf5f00e83b1da6b7e8330ebbf09d15e8c4c2", "e7a4b52ad661933e2bb1f5e2d80a1c79bee286e609d8ba4711a9e2f3bb0b029a"),
-      (3, false, "4b9ab9faa842ae9badd0af54a33d9d494899003b3fc828d3560073c53f2f9f09", "99010d10cf6c2a62f2ca49c08764ae2cfa5e43416dd7c4c5b828ea4fab203de6"),
-      (3, true, "c8c793f7112b72990c01ca9dfe20cf5f00e83b1da6b7e8330ebbf09d15e8c4c2", "a08d6d6e08fd1e6375c1745547c3e8a8aa5850e9859f337643f2cae2391ce909"))
+      (
+        0,
+        false,
+        "d8ac3be0c6c393d2fe5471217d0165329e2fdfd2544513163093f2ef67309878",
+        "6d7410201990b9378827e41b7d1db06d3988370586526a3953b16c5282548751"
+      ),
+      (
+        0,
+        true,
+        "c8c793f7112b72990c01ca9dfe20cf5f00e83b1da6b7e8330ebbf09d15e8c4c2",
+        "e7a4b52ad661933e2bb1f5e2d80a1c79bee286e609d8ba4711a9e2f3bb0b029a"
+      ),
+      (
+        3,
+        false,
+        "4b9ab9faa842ae9badd0af54a33d9d494899003b3fc828d3560073c53f2f9f09",
+        "99010d10cf6c2a62f2ca49c08764ae2cfa5e43416dd7c4c5b828ea4fab203de6"
+      ),
+      (
+        3,
+        true,
+        "c8c793f7112b72990c01ca9dfe20cf5f00e83b1da6b7e8330ebbf09d15e8c4c2",
+        "a08d6d6e08fd1e6375c1745547c3e8a8aa5850e9859f337643f2cae2391ce909"
+      )
+    )
     for ((epoch, fault, wordsSha, memorySha) <- originals) {
       val memory = mutable.Map.empty[BigInt, Int]
       val original = build(epoch, fault)
@@ -573,30 +774,40 @@ object QualifyNativeHostResourcePublication {
         val keys = (for (group <- 0 until 2; id <- 0 until 128) yield {
           val columns = recorded.checks(group).indices.toVector ++ (scalarFirstColumn until scalarFirstColumn + 12) ++
             Vector(localColumn, ownerColumn, capacityColumn, warmFirstColumn, warmSecondColumn, freshColumn) ++
-            (if (id < 16) Vector(if (group == recorded.producer) readyObservedColumn else flagObservedColumn) else Vector.empty)
+            (if (id < 16) Vector(if (group == recorded.producer) readyObservedColumn else flagObservedColumn)
+             else Vector.empty)
           columns.map(c => resultBase + group * resultGroupBytes + c * resultPlaneBytes + id * 4)
         }).flatten
-        require(keys.size == 20384 && keys.distinct.size == keys.size && keys.map(_ & ~BigInt(63)).distinct.size == 1274)
+        require(
+          keys.size == 20384 && keys.distinct.size == keys.size && keys.map(_ & ~BigInt(63)).distinct.size == 1274
+        )
         require(keys.forall(a => a >= resultBase && a + 4 <= resultBase + 2 * resultGroupBytes))
-        val postWarm = (57 to 62) ++ Seq(warmFirstColumn, warmSecondColumn, freshColumn, readyObservedColumn, flagObservedColumn)
+        val postWarm =
+          (57 to 62) ++ Seq(warmFirstColumn, warmSecondColumn, freshColumn, readyObservedColumn, flagObservedColumn)
         for (group <- 0 until 2; column <- postWarm; base <- 0 until 128 by 16) {
           val v = resultBase + group * resultGroupBytes + column * resultPlaneBytes + base * 4
           require(((v >> 6) & 63) != 0 && ((host.translated(v) >> 6) & 255) != 192)
         }
       }
-      println(s"NATIVE_HOST_PROGRAM_CHECK epoch=$epoch fault=$fault originalBytes=${original.words.size * 4} recordedBytes=${recorded.words.size * 4} originalPublicationUnchanged=true resultPaths=true codeRX=true resultsUncached=true cacheSetsDisjoint=true")
+      println(
+        s"NATIVE_HOST_PROGRAM_CHECK epoch=$epoch fault=$fault originalBytes=${original.words.size * 4} recordedBytes=${recorded.words.size * 4} originalPublicationUnchanged=true resultPaths=true codeRX=true resultsUncached=true cacheSetsDisjoint=true"
+      )
     }
     println("NATIVE_HOST_PROGRAM_CHECK PASS hardwareElaborated=false nativeModelsStarted=0")
   }
 
   def main(args: Array[String]): Unit = {
     if (args.toVector == Vector("--check-program")) { checkProgram(); return }
-    require(sys.props.get("opengpu.nativeHostResourcePublicationQualification").contains("1"),
-      "requires -Dopengpu.nativeHostResourcePublicationQualification=1")
+    require(
+      sys.props.get("opengpu.nativeHostResourcePublicationQualification").contains("1"),
+      "requires -Dopengpu.nativeHostResourcePublicationQualification=1"
+    )
     require(args.length == 2 && args(0) == "--reports", "usage: --reports DIRECTORY")
-    val passed = org.scalatest.tools.Runner.run(Array("-s", classOf[NativeHostResourcePublicationQualification].getName,
-      "-oD", "-u", args(1)))
+    val passed = org.scalatest.tools.Runner
+      .run(Array("-s", classOf[NativeHostResourcePublicationQualification].getName, "-oD", "-u", args(1)))
     require(passed, "native host resource publication qualification failed")
-    println("NATIVE_HOST_RESOURCE_PUBLICATION PASS nativeCUs=2 hostMmioQualified=true driverQualified=false APIQualified=false physicalQualified=false H7Complete=false")
+    println(
+      "NATIVE_HOST_RESOURCE_PUBLICATION PASS nativeCUs=2 hostMmioQualified=true driverQualified=false APIQualified=false physicalQualified=false H7Complete=false"
+    )
   }
 }

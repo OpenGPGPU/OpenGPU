@@ -170,46 +170,49 @@ class WarpSchedulerSpec extends AnyFlatSpec {
   }
 
   for (forward <- Seq(false, true))
-  it should s"register an idle default-capacity warp after a resume with forwarding=$forward" in {
-    simulate(new WarpScheduler(GpuConfig(), resumeToIssue = forward)) { dut =>
-      initialize(dut)
-      val slot = 7
-      launch(dut, slot, 0x100, 0xffff)
-      awaitIssue(dut)
-      dut.io.issue.ready.poke(true.B)
-      dut.clock.step()
-      dut.io.issue.ready.poke(false.B)
-      dut.io.issue.valid.expect(false.B)
-      for (i <- 0 until 12) {
-        val pc = 0x104 + 4 * i
-        val mask = if (i % 2 == 0) 0x0fff else 0x5555
-        dut.io.resume.valid.poke(true.B)
-        dut.io.resume.bits.warpId.poke(slot.U)
-        dut.io.resume.bits.nextPc.poke(pc.U)
-        dut.io.resume.bits.activeMask.poke(mask.U)
-        dut.io.issue.valid.expect(false.B)
-        dut.clock.step()
-        dut.io.resume.valid.poke(false.B)
-        if (!forward) {
-          dut.io.issue.valid.expect(false.B)
-          dut.clock.step()
-        }
-        dut.io.issue.valid.expect(true.B)
-        dut.io.issue.bits.warpId.expect(slot.U)
-        dut.io.issue.bits.pc.expect(pc.U)
-        dut.io.issue.bits.activeMask.expect(mask.U)
-        dut.io.blocked.expect((1 << slot).U)
-        val held = dut.io.issue.bits.peek().litValue
-        dut.clock.step(2)
-        assert(dut.io.issue.bits.peek().litValue == held)
+    it should s"register an idle default-capacity warp after a resume with forwarding=$forward" in {
+      simulate(new WarpScheduler(GpuConfig(), resumeToIssue = forward)) { dut =>
+        initialize(dut)
+        val slot = 7
+        launch(dut, slot, 0x100, 0xffff)
+        awaitIssue(dut)
         dut.io.issue.ready.poke(true.B)
         dut.clock.step()
         dut.io.issue.ready.poke(false.B)
         dut.io.issue.valid.expect(false.B)
+        for (i <- 0 until 12) {
+          val pc = 0x104 + 4 * i
+          val mask = if (i % 2 == 0) 0x0fff else 0x5555
+          dut.io.resume.valid.poke(true.B)
+          dut.io.resume.bits.warpId.poke(slot.U)
+          dut.io.resume.bits.nextPc.poke(pc.U)
+          dut.io.resume.bits.activeMask.poke(mask.U)
+          dut.io.issue.valid.expect(false.B)
+          dut.clock.step()
+          dut.io.resume.valid.poke(false.B)
+          if (!forward) {
+            dut.io.issue.valid.expect(false.B)
+            dut.clock.step()
+          }
+          dut.io.issue.valid.expect(true.B)
+          dut.io.issue.bits.warpId.expect(slot.U)
+          dut.io.issue.bits.pc.expect(pc.U)
+          dut.io.issue.bits.activeMask.expect(mask.U)
+          dut.io.blocked.expect((1 << slot).U)
+          val held = dut.io.issue.bits.peek().litValue
+          dut.clock.step(2)
+          assert(dut.io.issue.bits.peek().litValue == held)
+          dut.io.issue.ready.poke(true.B)
+          dut.clock.step()
+          dut.io.issue.ready.poke(false.B)
+          dut.io.issue.valid.expect(false.B)
+        }
+        info(
+          s"WARP_RESUME_REGISTERED_OFFER forwarding=$forward lanes=16 warps=8 resumes=12 clocksPerResume=${if (forward) 1
+            else 2} exactPcAndMask=true heldOffer=true blockedUntilNextResume=true"
+        )
       }
-      info(s"WARP_RESUME_REGISTERED_OFFER forwarding=$forward lanes=16 warps=8 resumes=12 clocksPerResume=${if(forward)1 else 2} exactPcAndMask=true heldOffer=true blockedUntilNextResume=true")
     }
-  }
 
   it should "retain a held grant while another warp resumes and preserve round-robin priority" in {
     simulate(new WarpScheduler(config)) { dut =>

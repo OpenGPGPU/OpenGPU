@@ -8,11 +8,21 @@ import opengpu.system.GpuHostAxi
 object EmitNativeTextureOperationHost {
   def main(args: Array[String]): Unit = {
     require(args.length <= 1, "EmitNativeTextureOperationHost [target-dir]")
-    EmitRtl.emit(new GpuHostAxi(config = GraphicsConfig(), gpuConfig = GpuConfig(),
-      unifiedCommandMmio = true, protectVmState = true, externalBinnedRender = true,
-      nativeCompletionInfo = true, nativeVertexInput = true,
-      visibilityQueries = true, transformFeedback = true, primitiveQueries = true,
-      shaderExecutionLimits = true),
-      args.headOption.getOrElse("generated/native-texture-operation-host"))
+    EmitRtl.emit(
+      new GpuHostAxi(
+        config = GraphicsConfig(),
+        gpuConfig = GpuConfig(),
+        unifiedCommandMmio = true,
+        protectVmState = true,
+        externalBinnedRender = true,
+        nativeCompletionInfo = true,
+        nativeVertexInput = true,
+        visibilityQueries = true,
+        transformFeedback = true,
+        primitiveQueries = true,
+        shaderExecutionLimits = true
+      ),
+      args.headOption.getOrElse("generated/native-texture-operation-host")
+    )
   }
 }

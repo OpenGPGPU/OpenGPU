@@ -13,13 +13,12 @@ import opengpu.core.memory.{
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 
-/** Test wrapper that provides an external KernelShaderStage to the
-  * KernelFragStage, matching the pre-refactor behavior where the kernel was
-  * internal.
+/** Test wrapper that provides an external KernelShaderStage to the KernelFragStage, matching the pre-refactor behavior
+  * where the kernel was internal.
   */
 class KernelFragStageWithKernel(
-  config: GpuConfig = GpuConfig(),
-  gfxConfig: GraphicsConfig = GraphicsConfig()
+    config: GpuConfig = GpuConfig(),
+    gfxConfig: GraphicsConfig = GraphicsConfig()
 ) extends Module {
   // Expose the pre-refactor IO (without the new kernel ports)
   val io = IO(new Bundle {
@@ -58,7 +57,7 @@ class KernelFragStageWithKernel(
   })
 
   private val frag = Module(new KernelFragStage(config, gfxConfig))
-  private val kernel = Module(new KernelShaderStage(config,helperInvocations=true))
+  private val kernel = Module(new KernelShaderStage(config, helperInvocations = true))
   kernel.io.instructionSatp := 0.U
   kernel.io.instructionTlbFlush := 0.U.asTypeOf(kernel.io.instructionTlbFlush)
   kernel.io.vectorSatp := 0.U
@@ -73,7 +72,7 @@ class KernelFragStageWithKernel(
   io.depthOverride := frag.io.depthOverride
   frag.io.abi1 := io.abi1
   frag.io.inputSkip := 0.U
-    frag.io.outputSkip := 0.U // Legacy fixture requests the complete input ABI.
+  frag.io.outputSkip := 0.U // Legacy fixture requests the complete input ABI.
   frag.io.shaderPc := io.shaderPc
   frag.io.kernargBase := io.kernargBase
   frag.io.kernargBankStride := io.kernargBankStride
@@ -95,7 +94,7 @@ class KernelFragStageWithKernel(
   io.texMem <> frag.io.texMem
 
   // Connect kernel internally: frag's kernel ports <-> kernel's IO
-  kernel.io.launch.invocations.get:=frag.io.kernelLaunch.invocations
+  kernel.io.launch.invocations.get := frag.io.kernelLaunch.invocations
   kernel.io.launch.valid := frag.io.kernelLaunch.valid
   kernel.io.launch.kernelPc := frag.io.kernelLaunch.kernelPc
   kernel.io.launch.kernargAddress := frag.io.kernelLaunch.kernargAddress
@@ -157,8 +156,8 @@ class KernelFragStageSpec extends AnyFlatSpec {
   //               bit 0 = emit, bit 1 = depth override)
   //   [288, ...)  per-draw uniforms
 
-  /** Byte-addressed 64-byte line memory model shared by the core and the
-    * word->line bridge.  Lines are keyed by their aligned byte address.
+  /** Byte-addressed 64-byte line memory model shared by the core and the word->line bridge. Lines are keyed by their
+    * aligned byte address.
     */
   private class MemModel {
     val lines = scala.collection.mutable.LongMap[BigInt]()
@@ -201,13 +200,11 @@ class KernelFragStageSpec extends AnyFlatSpec {
       def runBatch(red: Int): Unit = {
         fireQuad(dut, Seq(Frag(red, 0, 1, r = red, g = 0, b = 0)))
         dut.io.flush.poke(true.B); dut.clock.step(); dut.io.flush.poke(false.B)
-        assert(pump(dut, mem, () => dut.io.out.valid.peek().litToBoolean),
-          "banked fragment batch did not complete")
+        assert(pump(dut, mem, () => dut.io.out.valid.peek().litToBoolean), "banked fragment batch did not complete")
         dut.io.out.bits.color.r.expect(red.U)
         dut.io.out.bits.alpha.expect(0xff.U)
         dut.clock.step()
-        assert(pump(dut, mem, () => dut.io.drained.peek().litToBoolean),
-          "banked fragment batch did not drain")
+        assert(pump(dut, mem, () => dut.io.drained.peek().litToBoolean), "banked fragment batch did not drain")
       }
 
       runBatch(0x11)
@@ -236,12 +233,14 @@ class KernelFragStageSpec extends AnyFlatSpec {
         dut.io.out.ready.poke(false.B)
         for (group <- 0 until 2) {
           dut.io.fragIn.ready.expect(true.B)
-          pokeQuadLanes(dut, Seq.tabulate(4) { k =>
-            val i = 4 * group + k
-            Frag(batch * 16 + i, -i - 1, 100 + batch * 8 + i,
-              r = 20 + batch * 8 + i, g = i, b = 255 - i)
-          }, Seq.tabulate(4)(k => (1000 + batch * 8 + 4 * group + k,
-            2000 + batch * 8 + 4 * group + k)))
+          pokeQuadLanes(
+            dut,
+            Seq.tabulate(4) { k =>
+              val i = 4 * group + k
+              Frag(batch * 16 + i, -i - 1, 100 + batch * 8 + i, r = 20 + batch * 8 + i, g = i, b = 255 - i)
+            },
+            Seq.tabulate(4)(k => (1000 + batch * 8 + 4 * group + k, 2000 + batch * 8 + 4 * group + k))
+          )
           for (k <- 0 until 4) {
             val edge = batch * 8 + group * 4 + k + 1
             dut.io.fragIn.bits.lanes(k).e0.poke(edge.S)
@@ -255,8 +254,7 @@ class KernelFragStageSpec extends AnyFlatSpec {
         dut.io.flush.poke(true.B); dut.clock.step(); dut.io.flush.poke(false.B)
         dut.clock.step(5)
         dut.io.wordMemReq.ready.poke(true.B)
-        assert(pump(dut, mem, () => dut.io.out.valid.peek().litToBoolean, 4000),
-          s"batch $batch did not produce output")
+        assert(pump(dut, mem, () => dut.io.out.valid.peek().litToBoolean, 4000), s"batch $batch did not produce output")
         for (i <- 0 until 8) {
           val edge = batch * 8 + i + 1
           dut.io.out.valid.expect(true.B)
@@ -271,14 +269,19 @@ class KernelFragStageSpec extends AnyFlatSpec {
           dut.io.out.ready.poke(true.B); dut.clock.step()
           dut.io.out.ready.poke(false.B)
           val expected = Seq(
-            BigInt(batch * 16 + i), BigInt(-i - 1) & 0xffffffffL,
+            BigInt(batch * 16 + i),
+            BigInt(-i - 1) & 0xffffffffL,
             BigInt(100 + batch * 8 + i),
             (BigInt(20 + batch * 8 + i) << 24) | (BigInt(i) << 16) |
               (BigInt(255 - i) << 8) | 255,
-            BigInt(1000 + batch * 8 + i), BigInt(2000 + batch * 8 + i))
+            BigInt(1000 + batch * 8 + i),
+            BigInt(2000 + batch * 8 + i)
+          )
           for (field <- expected.indices)
-            assert(mem.getWord(base + field * 32 + i * 4) == expected(field),
-              s"batch $batch lane $i field $field staging mismatch")
+            assert(
+              mem.getWord(base + field * 32 + i * 4) == expected(field),
+              s"batch $batch lane $i field $field staging mismatch"
+            )
         }
         dut.io.drained.expect(true.B)
         dut.clock.step()
@@ -299,10 +302,12 @@ class KernelFragStageSpec extends AnyFlatSpec {
   private def add(rd: Int, rs1: Int, rs2: Int): BigInt =
     ((BigInt(rs2 & 0x1f)) << 20) | ((BigInt(rs1 & 0x1f)) << 15) |
       ((BigInt(rd & 0x1f)) << 7) | 0x33
+
   /** opengpu.texsample rd, rs1, rs2 (custom-0, funct7=1, funct3=0). */
   private def texsample(rd: Int, rs1: Int, rs2: Int): BigInt =
     (BigInt(1) << 25) | (BigInt(rs2 & 0x1f) << 20) |
       (BigInt(rs1 & 0x1f) << 15) | (BigInt(rd & 0x1f) << 7) | 0x0b
+
   /** opengpu.vtex.sample vd, vs1, vs2 (custom-1, funct6=1, vm=1). */
   private def vtexsample(vd: Int, vs1: Int, vs2: Int): BigInt =
     (BigInt(1) << 26) | (BigInt(1) << 25) |
@@ -338,16 +343,16 @@ class KernelFragStageSpec extends AnyFlatSpec {
       (BigInt(vd & 0x1f) << 7) | 0x57
   private val cease = BigInt("30500073", 16)
 
-  /** Services KernelFragStage's two memory ports against `mem` until `pred`
-    * becomes true or a guard timeout expires.  Returns the final predicate.
+  /** Services KernelFragStage's two memory ports against `mem` until `pred` becomes true or a guard timeout expires.
+    * Returns the final predicate.
     */
   private val LineMask = (BigInt(1) << 512) - 1
 
   private def pump(
-    dut: KernelFragStageWithKernel,
-    mem: MemModel,
-    pred: () => Boolean,
-    guard: Int = 400
+      dut: KernelFragStageWithKernel,
+      mem: MemModel,
+      pred: () => Boolean,
+      guard: Int = 400
   ): Boolean = {
     var kResp = false; var kId = BigInt(0); var kData = BigInt(0)
     var wResp = false; var wId = BigInt(0); var wData = BigInt(0)
@@ -446,20 +451,32 @@ class KernelFragStageSpec extends AnyFlatSpec {
     dut.io.texMem.resp.bits.addr.poke(0.U)
   }
 
-  /** One fragment lane of a quad under test; lanes not supplied to a poke
-    * default to uncovered helper lanes, which stage and execute but never
-    * reach the output stream. */
-  private case class Frag(x: Int, y: Int, depth: Int,
-    r: Int = 0xab, g: Int = 0xcd, b: Int = 0xef, covered: Boolean = true,
-    coverageMask: Int = 1, alpha: Int = 0xff)
+  /** One fragment lane of a quad under test; lanes not supplied to a poke default to uncovered helper lanes, which
+    * stage and execute but never reach the output stream.
+    */
+  private case class Frag(
+      x: Int,
+      y: Int,
+      depth: Int,
+      r: Int = 0xab,
+      g: Int = 0xcd,
+      b: Int = 0xef,
+      covered: Boolean = true,
+      coverageMask: Int = 1,
+      alpha: Int = 0xff
+  )
 
-  /** Pokes all four lanes of `fragIn` (TL/TR/BL/BR), their UVs and their
-    * per-sample depths without firing; lanes beyond `frags.length` become
-    * uncovered helpers. */
-  private def pokeQuadLanes(dut: KernelFragStageWithKernel, frags: Seq[Frag],
-    uvs: Seq[(Int, Int)] = Seq.fill(4)((0, 0))): Unit = {
+  /** Pokes all four lanes of `fragIn` (TL/TR/BL/BR), their UVs and their per-sample depths without firing; lanes beyond
+    * `frags.length` become uncovered helpers.
+    */
+  private def pokeQuadLanes(
+      dut: KernelFragStageWithKernel,
+      frags: Seq[Frag],
+      uvs: Seq[(Int, Int)] = Seq.fill(4)((0, 0))
+  ): Unit = {
     for (k <- 0 until 4) {
-      val f = if (k < frags.length) frags(k)
+      val f =
+        if (k < frags.length) frags(k)
         else Frag(0, 0, 0, 0, 0, 0, covered = false, coverageMask = 0)
       dut.io.fragIn.bits.lanes(k).x.poke(f.x.S)
       dut.io.fragIn.bits.lanes(k).y.poke(f.y.S)
@@ -478,8 +495,11 @@ class KernelFragStageSpec extends AnyFlatSpec {
   }
 
   /** Fires exactly one quad beat. */
-  private def fireQuad(dut: KernelFragStageWithKernel, frags: Seq[Frag],
-    uvs: Seq[(Int, Int)] = Seq.fill(4)((0, 0))): Unit = {
+  private def fireQuad(
+      dut: KernelFragStageWithKernel,
+      frags: Seq[Frag],
+      uvs: Seq[(Int, Int)] = Seq.fill(4)((0, 0))
+  ): Unit = {
     pokeQuadLanes(dut, frags, uvs)
     dut.io.fragIn.valid.poke(true.B)
     dut.clock.step()
@@ -487,66 +507,74 @@ class KernelFragStageSpec extends AnyFlatSpec {
   }
 
   it should "bound staging traffic and preserve uniforms and inactive lanes in full and partial batches" in {
-    for (config <- Seq(GpuConfig(lanes = 4, warps = 2),
-                       GpuConfig(lanes = 16, warps = 2),
-                       GpuConfig(lanes = 16, warps = 8))) {
-    val capacity = config.lanes * config.warps
-    val stride = capacity * 4
-    simulate(new KernelFragStageWithKernel(config)) { dut =>
-      for (count <- Seq(4, capacity - 4, capacity).distinct) {
-        val mem = new MemModel
-        dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
-        pokeDefaults(dut)
-        dut.io.shaderPc.poke(0x1000.U)
-        dut.io.kernargBase.poke(0x8000.U)
-        dut.io.kernargBankStride.poke(0.U)
-        // A cease-only kernel leaves the sentinel output colours untouched.
-        mem.putWord(0x1000L, 0, cease)
-        val sentinel = BigInt("a55a1234", 16)
-        for (i <- 0 until (9 * capacity + 16))
-          mem.putWord(0x8000L + (i / 16) * 64, i % 16, sentinel)
-        for (q <- 0 until count / 4) {
-          dut.io.fragIn.ready.expect(true.B)
-          fireQuad(dut, Seq.tabulate(4) { k =>
-            val i = q * 4 + k
-            Frag(i, i + 1, 100 + i, r = i, g = 2 * i, b = 3 * i)
-          })
-        }
-        dut.io.flush.poke(true.B); dut.clock.step(); dut.io.flush.poke(false.B)
-        assert(pump(dut, mem, () => dut.io.out.valid.peek().litToBoolean, 2000))
-        val writes = mem.stagingRequests.filter(_._2)
-        val reads = mem.stagingRequests.filterNot(_._2)
-        val maxWrites = if (capacity == 8) 5 else 8 * ((count + 15) / 16)
-        val maxReads = if (capacity == 8) 2 else 3 * ((count + 15) / 16)
-        assert(writes.size <= maxWrites && reads.size <= maxReads,
-          s"capacity=$capacity count=$count staging traffic exceeds line bounds: ${mem.stagingRequests}")
-        assert(mem.stagingRequests.forall { case (addr, _) => (addr & 63) == 0 })
-        for (i <- 0 until count) {
-          assert(mem.getWord(0x8000L + i * 4) == i)
-          assert(mem.getWord(0x8000L + 7 * stride + i * 4) == 100 + i)
-          assert(mem.getWord(0x8000L + 8 * stride + i * 4) == 1)
-          assert(mem.getWord(0x8000L + 6 * stride + i * 4) == sentinel,
-            "staging must not overwrite shader colour outputs")
-        }
-        for (slice <- Seq(0, 1, 2, 3, 4, 5, 7, 8); i <- count until capacity)
-          assert(mem.getWord(0x8000L + slice * stride + i * 4) == sentinel,
-            s"partial batch overwrote inactive slice $slice lane $i")
-        for (offset <- 9 * stride until 9 * stride + 64 by 4)
-          assert(mem.getWord(0x8000L + offset) == sentinel,
-            s"staging overwrote uniform byte $offset")
-        // Check the whole readback, including late wide-vector slices.
-        for (i <- 0 until count) {
+    for (
+      config <- Seq(GpuConfig(lanes = 4, warps = 2), GpuConfig(lanes = 16, warps = 2), GpuConfig(lanes = 16, warps = 8))
+    ) {
+      val capacity = config.lanes * config.warps
+      val stride = capacity * 4
+      simulate(new KernelFragStageWithKernel(config)) { dut =>
+        for (count <- Seq(4, capacity - 4, capacity).distinct) {
+          val mem = new MemModel
+          dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+          pokeDefaults(dut)
+          dut.io.shaderPc.poke(0x1000.U)
+          dut.io.kernargBase.poke(0x8000.U)
+          dut.io.kernargBankStride.poke(0.U)
+          // A cease-only kernel leaves the sentinel output colours untouched.
+          mem.putWord(0x1000L, 0, cease)
+          val sentinel = BigInt("a55a1234", 16)
+          for (i <- 0 until (9 * capacity + 16))
+            mem.putWord(0x8000L + (i / 16) * 64, i % 16, sentinel)
+          for (q <- 0 until count / 4) {
+            dut.io.fragIn.ready.expect(true.B)
+            fireQuad(
+              dut,
+              Seq.tabulate(4) { k =>
+                val i = q * 4 + k
+                Frag(i, i + 1, 100 + i, r = i, g = 2 * i, b = 3 * i)
+              }
+            )
+          }
+          dut.io.flush.poke(true.B); dut.clock.step(); dut.io.flush.poke(false.B)
           assert(pump(dut, mem, () => dut.io.out.valid.peek().litToBoolean, 2000))
-          dut.io.out.bits.x.expect(i.S)
-          dut.io.out.bits.depth.expect((100 + i).S)
-          dut.io.out.bits.color.r.expect(0xa5.U)
-          dut.io.out.bits.color.g.expect(0x5a.U)
-          dut.io.out.bits.color.b.expect(0x12.U)
-          dut.clock.step()
+          val writes = mem.stagingRequests.filter(_._2)
+          val reads = mem.stagingRequests.filterNot(_._2)
+          val maxWrites = if (capacity == 8) 5 else 8 * ((count + 15) / 16)
+          val maxReads = if (capacity == 8) 2 else 3 * ((count + 15) / 16)
+          assert(
+            writes.size <= maxWrites && reads.size <= maxReads,
+            s"capacity=$capacity count=$count staging traffic exceeds line bounds: ${mem.stagingRequests}"
+          )
+          assert(mem.stagingRequests.forall { case (addr, _) => (addr & 63) == 0 })
+          for (i <- 0 until count) {
+            assert(mem.getWord(0x8000L + i * 4) == i)
+            assert(mem.getWord(0x8000L + 7 * stride + i * 4) == 100 + i)
+            assert(mem.getWord(0x8000L + 8 * stride + i * 4) == 1)
+            assert(
+              mem.getWord(0x8000L + 6 * stride + i * 4) == sentinel,
+              "staging must not overwrite shader colour outputs"
+            )
+          }
+          for (slice <- Seq(0, 1, 2, 3, 4, 5, 7, 8); i <- count until capacity)
+            assert(
+              mem.getWord(0x8000L + slice * stride + i * 4) == sentinel,
+              s"partial batch overwrote inactive slice $slice lane $i"
+            )
+          for (offset <- 9 * stride until 9 * stride + 64 by 4)
+            assert(mem.getWord(0x8000L + offset) == sentinel, s"staging overwrote uniform byte $offset")
+          // Check the whole readback, including late wide-vector slices.
+          for (i <- 0 until count) {
+            assert(pump(dut, mem, () => dut.io.out.valid.peek().litToBoolean, 2000))
+            dut.io.out.bits.x.expect(i.S)
+            dut.io.out.bits.depth.expect((100 + i).S)
+            dut.io.out.bits.color.r.expect(0xa5.U)
+            dut.io.out.bits.color.g.expect(0x5a.U)
+            dut.io.out.bits.color.b.expect(0x12.U)
+            dut.clock.step()
+          }
+          assert(pump(dut, mem, () => dut.io.drained.peek().litToBoolean, 2000))
         }
-        assert(pump(dut, mem, () => dut.io.drained.peek().litToBoolean, 2000))
       }
-    }
     }
   }
 
@@ -643,13 +671,10 @@ class KernelFragStageSpec extends AnyFlatSpec {
       dut.io.flush.poke(true.B); dut.clock.step()
       dut.io.flush.poke(false.B)
 
-      val done = pump(dut, mem, () => dut.io.drained.peek().litToBoolean,
-        guard = 2000)
+      val done = pump(dut, mem, () => dut.io.drained.peek().litToBoolean, guard = 2000)
       assert(done, "discarded fragment did not drain")
-      assert(!dut.io.out.valid.peek().litToBoolean,
-        "discarded fragment must not be emitted")
-      assert((mem.readLine(0x8100L) & 0xffffffffL) == 0,
-        "shader did not clear the output-valid word")
+      assert(!dut.io.out.valid.peek().litToBoolean, "discarded fragment must not be emitted")
+      assert((mem.readLine(0x8100L) & 0xffffffffL) == 0, "shader did not clear the output-valid word")
     }
   }
 
@@ -684,12 +709,15 @@ class KernelFragStageSpec extends AnyFlatSpec {
         (1, 11, 0x30, false),
         (2, 12, 0x40, true)
       )
-      fireQuad(dut, inputs.map { case (x, y, d, c) =>
-        Frag(x, y, d, covered = c) })
+      fireQuad(
+        dut,
+        inputs.map { case (x, y, d, c) =>
+          Frag(x, y, d, covered = c)
+        }
+      )
 
       // The batch is not yet launched: no output is pending until flush.
-      assert(!dut.io.out.valid.peek().litToBoolean,
-        "an unflushed batch must not emit fragments")
+      assert(!dut.io.out.valid.peek().litToBoolean, "an unflushed batch must not emit fragments")
 
       // Flush the (non-empty) batch: draw boundary launches one kernel.
       dut.io.flush.poke(true.B)
@@ -716,8 +744,11 @@ class KernelFragStageSpec extends AnyFlatSpec {
           val addr = dut.io.memReq.bits.address.peek().litValue.toLong
           val id = dut.io.memReq.bits.transactionId.peek().litValue
           if (dut.io.memReq.bits.isWrite.peek().litToBoolean) {
-            mem.applyWrite(addr, dut.io.memReq.bits.writeData.peek().litValue,
-              dut.io.memReq.bits.byteMask.peek().litValue)
+            mem.applyWrite(
+              addr,
+              dut.io.memReq.bits.writeData.peek().litValue,
+              dut.io.memReq.bits.byteMask.peek().litValue
+            )
             kQueue.enqueue((id, BigInt(0)))
           } else kQueue.enqueue((id, mem.readLine(addr)))
         }
@@ -728,20 +759,27 @@ class KernelFragStageSpec extends AnyFlatSpec {
           dut.io.wordMemResp.bits.fault.poke(false.B)
         } else dut.io.wordMemResp.valid.poke(false.B)
         if (wQueue.nonEmpty && dut.io.wordMemResp.ready.peek().litToBoolean) wQueue.dequeue()
-        if (dut.io.wordMemReq.valid.peek().litToBoolean &&
-          dut.io.wordMemReq.ready.peek().litToBoolean) {
+        if (
+          dut.io.wordMemReq.valid.peek().litToBoolean &&
+          dut.io.wordMemReq.ready.peek().litToBoolean
+        ) {
           val addr = dut.io.wordMemReq.bits.address.peek().litValue.toLong
           val id = dut.io.wordMemReq.bits.transactionId.peek().litValue
           if (dut.io.wordMemReq.bits.isWrite.peek().litToBoolean) {
-            mem.applyWrite(addr, dut.io.wordMemReq.bits.writeData.peek().litValue,
-              dut.io.wordMemReq.bits.byteMask.peek().litValue)
+            mem.applyWrite(
+              addr,
+              dut.io.wordMemReq.bits.writeData.peek().litValue,
+              dut.io.wordMemReq.bits.byteMask.peek().litValue
+            )
             wQueue.enqueue((id, BigInt(0)))
           } else wQueue.enqueue((id, mem.readLine(addr)))
         }
         if (dut.io.out.valid.peek().litToBoolean) {
-          emitted += ((dut.io.out.bits.x.peek().litValue.toLong,
+          emitted += ((
+            dut.io.out.bits.x.peek().litValue.toLong,
             dut.io.out.bits.y.peek().litValue.toLong,
-            dut.io.out.bits.depth.peek().litValue.toLong))
+            dut.io.out.bits.depth.peek().litValue.toLong
+          ))
           dut.io.out.ready.poke(true.B)
         } else dut.io.out.ready.poke(false.B)
         dut.clock.step()
@@ -754,9 +792,11 @@ class KernelFragStageSpec extends AnyFlatSpec {
       // Covered fragments retain submission order; the middle helper executed
       // the shader but cannot be promoted into an output-memory transaction.
       for ((expected, got) <- inputs.filter(_._4) zip emitted) {
-        assert(got._1 == expected._1 &&
-          got._2 == expected._2 && got._3 == expected._3,
-          s"fragment geometry mismatch: expected $expected got $got")
+        assert(
+          got._1 == expected._1 &&
+            got._2 == expected._2 && got._3 == expected._3,
+          s"fragment geometry mismatch: expected $expected got $got"
+        )
       }
     }
   }
@@ -807,8 +847,7 @@ class KernelFragStageSpec extends AnyFlatSpec {
         (0x70, 0x80, 0x90),
         (0xa0, 0xb0, 0xc0)
       )
-      fireQuad(dut, Seq.tabulate(count)(i =>
-        Frag(i, 10 + i, 0x20, colors(i)._1, colors(i)._2, colors(i)._3)))
+      fireQuad(dut, Seq.tabulate(count)(i => Frag(i, 10 + i, 0x20, colors(i)._1, colors(i)._2, colors(i)._3)))
 
       dut.io.flush.poke(true.B)
       dut.clock.step()
@@ -847,20 +886,27 @@ class KernelFragStageSpec extends AnyFlatSpec {
           dut.io.wordMemResp.bits.fault.poke(false.B)
         } else dut.io.wordMemResp.valid.poke(false.B)
         if (wQueue.nonEmpty && dut.io.wordMemResp.ready.peek().litToBoolean) wQueue.dequeue()
-        if (dut.io.wordMemReq.valid.peek().litToBoolean &&
-          dut.io.wordMemReq.ready.peek().litToBoolean) {
+        if (
+          dut.io.wordMemReq.valid.peek().litToBoolean &&
+          dut.io.wordMemReq.ready.peek().litToBoolean
+        ) {
           val addr = dut.io.wordMemReq.bits.address.peek().litValue.toLong
           val id = dut.io.wordMemReq.bits.transactionId.peek().litValue
           if (dut.io.wordMemReq.bits.isWrite.peek().litToBoolean) {
-            mem.applyWrite(addr, dut.io.wordMemReq.bits.writeData.peek().litValue,
-              dut.io.wordMemReq.bits.byteMask.peek().litValue)
+            mem.applyWrite(
+              addr,
+              dut.io.wordMemReq.bits.writeData.peek().litValue,
+              dut.io.wordMemReq.bits.byteMask.peek().litValue
+            )
             wQueue.enqueue((id, BigInt(0)))
           } else wQueue.enqueue((id, mem.readLine(addr)))
         }
         if (dut.io.out.valid.peek().litToBoolean) {
-          emitted += ((dut.io.out.bits.color.r.peek().litValue.toLong,
+          emitted += ((
+            dut.io.out.bits.color.r.peek().litValue.toLong,
             dut.io.out.bits.color.g.peek().litValue.toLong,
-            dut.io.out.bits.color.b.peek().litValue.toLong))
+            dut.io.out.bits.color.b.peek().litValue.toLong
+          ))
           dut.io.out.ready.poke(true.B)
         } else dut.io.out.ready.poke(false.B)
         dut.clock.step()
@@ -872,20 +918,21 @@ class KernelFragStageSpec extends AnyFlatSpec {
 
       // The vector output store covers all four lanes of the warp in one
       // 16-byte mask at kernarg+192.
-      assert(kernelStores.exists { case (addr, bm) =>
-        addr == 0x80c0L && bm == BigInt(0xffff)
-      }, s"expected a full 4-lane store at 0x80c0, got $kernelStores")
+      assert(
+        kernelStores.exists { case (addr, bm) =>
+          addr == 0x80c0L && bm == BigInt(0xffff)
+        },
+        s"expected a full 4-lane store at 0x80c0, got $kernelStores"
+      )
 
       // Every fragment gets colour + its own x back, in submission order.
       for (i <- 0 until count) {
         val packed = (BigInt(colors(i)._1) << 24) | (BigInt(colors(i)._2) << 16) |
           (BigInt(colors(i)._3) << 8) | 0xff
         val reference = (packed + i) & 0xffffffffL
-        val expected = ((reference >> 24) & 0xff, (reference >> 16) & 0xff,
-          (reference >> 8) & 0xff)
+        val expected = ((reference >> 24) & 0xff, (reference >> 16) & 0xff, (reference >> 8) & 0xff)
         val got = (emitted(i)._1, emitted(i)._2, emitted(i)._3)
-        assert(got == expected,
-          s"per-lane shade mismatch at fragment $i: expected $expected got $got")
+        assert(got == expected, s"per-lane shade mismatch at fragment $i: expected $expected got $got")
       }
     }
   }
@@ -937,8 +984,7 @@ class KernelFragStageSpec extends AnyFlatSpec {
       dut.clock.step()
       dut.io.flush.poke(false.B)
 
-      val done = pump(dut, mem, () => dut.io.out.valid.peek().litToBoolean,
-        guard = 2000)
+      val done = pump(dut, mem, () => dut.io.out.valid.peek().litToBoolean, guard = 2000)
       assert(done, "textured fragment did not finish within a bounded time")
       dut.io.out.bits.color.r.expect(0xff.U)
       dut.io.out.bits.color.g.expect(0xff.U)
@@ -986,8 +1032,7 @@ class KernelFragStageSpec extends AnyFlatSpec {
       mem.putWord(0x2000L, 2, 0x00ff00ff)
       mem.putWord(0x2000L, 3, 0xffff00ff)
 
-      fireQuad(dut, Seq.tabulate(4)(lane => Frag(lane, 8 + lane, 0x20,
-        r = 0, g = 0, b = 0)), uvs = u zip v)
+      fireQuad(dut, Seq.tabulate(4)(lane => Frag(lane, 8 + lane, 0x20, r = 0, g = 0, b = 0)), uvs = u zip v)
       dut.io.flush.poke(true.B); dut.clock.step()
       dut.io.flush.poke(false.B)
 
@@ -998,16 +1043,17 @@ class KernelFragStageSpec extends AnyFlatSpec {
         (0xff, 0xff, 0x00)
       )
       val emitted = scala.collection.mutable.ArrayBuffer.empty[(Long, Long, Long, Long)]
-      val done = pump(dut, mem, () => dut.io.out.valid.peek().litToBoolean,
-        guard = 6000)
+      val done = pump(dut, mem, () => dut.io.out.valid.peek().litToBoolean, guard = 6000)
       assert(done, "per-lane texture kernel did not complete")
       var guard = 0
       while (emitted.size < 4 && guard < 16) {
         if (dut.io.out.valid.peek().litToBoolean) {
-          emitted += ((dut.io.out.bits.color.r.peek().litValue.toLong,
+          emitted += ((
+            dut.io.out.bits.color.r.peek().litValue.toLong,
             dut.io.out.bits.color.g.peek().litValue.toLong,
             dut.io.out.bits.color.b.peek().litValue.toLong,
-            dut.io.out.bits.depth.peek().litValue.toLong))
+            dut.io.out.bits.depth.peek().litValue.toLong
+          ))
           dut.io.out.ready.poke(true.B)
           dut.clock.step()
           dut.io.out.ready.poke(false.B)
@@ -1017,8 +1063,10 @@ class KernelFragStageSpec extends AnyFlatSpec {
       val expectedWithDepth = expected.map { case (r, g, b) =>
         (r.toLong, g.toLong, b.toLong, 0x8000L)
       }
-      assert(emitted == expectedWithDepth,
-        s"per-lane UV/depth result mismatch: expected=$expectedWithDepth got=$emitted")
+      assert(
+        emitted == expectedWithDepth,
+        s"per-lane UV/depth result mismatch: expected=$expectedWithDepth got=$emitted"
+      )
     }
   }
 
@@ -1027,10 +1075,8 @@ class KernelFragStageSpec extends AnyFlatSpec {
     // The helper in lane 1 contributes to dfdx at lane 0 and dfdy at lane 3,
     // but must never be promoted to the output stream.
     val cases = Seq(
-      (0x0c, Seq(0, 0x11223344, 0, 0x55667788),
-        Seq(0x11223344L, 0x55667788L, 0x55667788L)),
-      (0x0d, Seq(0, 0x11223344, 0x55667788, 0x66778899),
-        Seq(0x55667788L, 0x55667788L, 0x55555555L))
+      (0x0c, Seq(0, 0x11223344, 0, 0x55667788), Seq(0x11223344L, 0x55667788L, 0x55667788L)),
+      (0x0d, Seq(0, 0x11223344, 0x55667788, 0x66778899), Seq(0x55667788L, 0x55667788L, 0x55555555L))
     )
     for ((funct6, u, expectedWords) <- cases) {
       val config = GpuConfig(lanes = 4, warps = 2)
@@ -1056,19 +1102,22 @@ class KernelFragStageSpec extends AnyFlatSpec {
 
         // Lane 1 is the uncovered helper in both cases.
         val v = Seq.fill(4)(0)
-        fireQuad(dut, Seq(
-          Frag(3, 4, 0x20, covered = true),
-          Frag(4, 4, 0x20, covered = false),
-          Frag(3, 5, 0x20, covered = true),
-          Frag(4, 5, 0x20, covered = true)
-        ), uvs = u zip v)
+        fireQuad(
+          dut,
+          Seq(
+            Frag(3, 4, 0x20, covered = true),
+            Frag(4, 4, 0x20, covered = false),
+            Frag(3, 5, 0x20, covered = true),
+            Frag(4, 5, 0x20, covered = true)
+          ),
+          uvs = u zip v
+        )
         dut.io.flush.poke(true.B); dut.clock.step()
         dut.io.flush.poke(false.B)
 
         val emitted =
           scala.collection.mutable.ArrayBuffer.empty[(Long, Long, Long, Long, Long)]
-        val done = pump(dut, mem, () => dut.io.out.valid.peek().litToBoolean,
-          guard = 6000)
+        val done = pump(dut, mem, () => dut.io.out.valid.peek().litToBoolean, guard = 6000)
         assert(done, "helper-derivative kernel did not complete")
         // Step every iteration: the emit walk spends cycles on the helper lane
         // it suppresses, so the collector must let simulated time advance
@@ -1078,11 +1127,13 @@ class KernelFragStageSpec extends AnyFlatSpec {
           val valid = dut.io.out.valid.peek().litToBoolean
           dut.io.out.ready.poke(valid.B)
           if (valid) {
-            emitted += ((dut.io.out.bits.x.peek().litValue.toLong,
+            emitted += ((
+              dut.io.out.bits.x.peek().litValue.toLong,
               dut.io.out.bits.color.r.peek().litValue.toLong,
               dut.io.out.bits.color.g.peek().litValue.toLong,
               dut.io.out.bits.color.b.peek().litValue.toLong,
-              dut.io.out.bits.alpha.peek().litValue.toLong))
+              dut.io.out.bits.alpha.peek().litValue.toLong
+            ))
           }
           dut.clock.step()
           guard += 1
@@ -1091,12 +1142,9 @@ class KernelFragStageSpec extends AnyFlatSpec {
         // Only the three covered lanes emit, in batch order.
         assert(emitted.size == 3, s"expected 3 covered fragments, got ${emitted.size}")
         for ((word, index) <- expectedWords.zipWithIndex) {
-          val rgba = ((word >> 24) & 0xffL, (word >> 16) & 0xffL,
-            (word >> 8) & 0xffL, word & 0xffL)
-          val expected = (if (index == 2) 4L else 3L, rgba._1, rgba._2,
-            rgba._3, rgba._4)
-          assert(emitted(index) == expected,
-            s"funct6=$funct6 lane $index: expected $expected, got ${emitted(index)}")
+          val rgba = ((word >> 24) & 0xffL, (word >> 16) & 0xffL, (word >> 8) & 0xffL, word & 0xffL)
+          val expected = (if (index == 2) 4L else 3L, rgba._1, rgba._2, rgba._3, rgba._4)
+          assert(emitted(index) == expected, s"funct6=$funct6 lane $index: expected $expected, got ${emitted(index)}")
         }
       }
     }
@@ -1175,8 +1223,11 @@ class KernelFragStageSpec extends AnyFlatSpec {
           val addr = dut.io.memReq.bits.address.peek().litValue.toLong
           val id = dut.io.memReq.bits.transactionId.peek().litValue
           if (dut.io.memReq.bits.isWrite.peek().litToBoolean) {
-            mem.applyWrite(addr, dut.io.memReq.bits.writeData.peek().litValue,
-              dut.io.memReq.bits.byteMask.peek().litValue)
+            mem.applyWrite(
+              addr,
+              dut.io.memReq.bits.writeData.peek().litValue,
+              dut.io.memReq.bits.byteMask.peek().litValue
+            )
             kQueue.enqueue((id, BigInt(0)))
           } else kQueue.enqueue((id, mem.readLine(addr)))
         }
@@ -1187,13 +1238,18 @@ class KernelFragStageSpec extends AnyFlatSpec {
           dut.io.wordMemResp.bits.fault.poke(false.B)
         } else dut.io.wordMemResp.valid.poke(false.B)
         if (wQueue.nonEmpty && dut.io.wordMemResp.ready.peek().litToBoolean) wQueue.dequeue()
-        if (dut.io.wordMemReq.valid.peek().litToBoolean &&
-          dut.io.wordMemReq.ready.peek().litToBoolean) {
+        if (
+          dut.io.wordMemReq.valid.peek().litToBoolean &&
+          dut.io.wordMemReq.ready.peek().litToBoolean
+        ) {
           val addr = dut.io.wordMemReq.bits.address.peek().litValue.toLong
           val id = dut.io.wordMemReq.bits.transactionId.peek().litValue
           if (dut.io.wordMemReq.bits.isWrite.peek().litToBoolean) {
-            mem.applyWrite(addr, dut.io.wordMemReq.bits.writeData.peek().litValue,
-              dut.io.wordMemReq.bits.byteMask.peek().litValue)
+            mem.applyWrite(
+              addr,
+              dut.io.wordMemReq.bits.writeData.peek().litValue,
+              dut.io.wordMemReq.bits.byteMask.peek().litValue
+            )
             wQueue.enqueue((id, BigInt(0)))
           } else wQueue.enqueue((id, mem.readLine(addr)))
         }
@@ -1205,24 +1261,23 @@ class KernelFragStageSpec extends AnyFlatSpec {
         dut.clock.step()
         guard += 1
         if (sys.env.contains("KFS_DEBUG") && guard < 120)
-          println(f"dbg g=$guard out.valid=${dut.io.out.valid.peek().litToBoolean}" +
-            f" drained=${dut.io.drained.peek().litToBoolean}" +
-            f" wreq=${dut.io.wordMemReq.valid.peek().litToBoolean}" +
-            f" kreq=${dut.io.memReq.valid.peek().litToBoolean}" +
-            f" retire=${dut.io.drawRetire.valid.peek().litToBoolean}")
+          println(
+            f"dbg g=$guard out.valid=${dut.io.out.valid.peek().litToBoolean}" +
+              f" drained=${dut.io.drained.peek().litToBoolean}" +
+              f" wreq=${dut.io.wordMemReq.valid.peek().litToBoolean}" +
+              f" kreq=${dut.io.memReq.valid.peek().litToBoolean}" +
+              f" retire=${dut.io.drawRetire.valid.peek().litToBoolean}"
+          )
         if (emitted.size == 2 && dut.io.drained.peek().litToBoolean)
           drained = true
       }
-      assert(emitted == Seq(0x11, 0x22),
-        s"overlapped draws emitted out of order: $emitted")
+      assert(emitted == Seq(0x11, 0x22), s"overlapped draws emitted out of order: $emitted")
 
-      assert(depthOverrides.toSeq == Seq(true, false),
-        s"each overlapping batch must retain its ABI: $depthOverrides")
+      assert(depthOverrides.toSeq == Seq(true, false), s"each overlapping batch must retain its ABI: $depthOverrides")
 
       // Drain, then exactly one further retire event (draw 1's fired during
       // the emission loop once the OM-facing output drained).
-      assert(pump(dut, mem, () => dut.io.drained.peek().litToBoolean),
-        "overlapped draws did not drain")
+      assert(pump(dut, mem, () => dut.io.drained.peek().litToBoolean), "overlapped draws did not drain")
       dut.io.drawRetire.valid.expect(true.B, "draw 2 did not retire")
       dut.clock.step()
       dut.io.drawRetire.valid.expect(false.B)
@@ -1245,8 +1300,11 @@ class KernelFragStageSpec extends AnyFlatSpec {
       dut.io.out.ready.poke(false.B)
       mem.putWord(0x1000L, 0, sw(0, 1, 204))
       mem.putWord(0x1000L, 1, cease)
-      fireQuad(dut, Seq.fill(3)(Frag(0, 0, 0, covered = false, coverageMask = 0)) :+
-        Frag(1, 1, 0x20))
+      fireQuad(
+        dut,
+        Seq.fill(3)(Frag(0, 0, 0, covered = false, coverageMask = 0)) :+
+          Frag(1, 1, 0x20)
+      )
       dut.io.flush.poke(true.B); dut.clock.step(); dut.io.flush.poke(false.B)
       assert(pump(dut, mem, () => dut.io.out.valid.peek().litToBoolean))
       for (_ <- 0 until 8) {
@@ -1288,8 +1346,7 @@ class KernelFragStageSpec extends AnyFlatSpec {
 
       fireQuad(dut, Seq(Frag(1, 2, 0x20)))
       dut.io.flush.poke(true.B)
-      assert(pump(dut, mem, () => dut.io.drawRetire.valid.peek().litToBoolean),
-        "flushed draw did not retire")
+      assert(pump(dut, mem, () => dut.io.drawRetire.valid.peek().litToBoolean), "flushed draw did not retire")
       dut.io.drained.expect(true.B)
       dut.clock.step(4)
       dut.io.drawRetire.valid.expect(false.B)
@@ -1307,12 +1364,23 @@ class KernelFragStageSpec extends AnyFlatSpec {
       dut.io.out.ready.poke(false.B)
       mem.putWord(0x1000L, 0, cease)
       fireQuad(dut, Seq.fill(4)(Frag(0, 0, 0, covered = false, coverageMask = 0)))
-      fireQuad(dut, Seq.fill(3)(Frag(0, 0, 0, covered = false, coverageMask = 0)) :+
-        Frag(7, 7, 7))
+      fireQuad(
+        dut,
+        Seq.fill(3)(Frag(0, 0, 0, covered = false, coverageMask = 0)) :+
+          Frag(7, 7, 7)
+      )
       // Trailing empty raster quads can delay flush beyond the full batch's
       // execution. Its registered final output must retain the draw context.
-      assert(pump(dut, mem, () => dut.io.drained.peek().litToBoolean &&
-        dut.io.out.valid.peek().litToBoolean, 2000))
+      assert(
+        pump(
+          dut,
+          mem,
+          () =>
+            dut.io.drained.peek().litToBoolean &&
+              dut.io.out.valid.peek().litToBoolean,
+          2000
+        )
+      )
       dut.clock.step(8)
       dut.io.flush.poke(true.B); dut.clock.step(); dut.io.flush.poke(false.B)
       for (_ <- 0 until 4) {
@@ -1326,19 +1394,17 @@ class KernelFragStageSpec extends AnyFlatSpec {
     }
   }
 
-  /** Result of one ABI output-control run: whether a fragment emitted, its
-    * effective coverage mask, the selected depth source, the per-sample
-    * depths presented alongside it, and whether the draw retired.  `retired`
-    * is only sampled at the instant the run's predicate fired, so it is
-    * meaningful for discarded draws (where retire is the only observable
-    * event) and not for emitting ones. */
-  private case class AbiResult(emitted: Boolean, mask: Int,
-    overrideDepth: Boolean, depths: Seq[Int], retired: Boolean)
+  /** Result of one ABI output-control run: whether a fragment emitted, its effective coverage mask, the selected depth
+    * source, the per-sample depths presented alongside it, and whether the draw retired. `retired` is only sampled at
+    * the instant the run's predicate fired, so it is meaningful for discarded draws (where retire is the only
+    * observable event) and not for emitting ones.
+    */
+  private case class AbiResult(emitted: Boolean, mask: Int, overrideDepth: Boolean, depths: Seq[Int], retired: Boolean)
 
-  /** Runs a single covered (or helper) fragment through a shader that writes
-    * the output-control word from a uniform, with the given ABI selection. */
-  private def runAbiCase(abi1: Boolean, controlWord: Int, mask: Int,
-    covered: Boolean): AbiResult = {
+  /** Runs a single covered (or helper) fragment through a shader that writes the output-control word from a uniform,
+    * with the given ABI selection.
+    */
+  private def runAbiCase(abi1: Boolean, controlWord: Int, mask: Int, covered: Boolean): AbiResult = {
     val config = GpuConfig(lanes = 4, warps = 2)
     var result: AbiResult = null
     simulate(new KernelFragStageWithKernel(config)) { dut =>
@@ -1358,8 +1424,7 @@ class KernelFragStageSpec extends AnyFlatSpec {
       mem.putWord(0x8100L, 8, BigInt(controlWord & 0xffffffffL))
 
       val depths = Seq(0x111, 0x222, 0x333, 0x444)
-      pokeQuadLanes(dut, Seq(Frag(3, 4, 0x20,
-        covered = covered, coverageMask = mask)))
+      pokeQuadLanes(dut, Seq(Frag(3, 4, 0x20, covered = covered, coverageMask = mask)))
       for (s <- depths.indices) dut.io.fragDepths(0)(s).poke(depths(s).U)
       dut.io.fragIn.valid.poke(true.B); dut.clock.step()
       dut.io.fragIn.valid.poke(false.B)
@@ -1367,15 +1432,25 @@ class KernelFragStageSpec extends AnyFlatSpec {
       dut.io.abi1.poke((!abi1).B)
       dut.io.flush.poke(true.B); dut.clock.step(); dut.io.flush.poke(false.B)
 
-      assert(pump(dut, mem, () => dut.io.out.valid.peek().litToBoolean ||
-        dut.io.drawRetire.valid.peek().litToBoolean), "ABI draw must emit or retire")
+      assert(
+        pump(
+          dut,
+          mem,
+          () =>
+            dut.io.out.valid.peek().litToBoolean ||
+              dut.io.drawRetire.valid.peek().litToBoolean
+        ),
+        "ABI draw must emit or retire"
+      )
       val retired = dut.io.drawRetire.valid.peek().litToBoolean
       if (dut.io.out.valid.peek().litToBoolean) {
-        result = AbiResult(true,
+        result = AbiResult(
+          true,
           dut.io.out.bits.coverageMask.peek().litValue.toInt,
           dut.io.depthOverride.peek().litToBoolean,
           depths.indices.map(s => dut.io.outDepths(s).peek().litValue.toInt),
-          retired)
+          retired
+        )
       } else {
         result = AbiResult(false, 0, false, Seq.empty, retired)
       }
@@ -1386,80 +1461,71 @@ class KernelFragStageSpec extends AnyFlatSpec {
   it should "split the ABI-1 output-control word into emit and depth override" in {
     // ABI 0 keeps the legacy contract: any nonzero word emits and the
     // shader-depth word is always selected.
-    val abi0 = runAbiCase(abi1 = false, controlWord = 0x2, mask = 0xa,
-      covered = true)
+    val abi0 = runAbiCase(abi1 = false, controlWord = 0x2, mask = 0xa, covered = true)
     assert(abi0.emitted, "ABI 0 nonzero word must emit")
     assert(abi0.mask == 0xa, s"ABI 0 effective mask should be 0xa, got ${abi0.mask}")
     assert(abi0.overrideDepth, "ABI 0 always selects the shader-depth word")
 
     // ABI 1: bit 0 gates emit, bit 1 selects the override.  Without override
     // the rasterizer's per-sample depths ride through.
-    val abi1Emit = runAbiCase(abi1 = true, controlWord = 0x1, mask = 0xf,
-      covered = true)
+    val abi1Emit = runAbiCase(abi1 = true, controlWord = 0x1, mask = 0xf, covered = true)
     assert(abi1Emit.emitted, "ABI 1 bit 0 set must emit")
-    assert(abi1Emit.mask == 0xf,
-      s"ABI 1 effective mask should be 0xf, got ${abi1Emit.mask}")
+    assert(abi1Emit.mask == 0xf, s"ABI 1 effective mask should be 0xf, got ${abi1Emit.mask}")
     assert(!abi1Emit.overrideDepth, "ABI 1 bit 1 clear selects raster depths")
-    assert(abi1Emit.depths == Seq(0x111, 0x222, 0x333, 0x444),
-      s"ABI 1 per-sample depths: got ${abi1Emit.depths}")
+    assert(abi1Emit.depths == Seq(0x111, 0x222, 0x333, 0x444), s"ABI 1 per-sample depths: got ${abi1Emit.depths}")
 
     // Bit 0 clear suppresses the fragment entirely.
-    val abi1Gate = runAbiCase(abi1 = true, controlWord = 0x2, mask = 0xf,
-      covered = true)
+    val abi1Gate = runAbiCase(abi1 = true, controlWord = 0x2, mask = 0xf, covered = true)
     assert(!abi1Gate.emitted, "ABI 1 bit 0 clear must not emit")
 
     // Both bits set selects the shader-depth word again.
-    val abi1Override = runAbiCase(abi1 = true, controlWord = 0x3, mask = 0xf,
-      covered = true)
+    val abi1Override = runAbiCase(abi1 = true, controlWord = 0x3, mask = 0xf, covered = true)
     assert(abi1Override.emitted, "ABI 1 word 0x3 must emit")
-    assert(abi1Override.overrideDepth,
-      "ABI 1 bit 1 set must select the shader-depth word")
+    assert(abi1Override.overrideDepth, "ABI 1 bit 1 set must select the shader-depth word")
 
     // Reserved bits discard in ABI 1 even with emit set; ABI 0 keeps the
     // full-width nonzero convention for the identical shader output.
-    assert(!runAbiCase(abi1 = true, controlWord = 0x80000001, mask = 0xf,
-      covered = true).emitted, "ABI 1 reserved bits must discard and retire")
-    assert(runAbiCase(abi1 = false, controlWord = 0x80000001, mask = 0xf,
-      covered = true).emitted, "ABI 0 high-bit words must remain compatible")
+    assert(
+      !runAbiCase(abi1 = true, controlWord = 0x80000001, mask = 0xf, covered = true).emitted,
+      "ABI 1 reserved bits must discard and retire"
+    )
+    assert(
+      runAbiCase(abi1 = false, controlWord = 0x80000001, mask = 0xf, covered = true).emitted,
+      "ABI 0 high-bit words must remain compatible"
+    )
 
     // An uncovered helper lane never emits under either ABI.
-    assert(!runAbiCase(abi1 = false, controlWord = 1, mask = 0x1,
-      covered = false).emitted, "ABI 0 helper must not emit")
-    assert(!runAbiCase(abi1 = true, controlWord = 0x1, mask = 0x1,
-      covered = false).emitted, "ABI 1 helper must not emit")
+    assert(
+      !runAbiCase(abi1 = false, controlWord = 1, mask = 0x1, covered = false).emitted,
+      "ABI 0 helper must not emit"
+    )
+    assert(
+      !runAbiCase(abi1 = true, controlWord = 0x1, mask = 0x1, covered = false).emitted,
+      "ABI 1 helper must not emit"
+    )
 
     // MSAA-shaped coverage masks: the effective mask is the raster mask
     // verbatim for both the 2x (0x3) and 4x (0xf) shapes.
-    val abi1TwoX = runAbiCase(abi1 = true, controlWord = 0x1, mask = 0x3,
-      covered = true)
+    val abi1TwoX = runAbiCase(abi1 = true, controlWord = 0x1, mask = 0x3, covered = true)
     assert(abi1TwoX.emitted, "ABI 1 must emit a 2x-covered fragment")
-    assert(abi1TwoX.mask == 0x3,
-      s"ABI 1 2x effective mask should be 0x3, got 0x${abi1TwoX.mask.toHexString}")
-    assert(abi1TwoX.depths == Seq(0x111, 0x222, 0x333, 0x444),
-      s"ABI 1 2x per-sample depths: got ${abi1TwoX.depths}")
+    assert(abi1TwoX.mask == 0x3, s"ABI 1 2x effective mask should be 0x3, got 0x${abi1TwoX.mask.toHexString}")
+    assert(abi1TwoX.depths == Seq(0x111, 0x222, 0x333, 0x444), s"ABI 1 2x per-sample depths: got ${abi1TwoX.depths}")
 
     // A shader discard (bit 0 clear) with a real 2x or 4x mask suppresses the
     // pixel entirely, yet the draw still retires exactly once.
     for (mask <- Seq(0x3, 0xf)) {
-      val discard = runAbiCase(abi1 = true, controlWord = 0x0, mask = mask,
-        covered = true)
-      assert(!discard.emitted,
-        s"ABI 1 control 0 must discard the 0x${mask.toHexString}-covered fragment")
-      assert(discard.retired,
-        s"a discarded 0x${mask.toHexString}-covered draw must still retire")
+      val discard = runAbiCase(abi1 = true, controlWord = 0x0, mask = mask, covered = true)
+      assert(!discard.emitted, s"ABI 1 control 0 must discard the 0x${mask.toHexString}-covered fragment")
+      assert(discard.retired, s"a discarded 0x${mask.toHexString}-covered draw must still retire")
     }
 
     // Reserved-bit violations discard under a real 2x mask as well.
-    val malformed2x = runAbiCase(abi1 = true, controlWord = 0x80000003,
-      mask = 0x3, covered = true)
-    assert(!malformed2x.emitted,
-      "ABI 1 reserved bits must discard a 2x-covered fragment")
-    assert(malformed2x.retired,
-      "a malformed-control 2x draw must still retire")
+    val malformed2x = runAbiCase(abi1 = true, controlWord = 0x80000003, mask = 0x3, covered = true)
+    assert(!malformed2x.emitted, "ABI 1 reserved bits must discard a 2x-covered fragment")
+    assert(malformed2x.retired, "a malformed-control 2x draw must still retire")
 
     // An uncovered helper stays suppressed with a full 4x mask.
-    val helper4x = runAbiCase(abi1 = true, controlWord = 0x1, mask = 0xf,
-      covered = false)
+    val helper4x = runAbiCase(abi1 = true, controlWord = 0x1, mask = 0xf, covered = false)
     assert(!helper4x.emitted, "ABI 1 helper must not emit under a 4x mask")
     assert(helper4x.retired, "a helper-only 4x draw must still retire")
   }

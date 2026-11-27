@@ -11,16 +11,15 @@ class PersistentTileRenderCoreSpec extends AnyFlatSpec {
   behavior of "command-driven persistent tile jobs"
 
   it should "validate command bounds, freeze jobs, drain faults and retain tagged results through reuse" in {
-    val cfg = GraphicsConfig(screenWidth = 16, screenHeight = 16,
-      tileSize = 16, tileAttachments = true)
+    val cfg = GraphicsConfig(screenWidth = 16, screenHeight = 16, tileSize = 16, tileAttachments = true)
     simulate(new RenderCore(cfg, persistentAttachments = true, tileStoreCredits = 8)) { dut =>
       def zeroInputs(d: Data): Unit = d match {
-        case r: Record => r.elements.values.foreach(zeroInputs)
-        case v: Vec[_] => v.foreach(zeroInputs)
+        case r: Record                                                     => r.elements.values.foreach(zeroInputs)
+        case v: Vec[_]                                                     => v.foreach(zeroInputs)
         case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b.poke(false.B)
         case s: SInt if DataMirror.directionOf(s) == ActualDirection.Input => s.poke(0.S)
         case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u.poke(0.U)
-        case _ => ()
+        case _                                                             => ()
       }
       zeroInputs(dut.io)
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
@@ -103,8 +102,7 @@ class PersistentTileRenderCoreSpec extends AnyFlatSpec {
           dut.io.texMem.req.bits.write.expect(false.B)
           val fault = !faultInjected
           faultInjected ||= fault
-          textures += Reply(dut.io.texMem.req.bits.addr.peek().litValue.toLong,
-            0xffffffffL, false, fault, cycle + 13)
+          textures += Reply(dut.io.texMem.req.bits.addr.peek().litValue.toLong, 0xffffffffL, false, fault, cycle + 13)
         }
         val cbValid = dut.io.cbMem.req.valid.peek().litToBoolean
         val cbFire = cbValid && dut.io.cbMem.req.ready.peek().litToBoolean
@@ -132,12 +130,30 @@ class PersistentTileRenderCoreSpec extends AnyFlatSpec {
         } else assert(attachmentStall.isEmpty, "offered attachment request disappeared")
         if (fbFire) {
           dut.io.fbMem.req.bits.write.expect(true.B)
-          assert(!Set("cancel", "cancelEarly", "commandFault", "textureFault", "badVersion", "badBounds", "badPass", "unaligned", "overflow", "badLimit")(phase),
-            "a failed or invalid job exported attachments")
+          assert(
+            !Set(
+              "cancel",
+              "cancelEarly",
+              "commandFault",
+              "textureFault",
+              "badVersion",
+              "badBounds",
+              "badPass",
+              "unaligned",
+              "overflow",
+              "badLimit"
+            )(phase),
+            "a failed or invalid job exported attachments"
+          )
           val fault = phase == "attachmentFault" && !faultInjected
           faultInjected ||= fault
-          attachments += Reply(dut.io.fbMem.req.bits.addr.peek().litValue.toLong,
-            dut.io.fbMem.req.bits.data.peek().litValue.toLong, true, fault, cycle + 7 + rng.nextInt(20))
+          attachments += Reply(
+            dut.io.fbMem.req.bits.addr.peek().litValue.toLong,
+            dut.io.fbMem.req.bits.data.peek().litValue.toLong,
+            true,
+            fault,
+            cycle + 7 + rng.nextInt(20)
+          )
           writes += 1
         }
         if (commandFire) commandReply = None
@@ -155,17 +171,47 @@ class PersistentTileRenderCoreSpec extends AnyFlatSpec {
         assert(p, s"timeout $phase at $cycle; command reads=$reads, attachment writes=$writes")
       }
 
-      val cases = Seq("success", "override", "jobBlend", "cancelEarly", "cancel", "commandFault", "textureFault", "attachmentFault", "badVersion",
-        "badBounds", "badPass", "unaligned", "overflow", "badLimit", "boundary", "empty", "success")
+      val cases = Seq(
+        "success",
+        "override",
+        "jobBlend",
+        "cancelEarly",
+        "cancel",
+        "commandFault",
+        "textureFault",
+        "attachmentFault",
+        "badVersion",
+        "badBounds",
+        "badPass",
+        "unaligned",
+        "overflow",
+        "badLimit",
+        "boundary",
+        "empty",
+        "success"
+      )
       for ((name, index) <- cases.zipWithIndex) {
         val startCycle = cycle
         phase = name; run = index; reads = 0; writes = 0; holdingCommands = false; faultInjected = false
-        base = if (phase == "boundary") (1L << 32) - 160
-          else if (phase == "overflow") (1L << 32) - 4 else 0x4000L
-        val count = if (phase == "boundary") 1 else if (phase == "empty") 0
-          else if (Set("cancel", "commandFault")(phase)) 6 else 2
-        val p = Pass(width = 8, height = 8, originX = 0, originY = 0, tileLog2 = 3,
-          id = index, generation = index + 17, context = index + 100)
+        base =
+          if (phase == "boundary") (1L << 32) - 160
+          else if (phase == "overflow") (1L << 32) - 4
+          else 0x4000L
+        val count =
+          if (phase == "boundary") 1
+          else if (phase == "empty") 0
+          else if (Set("cancel", "commandFault")(phase)) 6
+          else 2
+        val p = Pass(
+          width = 8,
+          height = 8,
+          originX = 0,
+          originY = 0,
+          tileLog2 = 3,
+          id = index,
+          generation = index + 17,
+          context = index + 100
+        )
         for (depth <- Seq(false, true); y <- 0 until 8; x <- 0 until 8)
           memory(p.address(x, y, 0, depth)) = 0xdeadbeefL
         job.bits.poke(0.U.asTypeOf(new TileCommandJob))
@@ -174,7 +220,8 @@ class PersistentTileRenderCoreSpec extends AnyFlatSpec {
         if (phase == "badPass") job.bits.passDescriptor.version.poke(2.U)
         job.bits.config.cmdBase.poke((base + (if (phase == "unaligned") 1 else 0)).U)
         job.bits.config.cmdCount.poke(count.U)
-        val limit = if (phase == "boundary" || phase == "overflow") 1L << 32
+        val limit =
+          if (phase == "boundary" || phase == "overflow") 1L << 32
           else if (phase == "badLimit") (1L << 32) + 1
           else base + count * 160L - (if (phase == "badBounds") 1 else 0)
         job.bits.commandLimit.poke(limit.U)
@@ -208,17 +255,21 @@ class PersistentTileRenderCoreSpec extends AnyFlatSpec {
         }
         waitFor(completion.valid.peek().litToBoolean)
         val invalid = Set("badVersion", "badBounds", "badPass", "unaligned", "overflow", "badLimit")(phase)
-        val expectedStatus = if (invalid) TilePassStatus.invalidDescriptor
+        val expectedStatus =
+          if (invalid) TilePassStatus.invalidDescriptor
           else if (phase == "cancel" || phase == "cancelEarly") TilePassStatus.cancelled
           else if (phase == "commandFault") TilePassStatus.commandFault
           else if (phase == "textureFault") TilePassStatus.textureFault
-          else if (phase == "attachmentFault") TilePassStatus.memoryFault else TilePassStatus.success
+          else if (phase == "attachmentFault") TilePassStatus.memoryFault
+          else TilePassStatus.success
         completion.bits.status.expect(expectedStatus.U)
         completion.bits.identity.context.expect(p.context.U)
         completion.bits.identity.pass.expect(p.id.U)
         completion.bits.identity.generation.expect(p.generation.U)
-        assert(commands.isEmpty && commandReply.isEmpty && attachments.isEmpty && attachmentReply.isEmpty &&
-          textures.isEmpty && textureReply.isEmpty)
+        assert(
+          commands.isEmpty && commandReply.isEmpty && attachments.isEmpty && attachmentReply.isEmpty &&
+            textures.isEmpty && textureReply.isEmpty
+        )
         if (phase == "textureFault") assert(faultInjected && writes == 0)
         if (invalid) assert(reads == 0 && writes == 0)
         if (phase == "cancelEarly") assert(reads == 0 && writes == 0)
@@ -228,13 +279,16 @@ class PersistentTileRenderCoreSpec extends AnyFlatSpec {
           for (depth <- Seq(false, true); y <- 0 until 8; x <- 0 until 8) {
             val covered = count > 0 && x > 0 && y > 0
             val expected = if (depth) { if (covered) (p.depthClear & 0xff000000L) | 16L else p.depthClear }
-              else if (covered && phase == "override") 0x14283cffL
-              else if (covered && phase == "jobBlend") ((216L + run) << 24) | 0x00486cffL
-              else if (covered) ((200L + run) << 24) | 0x00283cffL else p.colorClear
+            else if (covered && phase == "override") 0x14283cffL
+            else if (covered && phase == "jobBlend") ((216L + run) << 24) | 0x00486cffL
+            else if (covered) ((200L + run) << 24) | 0x00283cffL
+            else p.colorClear
             assert(memory(p.address(x, y, 0, depth)) == expected, s"$phase depth=$depth ($x,$y)")
           }
         }
-        info(s"phase=$phase status=$expectedStatus commandReads=$reads attachmentWrites=$writes cycles=${cycle - startCycle}")
+        info(
+          s"phase=$phase status=$expectedStatus commandReads=$reads attachmentWrites=$writes cycles=${cycle - startCycle}"
+        )
         val result = completion.bits.peek().litValue
         dut.io.tileCancel.get.poke(true.B)
         for (_ <- 0 until 4) {

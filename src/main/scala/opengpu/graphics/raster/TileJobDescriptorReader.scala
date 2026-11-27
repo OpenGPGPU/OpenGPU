@@ -24,22 +24,21 @@ class TileJobDescriptorRequest(commandIdWidth: Int) extends Bundle {
 class TileHostCompletion(commandIdWidth: Int) extends Bundle {
   val commandId = UInt(commandIdWidth.W)
   val pass = new TileRenderPassCompletion
+
   /** Accepted draw-record read bytes, excluding descriptor lines. */
   val commandBytesFetched = UInt(64.W)
 }
 
-/** Own one bounded descriptor, immutable job and tagged result through drain.
-  * Descriptors use four independently tagged 64-byte uncached reads. All four
-  * can be outstanding; responses may return in any order.
-  * Cancellation drains every offered/accepted request before publishing a
-  * result, and preserves an offered job until the core accepts/cancels it.
+/** Own one bounded descriptor, immutable job and tagged result through drain. Descriptors use four independently tagged
+  * 64-byte uncached reads. All four can be outstanding; responses may return in any order. Cancellation drains every
+  * offered/accepted request before publishing a result, and preserves an offered job until the core accepts/cancels it.
   */
 class TileJobDescriptorReader(
-  config: GpuConfig = GpuConfig(),
-  graphics: GraphicsConfig = GraphicsConfig(),
-  commandIdWidth: Int = 8,
-  memoryTransactions: Int = 8,
-  transactionId: Int = 0
+    config: GpuConfig = GpuConfig(),
+    graphics: GraphicsConfig = GraphicsConfig(),
+    commandIdWidth: Int = 8,
+    memoryTransactions: Int = 8,
+    transactionId: Int = 0
 ) extends Module {
   require(transactionId >= 0 && transactionId + TileJobMemoryLayout.lines <= memoryTransactions)
   val io = IO(new Bundle {
@@ -109,14 +108,23 @@ class TileJobDescriptorReader(
     words(1) === TileJobMemoryLayout.words.U &&
     Seq(8, 15, 21, 27).map(i => masked(i, 1)).reduce(_ && _) &&
     Seq(6, 9, 10).map(i => masked(i, 65535)).reduce(_ && _) &&
-    masked(12, BigInt(7) | (BigInt(31) << 8) | (BigInt(31) << 16) |
-      (BigInt(3) << 24) | (BigInt(15) << 28)) &&
+    masked(
+      12,
+      BigInt(7) | (BigInt(31) << 8) | (BigInt(31) << 16) |
+        (BigInt(3) << 24) | (BigInt(15) << 28)
+    ) &&
     masked(17, 7) && masked(23, 7) &&
-    masked(29, BigInt(1) | (BigInt(7) << 4) | (BigInt(1) << 7) |
-      (BigInt(3) << 8) | (BigInt(3) << 16)) &&
+    masked(
+      29,
+      BigInt(1) | (BigInt(7) << 4) | (BigInt(1) << 7) |
+        (BigInt(3) << 8) | (BigInt(3) << 16)
+    ) &&
     masked(30, 4095) && masked(31, 0xffffff) && masked(32, 0x7ff1) &&
-    masked(34, 0x3fff3fff) && masked(35, BigInt(1) | (BigInt(15) << 2) |
-      (BigInt(1) << 8) | (BigInt(15) << 12) | (BigInt(31) << 16)) && masked(36, 7) &&
+    masked(34, 0x3fff3fff) && masked(
+      35,
+      BigInt(1) | (BigInt(15) << 2) |
+        (BigInt(1) << 8) | (BigInt(15) << 12) | (BigInt(31) << 16)
+    ) && masked(36, 7) &&
     words.drop(37).map(_ === 0.U).reduce(_ && _) &&
     c.screenW > 0.U && c.screenH > 0.U &&
     c.screenW <= graphics.screenWidth.U && c.screenH <= graphics.screenHeight.U &&
@@ -176,12 +184,15 @@ class TileJobDescriptorReader(
     live := liveNext
     when(io.memoryRequest.fire) { issued := issued + 1.U }
     when(io.memoryResponse.valid) {
-      assert(responseInRange && liveWithIssue(responseLine),
-        "descriptor response must belong to a live reserved transaction ID")
+      assert(
+        responseInRange && liveWithIssue(responseLine),
+        "descriptor response must belong to a live reserved transaction ID"
+      )
     }
     when(io.memoryResponse.fire) {
-      for (i <- 0 until 16) words(Cat(responseLine, i.U(4.W))) :=
-        io.memoryResponse.bits.readData(32 * i + 31, 32 * i)
+      for (i <- 0 until 16)
+        words(Cat(responseLine, i.U(4.W))) :=
+          io.memoryResponse.bits.readData(32 * i + 31, 32 * i)
       when(io.memoryResponse.bits.fault) { failed := true.B }
     }
     when(!offeredNext && liveNext === 0.U) {
@@ -198,8 +209,10 @@ class TileJobDescriptorReader(
   when(io.job.fire) { state := running }
   when(state === running && io.commandReadAccepted) { fetched := fetched + 4.U }
   when(io.passCompletion.fire) {
-    assert(io.passCompletion.bits.identity.asUInt === decoded.passDescriptor.identity.asUInt,
-      "host completion must retain the admitted job identity")
+    assert(
+      io.passCompletion.bits.identity.asUInt === decoded.passDescriptor.identity.asUInt,
+      "host completion must retain the admitted job identity"
+    )
     finish(io.passCompletion.bits.status)
     resultBits.pass := io.passCompletion.bits
     resultBits.commandBytesFetched := fetched + Mux(io.commandReadAccepted, 4.U, 0.U)

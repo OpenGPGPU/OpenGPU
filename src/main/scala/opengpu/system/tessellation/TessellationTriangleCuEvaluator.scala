@@ -7,33 +7,46 @@ import opengpu.config.GpuConfig
 import opengpu.dispatch.{KernelLaunch, TaggedKernelCompletion, TaggedKernelLaunch}
 import opengpu.graphics._
 
-/** Adapt triangle evaluation to the existing checked patch reader and scalar
-  * geometry-CU executor. The triangle vertex index is retained locally because
-  * the isoline executor's correlation tag has only one vertex bit. Only one
+/** Adapt triangle evaluation to the existing checked patch reader and scalar geometry-CU executor. The triangle vertex
+  * index is retained locally because the isoline executor's correlation tag has only one vertex bit. Only one
   * evaluation is outstanding; accepted requests drain across cancellation.
   */
-class TessellationTriangleCuEvaluator(config: GpuConfig, idWidth: Int, numComputeUnits: Int,evaluationPatchAvailable:Boolean=false,tessellationInfoAvailable:Boolean=false) extends Module {
+class TessellationTriangleCuEvaluator(
+    config: GpuConfig,
+    idWidth: Int,
+    numComputeUnits: Int,
+    evaluationPatchAvailable: Boolean = false,
+    tessellationInfoAvailable: Boolean = false
+) extends Module {
   // Preserve the previous full JVM constructor with the language service disabled.
-  def this(config: GpuConfig,idWidth: Int,numComputeUnits: Int,evaluationPatchAvailable:Boolean) =
-    this(config,idWidth,numComputeUnits,evaluationPatchAvailable,false)
+  def this(config: GpuConfig, idWidth: Int, numComputeUnits: Int, evaluationPatchAvailable: Boolean) =
+    this(config, idWidth, numComputeUnits, evaluationPatchAvailable, false)
 
   val io = IO(new Bundle {
-    val inputPatchBinding=if(tessellationInfoAvailable)Some(Input(Valid(new TessellationInputPatchBinding)))else None
-    val tessellationTask=if(tessellationInfoAvailable)Some(Output(Valid(new TessellationShaderTaskBinding)))else None
-    val patchLayout=if(evaluationPatchAvailable)Some(Input(new TessellationPatchLayout))else None
-    val evaluationPatchBinding=if(evaluationPatchAvailable)Some(Output(Valid(new TessellationEvaluationPatchBinding)))else None
-    val request = Flipped(Decoupled(new TriangleEvaluationRequest)); val response = Decoupled(new TriangleEvaluationResponse)
+    val inputPatchBinding =
+      if (tessellationInfoAvailable) Some(Input(Valid(new TessellationInputPatchBinding))) else None
+    val tessellationTask =
+      if (tessellationInfoAvailable) Some(Output(Valid(new TessellationShaderTaskBinding))) else None
+    val patchLayout = if (evaluationPatchAvailable) Some(Input(new TessellationPatchLayout)) else None
+    val evaluationPatchBinding =
+      if (evaluationPatchAvailable) Some(Output(Valid(new TessellationEvaluationPatchBinding))) else None
+    val request = Flipped(Decoupled(new TriangleEvaluationRequest));
+    val response = Decoupled(new TriangleEvaluationResponse)
     val count = Input(UInt(6.W)); val selections = Input(Vec(61, new IsolinePatchInputSelection))
-    val commandId = Input(UInt(idWidth.W)); val kernel = Input(new KernelLaunch(config)); val outputComponents = Input(UInt(7.W))
+    val commandId = Input(UInt(idWidth.W)); val kernel = Input(new KernelLaunch(config));
+    val outputComponents = Input(UInt(7.W))
     val inspect = Decoupled(new TessellationPatchAccess); val reply = Flipped(Decoupled(new TessellationContextReply))
-    val launch = Decoupled(new TaggedKernelLaunch(config, idWidth)); val geometryTask = Output(Valid(new GeometryInvocationLaunch))
+    val launch = Decoupled(new TaggedKernelLaunch(config, idWidth));
+    val geometryTask = Output(Valid(new GeometryInvocationLaunch))
     val kernelCompletion = Flipped(Decoupled(new TaggedKernelCompletion(idWidth)))
     val event = Flipped(Vec(numComputeUnits, Decoupled(new GeometryOutputCommand)))
     val owner = Input(UInt(numComputeUnits.W)); val taskIds = Input(Vec(numComputeUnits, UInt(idWidth.W)))
     val cancelCu = Output(Vec(numComputeUnits, Bool())); val cancel = Input(Bool()); val busy = Output(Bool())
   })
   private val reader = Module(new IsolinePatchInputReader(config, idWidth))
-  private val executor = Module(new IsolineGeometryCuExecutor(config, idWidth, numComputeUnits,evaluationPatchAvailable,tessellationInfoAvailable))
+  private val executor = Module(
+    new IsolineGeometryCuExecutor(config, idWidth, numComputeUnits, evaluationPatchAvailable, tessellationInfoAvailable)
+  )
   private val active = RegInit(false.B); private val vertex = Reg(UInt(2.W))
   private val cancelled = RegInit(false.B)
   private val stop = io.cancel || (active && cancelled)
@@ -48,7 +61,10 @@ class TessellationTriangleCuEvaluator(config: GpuConfig, idWidth: Int, numComput
   reader.io.count := io.count; reader.io.selections := io.selections
   reader.io.commandId := io.commandId; reader.io.kernel := io.kernel; reader.io.outputComponents := io.outputComponents
   reader.io.cancel := stop; io.inspect <> reader.io.inspect; reader.io.reply <> io.reply
-  if(evaluationPatchAvailable){executor.io.patchLayout.get:=io.patchLayout.get;io.evaluationPatchBinding.get:=executor.io.evaluationPatchBinding.get}
+  if (evaluationPatchAvailable) {
+    executor.io.patchLayout.get := io.patchLayout.get;
+    io.evaluationPatchBinding.get := executor.io.evaluationPatchBinding.get
+  }
   executor.io.task <> reader.io.task; reader.io.result <> executor.io.response
   // An already offered reader task must be accepted before cancellation reaches
   // the executor; otherwise a held task and an idle executor can deadlock.
@@ -67,10 +83,10 @@ class TessellationTriangleCuEvaluator(config: GpuConfig, idWidth: Int, numComput
   when(io.response.fire) { active := false.B }
   io.busy := active || reader.io.busy || executor.io.busy
 
-  if(tessellationInfoAvailable){
-    val binding=Reg(Valid(new TessellationInputPatchBinding))
-    when(io.request.fire){binding:=io.inputPatchBinding.get}
-    executor.io.inputPatchBinding.get:=binding
-    io.tessellationTask.get:=executor.io.tessellationTask.get
+  if (tessellationInfoAvailable) {
+    val binding = Reg(Valid(new TessellationInputPatchBinding))
+    when(io.request.fire) { binding := io.inputPatchBinding.get }
+    executor.io.inputPatchBinding.get := binding
+    io.tessellationTask.get := executor.io.tessellationTask.get
   }
 }

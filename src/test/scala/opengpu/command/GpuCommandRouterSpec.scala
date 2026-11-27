@@ -56,21 +56,17 @@ class GpuCommandRouterSpec extends AnyFlatSpec {
     dut.io.resolve.ready.poke(false.B)
     dut.io.invalidate.ready.poke(false.B)
     dut.io.kernelCompletion.valid.poke(false.B)
-    dut.io.kernelCompletion.bits.poke(
-      0.U.asTypeOf(dut.io.kernelCompletion.bits))
+    dut.io.kernelCompletion.bits.poke(0.U.asTypeOf(dut.io.kernelCompletion.bits))
     dut.io.copyCompletion.valid.poke(false.B)
     dut.io.copyCompletion.bits.poke(0.U.asTypeOf(dut.io.copyCompletion.bits))
     dut.io.fillCompletion.valid.poke(false.B)
     dut.io.fillCompletion.bits.poke(0.U.asTypeOf(dut.io.fillCompletion.bits))
     dut.io.stridedCopyCompletion.valid.poke(false.B)
-    dut.io.stridedCopyCompletion.bits.poke(
-      0.U.asTypeOf(dut.io.stridedCopyCompletion.bits))
+    dut.io.stridedCopyCompletion.bits.poke(0.U.asTypeOf(dut.io.stridedCopyCompletion.bits))
     dut.io.resolveCompletion.valid.poke(false.B)
-    dut.io.resolveCompletion.bits.poke(
-      0.U.asTypeOf(dut.io.resolveCompletion.bits))
+    dut.io.resolveCompletion.bits.poke(0.U.asTypeOf(dut.io.resolveCompletion.bits))
     dut.io.invalidateCompletion.valid.poke(false.B)
-    dut.io.invalidateCompletion.bits.poke(
-      0.U.asTypeOf(dut.io.invalidateCompletion.bits))
+    dut.io.invalidateCompletion.bits.poke(0.U.asTypeOf(dut.io.invalidateCompletion.bits))
     dut.io.blockDispatch.poke(false.B)
     dut.io.pathReset.poke(false.B)
   }
@@ -83,8 +79,7 @@ class GpuCommandRouterSpec extends AnyFlatSpec {
     dut.clock.step(); dut.io.command.valid.poke(false.B)
   }
 
-  private def awaitValid(dut: GpuCommandRouter, probe: => Boolean,
-                         cycles: Int = 12): Unit = {
+  private def awaitValid(dut: GpuCommandRouter, probe: => Boolean, cycles: Int = 12): Unit = {
     var remaining = cycles
     while (!probe && remaining > 0) {
       dut.clock.step()
@@ -92,24 +87,22 @@ class GpuCommandRouterSpec extends AnyFlatSpec {
     }
   }
 
-  private def setEventDependency(dut: GpuCommandRouter, wait: Boolean,
-                                 eventId: Int, generation: Int): Unit = {
+  private def setEventDependency(dut: GpuCommandRouter, wait: Boolean, eventId: Int, generation: Int): Unit = {
     dut.io.command.bits.waitForEvent.poke(wait.B)
     dut.io.command.bits.waitEventId.poke(eventId.U)
     dut.io.command.bits.waitEventGeneration.poke(generation.U)
   }
 
-  private def setEventSignal(dut: GpuCommandRouter, signal: Boolean,
-                             eventId: Int, generation: Int): Unit = {
+  private def setEventSignal(dut: GpuCommandRouter, signal: Boolean, eventId: Int, generation: Int): Unit = {
     dut.io.command.bits.signalEvent.poke(signal.B)
     dut.io.command.bits.signalEventId.poke(eventId.U)
     dut.io.command.bits.signalEventGeneration.poke(generation.U)
   }
 
   it should "route payloads and retain IDs until unified completion is consumed" in {
-    simulate(new GpuCommandRouter(
-      GpuConfig(lanes = 4), commandIdWidth = 4,
-      commandQueueDepth = 2, completionQueueDepth = 2)) { dut =>
+    simulate(
+      new GpuCommandRouter(GpuConfig(lanes = 4), commandIdWidth = 4, commandQueueDepth = 2, completionQueueDepth = 2)
+    ) { dut =>
       initialize(dut)
       dut.io.command.bits.sourceAddress.poke(0x1000.U)
       dut.io.command.bits.destinationAddress.poke(0x2000.U)
@@ -144,9 +137,9 @@ class GpuCommandRouterSpec extends AnyFlatSpec {
   }
 
   it should "merge engine completions and reject an invalid opcode" in {
-    simulate(new GpuCommandRouter(
-      GpuConfig(lanes = 4), commandIdWidth = 4,
-      commandQueueDepth = 3, completionQueueDepth = 3)) { dut =>
+    simulate(
+      new GpuCommandRouter(GpuConfig(lanes = 4), commandIdWidth = 4, commandQueueDepth = 3, completionQueueDepth = 3)
+    ) { dut =>
       initialize(dut)
       dut.io.kernel.ready.poke(true.B)
       submit(dut, 1, GpuCommandOpcode.kernel)
@@ -169,9 +162,9 @@ class GpuCommandRouterSpec extends AnyFlatSpec {
   }
 
   it should "broadcast a generated event to multiple dependent command types" in {
-    simulate(new GpuCommandRouter(
-      GpuConfig(lanes = 4), commandIdWidth = 4,
-      commandQueueDepth = 4, completionQueueDepth = 4)) { dut =>
+    simulate(
+      new GpuCommandRouter(GpuConfig(lanes = 4), commandIdWidth = 4, commandQueueDepth = 4, completionQueueDepth = 4)
+    ) { dut =>
       initialize(dut)
       dut.io.fill.ready.poke(true.B)
       setEventSignal(dut, signal = true, eventId = 6, generation = 3)
@@ -205,9 +198,9 @@ class GpuCommandRouterSpec extends AnyFlatSpec {
   }
 
   it should "fail a dependent command on the matching failed generation" in {
-    simulate(new GpuCommandRouter(
-      GpuConfig(lanes = 4), commandIdWidth = 4,
-      commandQueueDepth = 3, completionQueueDepth = 3)) { dut =>
+    simulate(
+      new GpuCommandRouter(GpuConfig(lanes = 4), commandIdWidth = 4, commandQueueDepth = 3, completionQueueDepth = 3)
+    ) { dut =>
       initialize(dut)
       dut.io.fill.ready.poke(true.B)
       setEventSignal(dut, signal = true, eventId = 4, generation = 9)
@@ -230,15 +223,14 @@ class GpuCommandRouterSpec extends AnyFlatSpec {
       awaitValid(dut, dut.io.completion.valid.peek().litToBoolean)
       dut.io.completion.valid.expect(true.B)
       dut.io.completion.bits.commandId.expect(2.U)
-      dut.io.completion.bits.status.expect(
-        GpuCommandResultStatus.eventDependencyFailed)
+      dut.io.completion.bits.status.expect(GpuCommandResultStatus.eventDependencyFailed)
     }
   }
 
   it should "hold dispatch while blocked and flush queued work on a path reset" in {
-    simulate(new GpuCommandRouter(
-      GpuConfig(lanes = 4), commandIdWidth = 4,
-      commandQueueDepth = 2, completionQueueDepth = 2)) { dut =>
+    simulate(
+      new GpuCommandRouter(GpuConfig(lanes = 4), commandIdWidth = 4, commandQueueDepth = 2, completionQueueDepth = 2)
+    ) { dut =>
       initialize(dut)
       dut.io.command.bits.destinationAddress.poke(0x4000.U)
       dut.io.command.bits.bytes.poke(64.U)
@@ -280,9 +272,9 @@ class GpuCommandRouterSpec extends AnyFlatSpec {
   }
 
   it should "route a typed resolve descriptor and return its unified completion" in {
-    simulate(new GpuCommandRouter(
-      GpuConfig(lanes = 4), commandIdWidth = 4,
-      commandQueueDepth = 2, completionQueueDepth = 2)) { dut =>
+    simulate(
+      new GpuCommandRouter(GpuConfig(lanes = 4), commandIdWidth = 4, commandQueueDepth = 2, completionQueueDepth = 2)
+    ) { dut =>
       initialize(dut)
       dut.io.command.bits.sourceAddress.poke(0x8000.U)
       dut.io.command.bits.destinationAddress.poke(0x9000.U)
@@ -322,9 +314,9 @@ class GpuCommandRouterSpec extends AnyFlatSpec {
   }
 
   it should "carry a distinct physical invalidate base for translated resolve" in {
-    simulate(new GpuCommandRouter(
-      GpuConfig(lanes = 4), commandIdWidth = 4,
-      commandQueueDepth = 2, completionQueueDepth = 2)) { dut =>
+    simulate(
+      new GpuCommandRouter(GpuConfig(lanes = 4), commandIdWidth = 4, commandQueueDepth = 2, completionQueueDepth = 2)
+    ) { dut =>
       initialize(dut)
       dut.io.command.bits.sourceAddress.poke(0xc4001000L.U)
       dut.io.command.bits.destinationAddress.poke(0xc4010000L.U)
@@ -345,9 +337,9 @@ class GpuCommandRouterSpec extends AnyFlatSpec {
   }
 
   it should "route an invalidate descriptor and return its unified completion" in {
-    simulate(new GpuCommandRouter(
-      GpuConfig(lanes = 4), commandIdWidth = 4,
-      commandQueueDepth = 2, completionQueueDepth = 2)) { dut =>
+    simulate(
+      new GpuCommandRouter(GpuConfig(lanes = 4), commandIdWidth = 4, commandQueueDepth = 2, completionQueueDepth = 2)
+    ) { dut =>
       initialize(dut)
       dut.io.command.bits.sourceAddress.poke(0x4000.U)
       dut.io.command.bits.bytes.poke(256.U)
@@ -374,27 +366,33 @@ class GpuCommandRouterSpec extends AnyFlatSpec {
     }
   }
   it should "reject extended opcodes without aliasing legacy engine dispatch" in {
-    simulate(new GpuCommandRouter(GpuConfig(lanes=4),commandIdWidth=8)){dut=>
+    simulate(new GpuCommandRouter(GpuConfig(lanes = 4), commandIdWidth = 8)) { dut =>
       initialize(dut)
-      dut.io.kernel.ready.poke(true.B);dut.io.copy.ready.poke(true.B);dut.io.fill.ready.poke(true.B)
-      dut.io.stridedCopy.ready.poke(true.B);dut.io.resolve.ready.poke(true.B);dut.io.invalidate.ready.poke(true.B)
-      for(opcode<-8 until 16){
-        submit(dut,50+opcode,opcode.U)
-        var cycles=0
-        while(!dut.io.completion.valid.peek().litToBoolean && cycles<100){
-          Seq(dut.io.kernel.valid,dut.io.copy.valid,dut.io.fill.valid,dut.io.stridedCopy.valid,
-            dut.io.resolve.valid,dut.io.invalidate.valid).foreach(_.expect(false.B))
-          dut.clock.step();cycles+=1
+      dut.io.kernel.ready.poke(true.B); dut.io.copy.ready.poke(true.B); dut.io.fill.ready.poke(true.B)
+      dut.io.stridedCopy.ready.poke(true.B); dut.io.resolve.ready.poke(true.B); dut.io.invalidate.ready.poke(true.B)
+      for (opcode <- 8 until 16) {
+        submit(dut, 50 + opcode, opcode.U)
+        var cycles = 0
+        while (!dut.io.completion.valid.peek().litToBoolean && cycles < 100) {
+          Seq(
+            dut.io.kernel.valid,
+            dut.io.copy.valid,
+            dut.io.fill.valid,
+            dut.io.stridedCopy.valid,
+            dut.io.resolve.valid,
+            dut.io.invalidate.valid
+          ).foreach(_.expect(false.B))
+          dut.clock.step(); cycles += 1
         }
         dut.io.completion.valid.expect(true.B)
-        dut.io.completion.bits.commandId.expect((50+opcode).U)
+        dut.io.completion.bits.commandId.expect((50 + opcode).U)
         dut.io.completion.bits.opcode.expect(opcode.U)
         dut.io.completion.bits.status.expect(GpuCommandResultStatus.invalidOpcode)
-        dut.io.completion.bits.success.expect(false.B);dut.io.completion.bits.bytesProcessed.expect(0.U)
-        val held=dut.io.completion.bits.peek().litValue
-        for(_<-0 until 5){dut.clock.step();assert(dut.io.completion.bits.peek().litValue==held)}
-        dut.io.completion.ready.poke(true.B);dut.clock.step();dut.io.completion.ready.poke(false.B)
-        dut.clock.step(3);dut.io.busy.expect(false.B);dut.io.memoryEngineBusy.expect(false.B)
+        dut.io.completion.bits.success.expect(false.B); dut.io.completion.bits.bytesProcessed.expect(0.U)
+        val held = dut.io.completion.bits.peek().litValue
+        for (_ <- 0 until 5) { dut.clock.step(); assert(dut.io.completion.bits.peek().litValue == held) }
+        dut.io.completion.ready.poke(true.B); dut.clock.step(); dut.io.completion.ready.poke(false.B)
+        dut.clock.step(3); dut.io.busy.expect(false.B); dut.io.memoryEngineBusy.expect(false.B)
       }
     }
   }

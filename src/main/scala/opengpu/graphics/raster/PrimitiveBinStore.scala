@@ -3,7 +3,7 @@ package opengpu.graphics
 import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
-import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse}
+import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse}
 
 class PrimitiveBinStoreCompletion extends Bundle {
   val identity = new GraphicsWorkIdentity
@@ -18,21 +18,19 @@ class PrimitiveBinStoreCompletion extends Bundle {
   val restart = new BinPrimitiveReference
 }
 
-/** One-bin build/replay composition on a tagged64-byte memory client.
-  * Writer stores and readback use the uncached domain; the memory client must
-  * make acknowledged stores visible to subsequent reads. Writer completion
-  * supplies the immutable replay descriptor. New bindings wait for both
-  * phases and the final completion, preserving arena ownership through replay.
-  * References from an unsuccessful final binding must not publish a pass.
-  * Multi-tile directories, primitive/state resolution and tile engines are
-  * separate integrations. This component provides no CPU-cache coherence.
+/** One-bin build/replay composition on a tagged64-byte memory client. Writer stores and readback use the uncached
+  * domain; the memory client must make acknowledged stores visible to subsequent reads. Writer completion supplies the
+  * immutable replay descriptor. New bindings wait for both phases and the final completion, preserving arena ownership
+  * through replay. References from an unsuccessful final binding must not publish a pass. Multi-tile directories,
+  * primitive/state resolution and tile engines are separate integrations. This component provides no CPU-cache
+  * coherence.
   */
 class PrimitiveBinStore(
-  config: GpuConfig = GpuConfig(),
-  pageBytes: Int = 4096,
-  writeCredits: Int = 8
+    config: GpuConfig = GpuConfig(),
+    pageBytes: Int = 4096,
+    writeCredits: Int = 8
 ) extends Module {
-  private val transactions = writeCredits+1
+  private val transactions = writeCredits + 1
   val io = IO(new Bundle {
     val begin = Flipped(Decoupled(new PrimitiveBinDescriptor))
     val append = Flipped(Decoupled(new BinPrimitiveReference))
@@ -41,8 +39,8 @@ class PrimitiveBinStore(
     val reference = Decoupled(new PrimitiveBinReference)
     val cancel = Input(Bool())
     val completion = Decoupled(new PrimitiveBinStoreCompletion)
-    val memoryRequest = Decoupled(new ComputeMemoryRequest(config,64,transactions))
-    val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64,transactions)))
+    val memoryRequest = Decoupled(new ComputeMemoryRequest(config, 64, transactions))
+    val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64, transactions)))
     val busy = Output(Bool())
   })
   private val idle :: building :: readStart :: reading :: done :: Nil = Enum(5)
@@ -51,11 +49,11 @@ class PrimitiveBinStore(
   private val written = Reg(new PrimitiveBinCompletion)
   private val result = Reg(new PrimitiveBinStoreCompletion)
   private val cancelled = RegInit(false.B)
-  private val writer = Module(new PrimitiveBinWriter(pageBytes,writeCredits))
-  private val reader = Module(new PrimitiveBinReader(config,pageBytes,transactions,writeCredits))
-  private val words = Module(new OmWordToLinePort(config,64,writeCredits,uncached=true))
-  private val arbiter = Module(new RRArbiter(new ComputeMemoryRequest(config,64,transactions),2))
-  private val requests = Module(new Queue(new ComputeMemoryRequest(config,64,transactions),2,pipe=true))
+  private val writer = Module(new PrimitiveBinWriter(pageBytes, writeCredits))
+  private val reader = Module(new PrimitiveBinReader(config, pageBytes, transactions, writeCredits))
+  private val words = Module(new OmWordToLinePort(config, 64, writeCredits, uncached = true))
+  private val arbiter = Module(new RRArbiter(new ComputeMemoryRequest(config, 64, transactions), 2))
+  private val requests = Module(new Queue(new ComputeMemoryRequest(config, 64, transactions), 2, pipe = true))
 
   // The queue freezes public request IDs/data even if a free internal word
   // transaction is reselected while the downstream memory port is stalled.
@@ -71,8 +69,11 @@ class PrimitiveBinStore(
   reader.io.memoryResponse.bits := io.memoryResponse.bits
   words.io.memoryResponse.valid := io.memoryResponse.valid && wordResponse
   words.io.memoryResponse.bits := io.memoryResponse.bits
-  io.memoryResponse.ready := Mux(readerResponse,reader.io.memoryResponse.ready,
-    wordResponse && words.io.memoryResponse.ready)
+  io.memoryResponse.ready := Mux(
+    readerResponse,
+    reader.io.memoryResponse.ready,
+    wordResponse && words.io.memoryResponse.ready
+  )
   words.io.in <> writer.io.mem.req
   writer.io.mem.resp <> words.io.out
   // The non-buffered adapter's word reply and line response share a handshake.
@@ -84,7 +85,7 @@ class PrimitiveBinStore(
   // and its pool have already drained before we return to idle; forwarding
   // their ready path would needlessly couple admission to memory reply tags.
   io.begin.ready := phase === idle && !io.cancel
-  when(io.begin.fire) { assert(writer.io.begin.ready,"idle bin store lost its drained writer") }
+  when(io.begin.fire) { assert(writer.io.begin.ready, "idle bin store lost its drained writer") }
   writer.io.append.valid := phase === building && io.append.valid
   writer.io.append.bits := io.append.bits
   io.append.ready := phase === building && writer.io.append.ready
@@ -109,7 +110,7 @@ class PrimitiveBinStore(
   io.completion.bits := result
   io.busy := phase =/= idle
 
-  private def complete(write: PrimitiveBinCompletion,status: UInt,emitted: UInt): Unit = {
+  private def complete(write: PrimitiveBinCompletion, status: UInt, emitted: UInt): Unit = {
     result.identity := write.identity
     result.tile := write.tile
     result.status := status
@@ -117,7 +118,7 @@ class PrimitiveBinStore(
     result.committed := write.committedCount
     result.emitted := emitted
     result.allocatedPages := write.allocatedPages
-    result.spillTransitions:=write.spillTransitions
+    result.spillTransitions := write.spillTransitions
     result.restartValid := status === PrimitiveBinStatus.exhausted.U && write.restartValid
     result.restart := write.restart
     phase := done
@@ -129,20 +130,25 @@ class PrimitiveBinStore(
     when(writer.io.completion.bits.prefixUsable && !cancelled && !io.cancel) {
       phase := readStart
     }.otherwise {
-      val status = Mux((cancelled || io.cancel) && writer.io.completion.bits.status =/= PrimitiveBinStatus.memoryFault.U,
-        PrimitiveBinStatus.cancelled.U,writer.io.completion.bits.status)
-      complete(writer.io.completion.bits,status,0.U)
+      val status = Mux(
+        (cancelled || io.cancel) && writer.io.completion.bits.status =/= PrimitiveBinStatus.memoryFault.U,
+        PrimitiveBinStatus.cancelled.U,
+        writer.io.completion.bits.status
+      )
+      complete(writer.io.completion.bits, status, 0.U)
     }
   }
   when(phase === readStart) {
-    when(cancelled || io.cancel) { complete(written,PrimitiveBinStatus.cancelled.U,0.U) }
+    when(cancelled || io.cancel) { complete(written, PrimitiveBinStatus.cancelled.U, 0.U) }
       .elsewhen(reader.io.begin.fire) { phase := reading }
   }
   when(reader.io.completion.fire) {
-    val status = Mux(reader.io.completion.bits.status =/= PrimitiveBinStatus.success.U,
-      reader.io.completion.bits.status,Mux(cancelled || io.cancel,
-        PrimitiveBinStatus.cancelled.U,written.status))
-    complete(written,status,reader.io.completion.bits.emitted)
+    val status = Mux(
+      reader.io.completion.bits.status =/= PrimitiveBinStatus.success.U,
+      reader.io.completion.bits.status,
+      Mux(cancelled || io.cancel, PrimitiveBinStatus.cancelled.U, written.status)
+    )
+    complete(written, status, reader.io.completion.bits.emitted)
   }
   when(io.completion.fire) { phase := idle }
 }

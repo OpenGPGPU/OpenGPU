@@ -12,10 +12,22 @@ class NativeRgba8TextureCancelPipelineSpec extends AnyFlatSpec {
   private case class Expected(q: Query, status: Int, color: Vector[BigInt])
   private class Driver(val d: NativeRgba8TextureCluster) {
     zero(d.io); d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
-    val memory = new Memory(d.io.memoryRequest.bits, d.io.memoryResponse.bits, d.io.memoryRequest.valid,
-      d.io.memoryRequest.ready, d.io.memoryResponse.valid, d.io.memoryResponse.ready)
-    val walks = new Memory(d.io.pageWalk.bits, d.io.pageWalkResponse.bits, d.io.pageWalk.valid,
-      d.io.pageWalk.ready, d.io.pageWalkResponse.valid, d.io.pageWalkResponse.ready) { override val bytes = memory.bytes }
+    val memory = new Memory(
+      d.io.memoryRequest.bits,
+      d.io.memoryResponse.bits,
+      d.io.memoryRequest.valid,
+      d.io.memoryRequest.ready,
+      d.io.memoryResponse.valid,
+      d.io.memoryResponse.ready
+    )
+    val walks = new Memory(
+      d.io.pageWalk.bits,
+      d.io.pageWalkResponse.bits,
+      d.io.pageWalk.valid,
+      d.io.pageWalk.ready,
+      d.io.pageWalkResponse.valid,
+      d.io.pageWalkResponse.ready
+    ) { override val bytes = memory.bytes }
     val pending = Vector.fill(4)(mutable.Queue.empty[Expected])
     val statuses = Vector.fill(4)(mutable.ArrayBuffer.empty[Int])
     val ready = Array.fill(4)(true)
@@ -50,7 +62,9 @@ class NativeRgba8TextureCancelPipelineSpec extends AnyFlatSpec {
       Expected(q, status, Vector.tabulate(4)(n => bits(((word >> (n * 8)) & 255).toInt.toFloat / 255.0f)))
     }
     def tick(offer: Option[(Int, Query, Int)] = None): Boolean = {
-      for (c <- 0 until 4) { d.io.client(c).request.valid.poke(false.B); d.io.client(c).response.ready.poke(ready(c).B) }
+      for (c <- 0 until 4) {
+        d.io.client(c).request.valid.poke(false.B); d.io.client(c).response.ready.poke(ready(c).B)
+      }
       offer.foreach { case (c, q, _) => poke(c, q); d.io.client(c).request.valid.poke(true.B) }
       memory.drive(); walks.drive()
       for (c <- 0 until 4) {
@@ -71,35 +85,49 @@ class NativeRgba8TextureCancelPipelineSpec extends AnyFlatSpec {
       if (fire) { val (c, q, status) = offer.get; pending(c).enqueue(expected(c, q, status)) }
       memory.capture(); walks.capture(); d.clock.step(); cycle += 1; fire
     }
-    def until(p: => Boolean): Unit = { var n = 0; while (!p && n < 10000) { tick(); n += 1 }; assert(p, s"cluster stalled cycle=$cycle pending=${pending.map(_.size)}") }
+    def until(p: => Boolean): Unit = {
+      var n = 0; while (!p && n < 10000) { tick(); n += 1 };
+      assert(p, s"cluster stalled cycle=$cycle pending=${pending.map(_.size)}")
+    }
     def submit(c: Int, q: Query = Query(), status: Int = 0): Unit = {
-      var fire = false; var n = 0; while (!fire && n < 10000) { fire = tick(Some((c, q, status))); n += 1 }; assert(fire)
+      var fire = false; var n = 0; while (!fire && n < 10000) { fire = tick(Some((c, q, status))); n += 1 };
+      assert(fire)
     }
     def cancel(c: Int, q: Query = Query()): Unit = {
       val port = d.io.client(c).cancelGroup
-      port.valid.poke(true.B); identity(port.bits.identity); port.bits.identity.generation.poke(q.generation.U); port.bits.tag.poke(q.tag.U)
+      port.valid.poke(true.B); identity(port.bits.identity); port.bits.identity.generation.poke(q.generation.U);
+      port.bits.tag.poke(q.tag.U)
     }
     def drain(): Unit = {
       until(!d.io.busy.peek().litToBoolean)
-      assert(pending.forall(_.isEmpty) && memory.pending.isEmpty && memory.reply.isEmpty && walks.pending.isEmpty && walks.reply.isEmpty)
-      assert(reportedReads == memory.seen.size, s"router dropped/doubled a read charge: $reportedReads != ${memory.seen.size}")
+      assert(
+        pending.forall(
+          _.isEmpty
+        ) && memory.pending.isEmpty && memory.reply.isEmpty && walks.pending.isEmpty && walks.reply.isEmpty
+      )
+      assert(
+        reportedReads == memory.seen.size,
+        s"router dropped/doubled a read charge: $reportedReads != ${memory.seen.size}"
+      )
       tick(); tick()
     }
   }
   it should "retain queued cancellation and immediately reuse the same original identity and tag without poisoning the new lease" in {
-    simulate(new NativeRgba8TextureCluster(maxOutstandingPerClient=4)){d=>
-      val t=new Driver(d);val first=Query()
-      t.cancel(0,first);t.submit(0,first,status=4);d.io.client(0).cancelGroup.valid.poke(false.B);t.drain()
-      assert(t.memory.seen.isEmpty && t.walks.seen.isEmpty,"cancelled admission reached physical memory")
-      t.submit(0,first);t.drain()
-      for(round<-0 until 8){
-        val q=Query(base=0x2000+round*4096);t.backing(q.base,round*0x10101)
-        t.memory.holdRequests=true;t.submit(0,q,status=4);t.until(d.io.memoryRequest.valid.peek().litToBoolean)
-        t.cancel(0,q);t.tick();d.io.client(0).cancelGroup.valid.poke(false.B)
-        t.memory.holdRequests=false;t.drain();t.submit(0,q);t.drain()
-        assert(t.statuses(0).takeRight(2).toVector==Vector(4,0))
+    simulate(new NativeRgba8TextureCluster(maxOutstandingPerClient = 4)) { d =>
+      val t = new Driver(d); val first = Query()
+      t.cancel(0, first); t.submit(0, first, status = 4); d.io.client(0).cancelGroup.valid.poke(false.B); t.drain()
+      assert(t.memory.seen.isEmpty && t.walks.seen.isEmpty, "cancelled admission reached physical memory")
+      t.submit(0, first); t.drain()
+      for (round <- 0 until 8) {
+        val q = Query(base = 0x2000 + round * 4096); t.backing(q.base, round * 0x10101)
+        t.memory.holdRequests = true; t.submit(0, q, status = 4); t.until(d.io.memoryRequest.valid.peek().litToBoolean)
+        t.cancel(0, q); t.tick(); d.io.client(0).cancelGroup.valid.poke(false.B)
+        t.memory.holdRequests = false; t.drain(); t.submit(0, q); t.drain()
+        assert(t.statuses(0).takeRight(2).toVector == Vector(4, 0))
       }
-      info("NATIVE_CANCEL_PIPELINE queuedAdmissionPoisonedImmediately=true registeredScopedHandoff=true sameIdentityAndFullTagReuse9=true physicalOfferDrained=true exactReadCharges=true")
+      info(
+        "NATIVE_CANCEL_PIPELINE queuedAdmissionPoisonedImmediately=true registeredScopedHandoff=true sameIdentityAndFullTagReuse9=true physicalOfferDrained=true exactReadCharges=true"
+      )
     }
   }
 }

@@ -2,16 +2,26 @@ package opengpu.testutil
 
 import scala.collection.mutable
 
-/** Disjoint, pitched stored/resolve images for explicit frame qualification.
-  * Layout construction allocates no image bytes and never wraps a 32-bit VA.
+/** Disjoint, pitched stored/resolve images for explicit frame qualification. Layout construction allocates no image
+  * bytes and never wraps a 32-bit VA.
   */
 object NativeFrameMemory {
   val AddressLimit: Long = 1L << 32
   private def align64(value: Long): Long = (value + 63) & ~63L
 
-  case class Plane(location: Int, resolve: Boolean, width: Int, height: Int,
-    samples: Int, bytesPerSample: Int, allocationBase: Long, base: Long,
-    rowPitch: Long, limit: Long, allocationLimit: Long) {
+  case class Plane(
+      location: Int,
+      resolve: Boolean,
+      width: Int,
+      height: Int,
+      samples: Int,
+      bytesPerSample: Int,
+      allocationBase: Long,
+      base: Long,
+      rowPitch: Long,
+      limit: Long,
+      allocationLimit: Long
+  ) {
     def address(x: Int, y: Int, sample: Int = 0): Long = {
       require(x >= 0 && x < width && y >= 0 && y < height)
       require(sample >= 0 && sample < samples)
@@ -19,8 +29,14 @@ object NativeFrameMemory {
     }
   }
 
-  def layout(width: Int, height: Int, samples: Int, bytesPerSample: Seq[Int],
-    start: Long, end: Long = AddressLimit): Vector[Plane] = {
+  def layout(
+      width: Int,
+      height: Int,
+      samples: Int,
+      bytesPerSample: Seq[Int],
+      start: Long,
+      end: Long = AddressLimit
+  ): Vector[Plane] = {
     require(width > 0 && width <= 65535 && height > 0 && height <= 65535)
     require(Set(1, 2, 4)(samples))
     require(bytesPerSample.nonEmpty && bytesPerSample.forall(n => n > 0 && n <= 16))
@@ -37,15 +53,13 @@ object NativeFrameMemory {
       val allocationLimit = align64(base + height.toLong * pitch) + 64
       require(allocationLimit <= end, "frame backing does not fit the address range")
       cursor = allocationLimit
-      Plane(location, resolve, width, height, count, bytes, allocationBase,
-        base, pitch, limit, allocationLimit)
+      Plane(location, resolve, width, height, count, bytes, allocationBase, base, pitch, limit, allocationLimit)
     }).toVector
   }
 }
 
-/** Sparse byte-addressed test memory. Uniform image guards occupy range records;
-  * only pages modified by a command or the DUT allocate byte arrays. This is
-  * simulation storage, not an approximation of GPU memory or its timing.
+/** Sparse byte-addressed test memory. Uniform image guards occupy range records; only pages modified by a command or
+  * the DUT allocate byte arrays. This is simulation storage, not an approximation of GPU memory or its timing.
   */
 final class PagedFrameMemory {
   import NativeFrameMemory.AddressLimit
@@ -62,8 +76,7 @@ final class PagedFrameMemory {
     require(start >= 0 && start < end && end <= AddressLimit)
     require(value >= 0 && value <= 255)
     require(!fills.exists(f => start < f.end && f.start < end), "mapped ranges overlap")
-    require(!pages.keysIterator.exists(p => p < end && start < p + pageBytes),
-      "map ranges before writing their pages")
+    require(!pages.keysIterator.exists(p => p < end && start < p + pageBytes), "map ranges before writing their pages")
     fills :+= Fill(start, end, value)
   }
 
@@ -71,7 +84,7 @@ final class PagedFrameMemory {
     checked(address)
     pages.get(address & ~(pageBytes - 1L)) match {
       case Some(page) => page((address & (pageBytes - 1)).toInt) & 255
-      case None => default(address)
+      case None       => default(address)
     }
   }
 
@@ -79,8 +92,7 @@ final class PagedFrameMemory {
     checked(address)
     require(value >= 0 && value <= 255)
     val start = address & ~(pageBytes - 1L)
-    val page = pages.getOrElseUpdate(start,
-      Array.tabulate[Byte](pageBytes)(i => default(start + i).toByte))
+    val page = pages.getOrElseUpdate(start, Array.tabulate[Byte](pageBytes)(i => default(start + i).toByte))
     page((address - start).toInt) = value.toByte
   }
 
@@ -117,8 +129,10 @@ final class PagedFrameMemory {
     pages.keysIterator.toVector.sorted.foreach(a => visit(a, pages(a).clone()))
 
   private[testutil] def installPage(address: Long, bytes: Array[Byte]): Unit = {
-    require(address >= 0 && address <= AddressLimit - pageBytes &&
-      (address & (pageBytes - 1)) == 0 && bytes.length == pageBytes)
+    require(
+      address >= 0 && address <= AddressLimit - pageBytes &&
+        (address & (pageBytes - 1)) == 0 && bytes.length == pageBytes
+    )
     require(!pages.contains(address), "duplicate snapshot page")
     pages(address) = bytes.clone()
   }
@@ -131,27 +145,32 @@ final class PagedFrameMemory {
   }
 }
 
-/** Image backing plus a streamed oracle. The caller independently supplies
-  * stored sample and resolved pixel values; neither is inferred from DUT data.
+/** Image backing plus a streamed oracle. The caller independently supplies stored sample and resolved pixel values;
+  * neither is inferred from DUT data.
   */
-final class NativeFrameImage(width: Int, height: Int, samples: Int,
-  formats: Seq[Int], start: Long, end: Long = NativeFrameMemory.AddressLimit,
-  guardByte: Int = 0xa7) {
+final class NativeFrameImage(
+    width: Int,
+    height: Int,
+    samples: Int,
+    formats: Seq[Int],
+    start: Long,
+    end: Long = NativeFrameMemory.AddressLimit,
+    guardByte: Int = 0xa7
+) {
   require(guardByte >= 0 && guardByte <= 255)
   val planes: Vector[NativeFrameMemory.Plane] =
     NativeFrameMemory.layout(width, height, samples, formats, start, end)
   val memory = new PagedFrameMemory
   planes.foreach(p => memory.mapRange(p.allocationBase, p.allocationLimit, guardByte))
 
-  /** Visits each active value and every guard/padding byte once, using bounded
-    * temporary storage regardless of frame dimensions. Returns checked bytes.
+  /** Visits each active value and every guard/padding byte once, using bounded temporary storage regardless of frame
+    * dimensions. Returns checked bytes.
     */
   def verify(expected: (Int, Boolean, Int, Int, Int) => BigInt): Long = {
     var checkedBytes = 0L
     def check(address: Long, value: Int): Unit = {
       val actual = memory.readByte(address)
-      assert(actual == value,
-        f"frame byte 0x$address%x differs: actual=0x$actual%02x expected=0x$value%02x")
+      assert(actual == value, f"frame byte 0x$address%x differs: actual=0x$actual%02x expected=0x$value%02x")
       checkedBytes += 1
     }
     def guards(start: Long, end: Long): Unit = {
@@ -163,8 +182,7 @@ final class NativeFrameImage(width: Int, height: Int, samples: Int,
       for (y <- 0 until height) {
         for (x <- 0 until width; sample <- 0 until p.samples) {
           val raw = expected(p.location, p.resolve, x, y, sample)
-          require(raw >= 0 && raw.bitLength <= p.bytesPerSample * 8,
-            "reference value does not fit the image format")
+          require(raw >= 0 && raw.bitLength <= p.bytesPerSample * 8, "reference value does not fit the image format")
           val address = p.address(x, y, sample)
           for (byte <- 0 until p.bytesPerSample)
             check(address + byte, ((raw >> (byte * 8)) & 255).toInt)

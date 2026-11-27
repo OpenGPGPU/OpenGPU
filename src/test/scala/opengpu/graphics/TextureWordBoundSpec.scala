@@ -92,8 +92,10 @@ class TextureWordBoundSpec extends AnyFlatSpec {
             d.io.memoryResponse.bits.fault.poke(fault.B)
           }
           if (d.io.in.valid.peek().litToBoolean) {
-            assert(d.io.in.ready.peek().litToBoolean == d.io.boundedReady.peek().litToBoolean,
-              s"word readiness differs at cycle=$cycles pending=${sent - received}")
+            assert(
+              d.io.in.ready.peek().litToBoolean == d.io.boundedReady.peek().litToBoolean,
+              s"word readiness differs at cycle=$cycles pending=${sent - received}"
+            )
             if (d.io.in.ready.peek().litToBoolean) {
               val a = BigInt(addresses(sent))
               assert(!expected.contains(a)); expected(a) = word(a); sent += 1

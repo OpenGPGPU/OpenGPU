@@ -7,14 +7,13 @@ import opengpu.core.backend.register.ScalarRegisterWrite
 
 /** Fair arbitration across scalar execution writeback sources.
   *
-  * Writes to x0 are consumed locally and never occupy the RF port because x0
-  * is not reserved in the scoreboard. Other requests use round-robin
-  * arbitration to prevent a continuously active low-index source from starving
-  * another execution unit.
+  * Writes to x0 are consumed locally and never occupy the RF port because x0 is not reserved in the scoreboard. Other
+  * requests use round-robin arbitration to prevent a continuously active low-index source from starving another
+  * execution unit.
   */
 class ScalarWritebackArbiter(
-  config: GpuConfig = GpuConfig(),
-  sourceCount: Int = 6
+    config: GpuConfig = GpuConfig(),
+    sourceCount: Int = 6
 ) extends Module {
   require(sourceCount > 0)
   private val sourceWidth = math.max(1, log2Ceil(sourceCount))

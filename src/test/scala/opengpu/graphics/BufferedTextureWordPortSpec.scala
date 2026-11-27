@@ -20,8 +20,7 @@ class BufferedTextureWordPortSpec extends AnyFlatSpec {
     d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
     def step(): Unit = {
       val valid = p.out.valid.peek().litToBoolean
-      val value = if (valid) Some((p.out.bits.addr.peek().litValue,
-        p.out.bits.data.peek().litValue)) else None
+      val value = if (valid) Some((p.out.bits.addr.peek().litValue, p.out.bits.data.peek().litValue)) else None
       held.foreach(old => assert(value.contains(old), "stalled word reply changed"))
       if (valid) p.out.bits.write.expect(false.B)
       if (valid && p.out.ready.peek().litToBoolean) replies += value.get
@@ -29,8 +28,7 @@ class BufferedTextureWordPortSpec extends AnyFlatSpec {
       if (p.memoryRequest.valid.peek().litToBoolean && p.memoryRequest.ready.peek().litToBoolean) {
         p.memoryRequest.bits.isWrite.expect(false.B)
         p.memoryRequest.bits.sizeLog2.expect(6.U)
-        issued += ((p.memoryRequest.bits.address.peek().litValue,
-          p.memoryRequest.bits.transactionId.peek().litValue))
+        issued += ((p.memoryRequest.bits.address.peek().litValue, p.memoryRequest.bits.transactionId.peek().litValue))
       }
       d.clock.step()
     }
@@ -65,9 +63,14 @@ class BufferedTextureWordPortSpec extends AnyFlatSpec {
       h.line(h.issued(1)._2, 200); h.received(1)
       assert(h.replies.head == ((BigInt(0x2008), BigInt(202))))
       h.line(h.issued.head._2, 100); h.received(4)
-      assert(h.replies.toSet == Set((BigInt(0x1000), BigInt(100)),
-        (BigInt(0x1004), BigInt(101)), (BigInt(0x103c), BigInt(115)),
-        (BigInt(0x2008), BigInt(202))))
+      assert(
+        h.replies.toSet == Set(
+          (BigInt(0x1000), BigInt(100)),
+          (BigInt(0x1004), BigInt(101)),
+          (BigInt(0x103c), BigInt(115)),
+          (BigInt(0x2008), BigInt(202))
+        )
+      )
       h.send(0x1008); h.received(5)
       assert(h.replies.last == ((BigInt(0x1008), BigInt(102))))
       assert(h.issued.size == 2)
@@ -92,9 +95,15 @@ class BufferedTextureWordPortSpec extends AnyFlatSpec {
       h.until(h.p.in.ready.peek().litToBoolean); h.step(); h.p.in.valid.poke(false.B)
       assert(h.issued.size == 3)
       h.line(h.issued.last._2, 300); h.received(5)
-      assert(h.replies.toSet == Set((BigInt(0x1000), BigInt(100)),
-        (BigInt(0x1004), BigInt(101)), (BigInt(0x2000), BigInt(200)),
-        (BigInt(0x2004), BigInt(201)), (BigInt(0x3000), BigInt(300))))
+      assert(
+        h.replies.toSet == Set(
+          (BigInt(0x1000), BigInt(100)),
+          (BigInt(0x1004), BigInt(101)),
+          (BigInt(0x2000), BigInt(200)),
+          (BigInt(0x2004), BigInt(201)),
+          (BigInt(0x3000), BigInt(300))
+        )
+      )
     }
   }
 
@@ -109,8 +118,13 @@ class BufferedTextureWordPortSpec extends AnyFlatSpec {
       val fresh = h.issued.last._2
       assert(old != fresh)
       h.line(fresh, 200); h.line(old, 100); h.received(3)
-      assert(h.replies.toSet == Set((BigInt(0x1000), BigInt(100)),
-        (BigInt(0x1004), BigInt(101)), (BigInt(0x1008), BigInt(202))))
+      assert(
+        h.replies.toSet == Set(
+          (BigInt(0x1000), BigInt(100)),
+          (BigInt(0x1004), BigInt(101)),
+          (BigInt(0x1008), BigInt(202))
+        )
+      )
       d.io.invalidate.poke(false.B)
       h.send(0x100c); assert(h.issued.size == 3)
       h.line(h.issued.last._2, 300); h.received(4)
@@ -140,13 +154,15 @@ class BufferedTextureWordPortSpec extends AnyFlatSpec {
         h.p.in.ready.expect(true.B)
         val before = h.replies.size
         h.step()
-        if (i >= 3) assert(h.replies.size == before + 1,
-          "warm texture reads must not insert alternate-cycle reply bubbles")
+        if (i >= 3)
+          assert(h.replies.size == before + 1, "warm texture reads must not insert alternate-cycle reply bubbles")
       }
       h.p.in.valid.poke(false.B); h.received(21)
       assert(h.issued.size == 1)
-      assert(h.replies.drop(1).map(_._2).toSeq ==
-        (0 until 20).map(i => BigInt(100 + i % 16)))
+      assert(
+        h.replies.drop(1).map(_._2).toSeq ==
+          (0 until 20).map(i => BigInt(100 + i % 16))
+      )
     }
   }
 
@@ -182,9 +198,13 @@ class BufferedTextureWordPortSpec extends AnyFlatSpec {
         h.p.memoryResponse.valid.poke(response.nonEmpty.B)
         response.foreach { case (id, (addr, _)) =>
           h.p.memoryResponse.bits.transactionId.poke(id.U)
-          h.p.memoryResponse.bits.readData.poke((0 until 16).foldLeft(BigInt(0)) {
-            (v, i) => v | ((addr / 4 + i + 0x11550000L) << (32 * i))
-          }.U)
+          h.p.memoryResponse.bits.readData.poke(
+            (0 until 16)
+              .foldLeft(BigInt(0)) { (v, i) =>
+                v | ((addr / 4 + i + 0x11550000L) << (32 * i))
+              }
+              .U
+          )
         }
         if (sent < addresses.size && h.p.in.ready.peek().litToBoolean) {
           val address = BigInt(addresses(sent)); expected(address) += 1; sent += 1

@@ -9,10 +9,10 @@ class SimtControlFlowSpec extends AnyFlatSpec {
   behavior of "SimtControlFlow"
 
   private def driveBranch(
-    dut: SimtControlFlow,
-    warpId: Int,
-    activeMask: Int,
-    takenMask: Int
+      dut: SimtControlFlow,
+      warpId: Int,
+      activeMask: Int,
+      takenMask: Int
   ): Unit = {
     dut.io.branch.valid.poke(true.B)
     dut.io.branch.bits.warpId.poke(warpId.U)

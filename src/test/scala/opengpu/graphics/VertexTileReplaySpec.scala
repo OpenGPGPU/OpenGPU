@@ -24,8 +24,14 @@ class VertexTileReplaySpec extends AnyFlatSpec {
     0x02006027 | (base << 15) | (vs << 7)
 
   it should "drain two tile chunks from one vertex command" in {
-    val cfg = GraphicsConfig(screenWidth = 16, screenHeight = 16,
-      subPixelBits = 8, tileSize = 16, tileAttachments = true, tileBinning = true)
+    val cfg = GraphicsConfig(
+      screenWidth = 16,
+      screenHeight = 16,
+      subPixelBits = 8,
+      tileSize = 16,
+      tileAttachments = true,
+      tileBinning = true
+    )
     val gpu = GpuConfig(lanes = 4, warps = 2)
     val command = 0x4000L
     val vertexProgram = 0x1000L
@@ -46,29 +52,39 @@ class VertexTileReplaySpec extends AnyFlatSpec {
       for (b <- 0 until 64 if mask.testBit(b)) {
         val address = a + (b & ~3)
         val shift = (b & 3) * 8
-        write(address, (read(address) & ~(0xffL << shift)) |
-          (((data >> (b * 8)).toLong & 0xffL) << shift))
+        write(
+          address,
+          (read(address) & ~(0xffL << shift)) |
+            (((data >> (b * 8)).toLong & 0xffL) << shift)
+        )
       }
     }
     // VL covers each four-lane warp; the task mask bounds the six-vertex batch.
     // VL=3 left vertex 3's clip W unwritten in the first warp.
     val vertCode = Seq(slli(6, 8, 2), add(6, 1, 6), vsetivli(gpu.lanes)) ++
       (0 until 8).flatMap { f =>
-      Seq(addi(5, 6, f * 32), vle32(5, 1),
-        addi(5, 6, (8 + f) * 32), vse32(5, 1))
-    } ++ Seq(0x30500073)
+        Seq(addi(5, 6, f * 32), vle32(5, 1), addi(5, 6, (8 + f) * 32), vse32(5, 1))
+      } ++ Seq(0x30500073)
     vertCode.zipWithIndex.foreach { case (w, i) => write(vertexProgram + i * 4, w) }
-    val fragCode = Seq(slli(5, 8, 2), add(5, 1, 5), vsetivli(4),
-      addi(6, 5, 96), vle32(6, 2), addi(6, 5, 192), vse32(6, 2),
-      0x30500073)
+    val fragCode = Seq(
+      slli(5, 8, 2),
+      add(5, 1, 5),
+      vsetivli(4),
+      addi(6, 5, 96),
+      vle32(6, 2),
+      addi(6, 5, 192),
+      vse32(6, 2),
+      0x30500073
+    )
     fragCode.zipWithIndex.foreach { case (w, i) => write(fragmentProgram + i * 4, w) }
     val first = Seq((-32768, -32768), (0, -32768), (-32768, 0))
     val ninth = Seq((16384, 16384), (49152, 16384), (16384, 49152))
     (0 until 27).foreach { i =>
-      val (x, y) = (if (i < 24) first else ninth)(i % 3)
+      val (x, y) = (if (i < 24) first else ninth) (i % 3)
       val base = vertices + i * 32
-      Seq(x.toLong, y.toLong, 0L, 65536L, 0xff0000ffL, 16L, 0L, 0L)
-        .zipWithIndex.foreach { case (w, j) => write(base + j * 4, w) }
+      Seq(x.toLong, y.toLong, 0L, 65536L, 0xff0000ffL, 16L, 0L, 0L).zipWithIndex.foreach { case (w, j) =>
+        write(base + j * 4, w)
+      }
     }
     val record = Array.fill[Long](40)(0)
     record(0) = vertices
@@ -83,8 +99,7 @@ class VertexTileReplaySpec extends AnyFlatSpec {
     record.zipWithIndex.foreach { case (w, i) => write(command + i * 4, w) }
     for (i <- 0 until 256) write(depth + i * 4, 0x00ffffffL)
 
-    simulate(new RenderCore(cfg, gpu,
-      fragCore = true, vertCore = true)) { dut =>
+    simulate(new RenderCore(cfg, gpu, fragCore = true, vertCore = true)) { dut =>
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
       dut.io.cmdBase.poke(command.U)
       dut.io.cmdCount.poke(1.U)
@@ -153,8 +168,7 @@ class VertexTileReplaySpec extends AnyFlatSpec {
             val a = req.bits.address.peek().litValue.toLong
             val id = req.bits.transactionId.peek().litValue
             if (req.bits.isWrite.peek().litToBoolean) {
-              lineWrite(a, req.bits.writeData.peek().litValue,
-                req.bits.byteMask.peek().litValue)
+              lineWrite(a, req.bits.writeData.peek().litValue, req.bits.byteMask.peek().litValue)
               queue.enqueue((id, BigInt(0)))
             } else queue.enqueue((id, lineRead(a)))
           }
@@ -165,12 +179,12 @@ class VertexTileReplaySpec extends AnyFlatSpec {
         cycles += 1
       }
       assert(cycles < 60000, "vertex tile replay did not drain")
-      assert(read(color + (5 * 16 + 5) * 4) == 0xff0000ffL,
-        f"vertex tile replay pixel (5,5) was 0x${read(color + (5 * 16 + 5) * 4)}%08x")
-      assert(read(color + (11 * 16 + 11) * 4) == 0xff0000ffL,
-        "the ninth triangle must survive the chunk boundary")
-      assert(read(color + (14 * 16 + 3) * 4) == 0L,
-        "uncovered vertex tile replay pixel must remain clear")
+      assert(
+        read(color + (5 * 16 + 5) * 4) == 0xff0000ffL,
+        f"vertex tile replay pixel (5,5) was 0x${read(color + (5 * 16 + 5) * 4)}%08x"
+      )
+      assert(read(color + (11 * 16 + 11) * 4) == 0xff0000ffL, "the ninth triangle must survive the chunk boundary")
+      assert(read(color + (14 * 16 + 3) * 4) == 0L, "uncovered vertex tile replay pixel must remain clear")
     }
   }
 }

@@ -19,9 +19,14 @@ class NativeProductVertexInputsSpec extends AnyFlatSpec {
       assert(field("bindings[0].allocationLimit") % 64 == 0)
       assert(upload.bytes.drop((upload.limit - upload.base).toInt).forall(_ == 0))
       assert(field("bindings[0].allocationBase") == upload.base)
-      for ((vertex, index) <- vertices.zipWithIndex;
-           (expected, slot) <- Vector(Vector(vertex.x, vertex.y, vertex.z, vertex.w),
-             Vector(vertex.u, vertex.v), draw.rgba).zipWithIndex) {
+      for (
+        (vertex, index) <- vertices.zipWithIndex;
+        (expected, slot) <- Vector(
+          Vector(vertex.x, vertex.y, vertex.z, vertex.w),
+          Vector(vertex.u, vertex.v),
+          draw.rgba
+        ).zipWithIndex
+      ) {
         val attr = s"attributes[$slot]."
         assert(field(attr + "enabled") == 1 && field(attr + "format") == VertexInputFormat.float32)
         assert(field(attr + "components") == expected.size)
@@ -30,7 +35,10 @@ class NativeProductVertexInputsSpec extends AnyFlatSpec {
         for ((value, component) <- expected.zipWithIndex) {
           val offset = (address - upload.base).toInt + component * 4
           val bits = (0 until 4).foldLeft(0)((n, b) => n | ((upload.bytes(offset + b) & 255) << (8 * b)))
-          assert(bits == java.lang.Float.floatToRawIntBits(value), s"${scene.id} vertex=$index slot=$slot component=$component")
+          assert(
+            bits == java.lang.Float.floatToRawIntBits(value),
+            s"${scene.id} vertex=$index slot=$slot component=$component"
+          )
         }
       }
     }

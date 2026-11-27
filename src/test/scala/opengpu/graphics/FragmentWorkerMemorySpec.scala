@@ -10,8 +10,7 @@ class FragmentWorkerMemorySpec extends AnyFlatSpec {
   behavior of "Fragment worker memory routing"
 
   it should "sustain one credited staging request per cycle without changing owners" in {
-    simulate(new FragmentStagingArbiter(GpuConfig(lanes = 4, warps = 2), 4,
-      slots = 4, localOutstanding = 2)) { dut =>
+    simulate(new FragmentStagingArbiter(GpuConfig(lanes = 4, warps = 2), 4, slots = 4, localOutstanding = 2)) { dut =>
       dut.io.memoryRequest.ready.poke(true.B)
       dut.io.memoryResponse.valid.poke(false.B)
       dut.io.memoryResponse.bits.poke(0.U.asTypeOf(dut.io.memoryResponse.bits))
@@ -51,8 +50,10 @@ class FragmentWorkerMemorySpec extends AnyFlatSpec {
       }
       println(s"STAGING_PIPE issue_cycles=${issueCycles.mkString(",")}")
       assert(owners.size == 4)
-      assert(issueCycles.sliding(2).forall(p => p(1) - p(0) == 1),
-        s"staging request queue inserted bubbles with available credits: $issueCycles")
+      assert(
+        issueCycles.sliding(2).forall(p => p(1) - p(0) == 1),
+        s"staging request queue inserted bubbles with available credits: $issueCycles"
+      )
       dut.io.clients.foreach(_.request.valid.poke(false.B))
       dut.io.outstanding.expect(4.U)
       for (id <- Seq(2, 0, 3, 1)) {
@@ -76,7 +77,6 @@ class FragmentWorkerMemorySpec extends AnyFlatSpec {
       dut.io.drained.expect(true.B)
     }
   }
-
 
   it should "sustain one distinct texture request per cycle and preserve every owner" in {
     simulate(new FragmentTextureArbiter(4, maxOutstanding = 16)) { d =>
@@ -120,11 +120,17 @@ class FragmentWorkerMemorySpec extends AnyFlatSpec {
     }
   }
 
-  for ((count, slots, localIds, flow) <- Seq((1, 2, 2, false), (4, 2, 2, false),
-      (4, 4, 2, false), (4, 4, 4, true))) {
+  for ((count, slots, localIds, flow) <- Seq((1, 2, 2, false), (4, 2, 2, false), (4, 4, 2, false), (4, 4, 4, true))) {
     it should s"preserve local IDs across $count staging clients (slots=$slots local=$localIds flow=$flow)" in {
-      simulate(new FragmentStagingArbiter(GpuConfig(lanes = 4, warps = 2), count,
-        slots = slots, localOutstanding = localIds, flowRequests = flow)) { dut =>
+      simulate(
+        new FragmentStagingArbiter(
+          GpuConfig(lanes = 4, warps = 2),
+          count,
+          slots = slots,
+          localOutstanding = localIds,
+          flowRequests = flow
+        )
+      ) { dut =>
         dut.io.memoryRequest.ready.poke(false.B)
         dut.io.memoryResponse.valid.poke(false.B)
         dut.io.memoryResponse.bits.poke(0.U.asTypeOf(dut.io.memoryResponse.bits))
@@ -175,8 +181,11 @@ class FragmentWorkerMemorySpec extends AnyFlatSpec {
             if (client.request.valid.peek().litToBoolean && client.request.ready.peek().litToBoolean)
               submitted(i) = true
             if (client.response.valid.peek().litToBoolean) {
-              val value = (client.response.bits.transactionId.peek().litValue,
-                client.response.bits.readData.peek().litValue, client.response.bits.fault.peek().litToBoolean)
+              val value = (
+                client.response.bits.transactionId.peek().litValue,
+                client.response.bits.readData.peek().litValue,
+                client.response.bits.fault.peek().litToBoolean
+              )
               heldResponses.get(i).foreach(old => assert(old == value, "buffered reply changed under stall"))
               assert(owners.values.toSeq.contains(i))
               client.response.bits.transactionId.expect((if (localIds == 2) 1 else 3 - i).U)
@@ -188,8 +197,12 @@ class FragmentWorkerMemorySpec extends AnyFlatSpec {
           }
           if (dut.io.memoryRequest.valid.peek().litToBoolean) {
             val request = dut.io.memoryRequest.bits
-            val value = (request.address.peek().litValue, request.writeData.peek().litValue,
-              request.byteMask.peek().litValue, request.transactionId.peek().litValue)
+            val value = (
+              request.address.peek().litValue,
+              request.writeData.peek().litValue,
+              request.byteMask.peek().litValue,
+              request.transactionId.peek().litValue
+            )
             heldRequest.foreach(old => assert(old == value, "registered staging request changed under stall"))
             val i = ((value._1.toInt - 0x4000) / 64)
             assert(i >= 0 && i < count && submitted(i))
@@ -224,16 +237,26 @@ class FragmentWorkerMemorySpec extends AnyFlatSpec {
         dut.io.memoryResponse.valid.poke(false.B)
         assert(received.forall(identity), "staging clients did not all retire")
         assert(peak == math.min(slots, count))
-        if (count > 1) assert(otherRepliesBeforeZero == count - 1,
-          "a stalled worker must not prevent the other staging ID making progress")
+        if (count > 1)
+          assert(
+            otherRepliesBeforeZero == count - 1,
+            "a stalled worker must not prevent the other staging ID making progress"
+          )
         dut.io.drained.expect(true.B)
       }
     }
   }
 
   it should "share four staging IDs between fragment and vertex owners without local-tag aliasing" in {
-    simulate(new FragmentStagingArbiter(GpuConfig(lanes = 4, warps = 2), 2,
-      slots = 4, localOutstanding = 4, flowRequests = true)) { dut =>
+    simulate(
+      new FragmentStagingArbiter(
+        GpuConfig(lanes = 4, warps = 2),
+        2,
+        slots = 4,
+        localOutstanding = 4,
+        flowRequests = true
+      )
+    ) { dut =>
       dut.io.memoryRequest.ready.poke(true.B)
       dut.io.memoryResponse.valid.poke(false.B)
       dut.io.memoryResponse.bits.poke(0.U.asTypeOf(dut.io.memoryResponse.bits))

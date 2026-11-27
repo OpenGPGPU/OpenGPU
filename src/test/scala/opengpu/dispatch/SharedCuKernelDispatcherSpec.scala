@@ -13,8 +13,8 @@ class SharedCuKernelDispatcherSpec extends AnyFlatSpec {
 
   private def task(port: DecoupledIO[TaggedKernelLaunch], id: Int): Unit = {
     port.bits.commandId.poke(id.U)
-    port.bits.launch.invocations.helpers.poke(((id*37+11)&255).U)
-    port.bits.launch.invocations.privateBase.poke((0x8000+id*64).U)
+    port.bits.launch.invocations.helpers.poke(((id * 37 + 11) & 255).U)
+    port.bits.launch.invocations.privateBase.poke((0x8000 + id * 64).U)
     port.bits.launch.invocations.privateBytes.poke(288.U)
     port.bits.launch.kernelPc.poke((0x1000 + id * 4).U)
     port.bits.launch.kernargAddress.poke((0x8000 + id * 64).U)
@@ -52,8 +52,10 @@ class SharedCuKernelDispatcherSpec extends AnyFlatSpec {
           dut.io.graphicsLaunch.valid.poke(issuing.B)
           task(dut.io.launch, next(0)); task(dut.io.graphicsLaunch, next(1))
           dut.io.completion.ready.poke((cycle >= 450 || rng.nextBoolean()).B)
-          dut.io.graphicsCompletion.ready.poke((cycle >= 450 ||
-            (cycle >= 160 && rng.nextBoolean())).B)
+          dut.io.graphicsCompletion.ready.poke(
+            (cycle >= 450 ||
+              (cycle >= 160 && rng.nextBoolean())).B
+          )
           for (cu <- 0 until count) {
             val r = running(cu)
             dut.io.cuCompletion(cu).valid.poke(r.exists(_.delay == 0).B)
@@ -63,9 +65,13 @@ class SharedCuKernelDispatcherSpec extends AnyFlatSpec {
             if (r.nonEmpty) m.setBit(cu) else m
           }
           dut.io.busy.expect(mask.U)
-          dut.io.graphicsOwner.expect(running.zipWithIndex.foldLeft(BigInt(0)) {
-            case (m, (r, cu)) => if (r.exists(_.graphics)) m.setBit(cu) else m
-          }.U)
+          dut.io.graphicsOwner.expect(
+            running.zipWithIndex
+              .foldLeft(BigInt(0)) { case (m, (r, cu)) =>
+                if (r.exists(_.graphics)) m.setBit(cu) else m
+              }
+              .U
+          )
           for (cu <- 0 until count; r <- running(cu))
             dut.io.taskIds(cu).expect(r.id.U)
 
@@ -76,8 +82,10 @@ class SharedCuKernelDispatcherSpec extends AnyFlatSpec {
               val value = (port.bits.commandId.peek().litValue, port.bits.success.peek().litToBoolean)
               stalled(owner).foreach(old => assert(old == value, "stalled completion changed"))
               if (ready) {
-                assert(pending.remove((owner == 1, value._1.toInt)).contains(value._2),
-                  s"unexpected owner=$owner completion=$value")
+                assert(
+                  pending.remove((owner == 1, value._1.toInt)).contains(value._2),
+                  s"unexpected owner=$owner completion=$value"
+                )
                 retired(owner) += 1
                 if (owner == 0 && cycle < 160) computeDuringGraphicsStall += 1
               }
@@ -86,21 +94,23 @@ class SharedCuKernelDispatcherSpec extends AnyFlatSpec {
           }
 
           for (cu <- 0 until count) {
-            if (dut.io.cuCompletion(cu).valid.peek().litToBoolean &&
-                dut.io.cuCompletion(cu).ready.peek().litToBoolean) running(cu) = None
+            if (
+              dut.io.cuCompletion(cu).valid.peek().litToBoolean &&
+              dut.io.cuCompletion(cu).ready.peek().litToBoolean
+            ) running(cu) = None
           }
-          val accepted = Seq(dut.io.launch, dut.io.graphicsLaunch).zipWithIndex.filter {
-            case (p, _) => p.valid.peek().litToBoolean && p.ready.peek().litToBoolean
+          val accepted = Seq(dut.io.launch, dut.io.graphicsLaunch).zipWithIndex.filter { case (p, _) =>
+            p.valid.peek().litToBoolean && p.ready.peek().litToBoolean
           }
           assert(accepted.size <= 1)
           for ((_, owner) <- accepted) {
             val cu = (0 until count).find(i => dut.io.cuLaunch(i).valid.peek().litToBoolean).get
             assert(running(cu).isEmpty)
             dut.io.cuLaunch(cu).bits.kernelPc.expect((0x1000 + next(owner) * 4).U)
-            val policy=dut.io.cuLaunch(cu).bits.invocations
-            policy.helpers.expect((if(owner==0)0 else (next(owner)*37+11)&255).U)
-            policy.privateBase.expect((if(owner==0)0 else 0x8000+next(owner)*64).U)
-            policy.privateBytes.expect((if(owner==0)0 else 288).U)
+            val policy = dut.io.cuLaunch(cu).bits.invocations
+            policy.helpers.expect((if (owner == 0) 0 else (next(owner) * 37 + 11) & 255).U)
+            policy.privateBase.expect((if (owner == 0) 0 else 0x8000 + next(owner) * 64).U)
+            policy.privateBytes.expect((if (owner == 0) 0 else 288).U)
             val success = (next(owner) % 5) != 0
             running(cu) = Some(Running(owner == 1, next(owner), success, rng.nextInt(6) + 1))
             pending((owner == 1, next(owner))) = success

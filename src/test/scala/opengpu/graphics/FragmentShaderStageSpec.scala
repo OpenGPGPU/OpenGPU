@@ -5,1864 +5,3025 @@ import chisel3.util._
 import chisel3.reflect.DataMirror
 import opengpu.config.GpuConfig
 import opengpu.core.memory._
-import opengpu.system.{GpuSystem,SharedCuShaderConfig}
+import opengpu.system.{GpuSystem, SharedCuShaderConfig}
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
 private class FragmentShaderSramModels extends BlackBox with HasBlackBoxInline {
-  val io=IO(new Bundle {val present=Output(Bool())})
-  setInline("FragmentShaderSramModels.sv",
-    "module FragmentShaderSramModels(output present); assign present=1'b1; endmodule\n"+
-      Seq(32,64).map(width=>java.nio.file.Files.readString(java.nio.file.Paths.get(
-        s"depends/asap7_sram_0p0/generated/verilog/srambank_64x4x${width}_6t122.v"))).mkString("\n"))
+  val io = IO(new Bundle { val present = Output(Bool()) })
+  setInline(
+    "FragmentShaderSramModels.sv",
+    "module FragmentShaderSramModels(output present); assign present=1'b1; endmodule\n" +
+      Seq(32, 64)
+        .map(width =>
+          java.nio.file.Files.readString(
+            java.nio.file.Paths.get(s"depends/asap7_sram_0p0/generated/verilog/srambank_64x4x${width}_6t122.v")
+          )
+        )
+        .mkString("\n")
+  )
 }
 
-private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,fullInterface: Boolean=false,oversize: Boolean=false,scalarFpu: Boolean=false,nativeProfile: Boolean=false,val geometryInput: Boolean=false,inputReturnCredit: Boolean=true,val guardQualification: Boolean=false,val inputBankQualification: Boolean=false,val sampleShading:Boolean=false,val primitiveIdInput:Boolean=false) extends Module {
-  require(!guardQualification || (local && nativeProfile && fullInterface && scalarFpu && lanes==16 && warps==8 && !oversize))
-  require(!inputBankQualification || (local && nativeProfile && fullInterface && scalarFpu && lanes==16 && warps==8 && !oversize && !geometryInput))
-  val cfg=if(inputBankQualification)GpuConfig(l2Sets=512,l2StoreEntries=8)else if(nativeProfile)GpuConfig(lanes=lanes,warps=warps)
-    else GpuConfig(lanes=lanes,warps=warps,l2Sets=8,l2Ways=2)
-  val vp=if(fullInterface)FragmentShaderConfig()else FragmentShaderConfig(2,4)
-  val inputAbi=if(primitiveIdInput){if(sampleShading)9 else 8}else if(sampleShading){if(geometryInput)7 else 6}else if(geometryInput)5 else 1
-  val pp=if(guardQualification || inputBankQualification)NativeShaderPayloadSizing.pool(owners=3,ports=8)else ShaderPayloadConfig(capacityBytes=if(fullInterface)65536 else 4096,
-    maxPayloadBytes=if(oversize)4608 else vp.prefixBytes(lanes*warps,if(fullInterface)16 else 2,4,inputAbi),owners=2,ports=4)
-  private val hostTransactions=if(inputBankQualification)32 else 4
-  private val slots=GpuSystem.totalMemoryTransactions(2,4,hostTransactions)
-  val io=IO(new Bundle {
-    val draw=Flipped(Decoupled(new FragmentShaderDraw(vp)))
-    val in=Flipped(Decoupled(new Fp32RasterizedQuad(vp.vertices,GraphicsConfig())))
-    val geometry=if(geometryInput)Some(Input(Valid(UInt(32.W))))else None
-    val inputEnd=Flipped(Decoupled(new FragmentInputCompletion));val cancelSource=Output(Bool())
-    val out=Decoupled(new FragmentShaderQuad(vp,GraphicsConfig()))
-    val completion=Decoupled(new FragmentShaderCompletion)
-    val memoryRequest=Decoupled(new ComputeMemoryRequest(cfg,64,slots))
-    val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,slots)))
-    val pressure=Flipped(Decoupled(new ShaderPayloadControlRequest(pp)))
-    val pressureResponse=Decoupled(new ShaderPayloadControlResponse(pp))
-    val context=Input(UInt(32.W));val cancel=Input(Bool());val blockLaunch=Input(Bool())
-    val blockStaging=Input(Bool());val holdPayloadResponses=Input(Bool());val performance=Output(new FragmentPerformanceEvents)
-    val launchOffered=Output(Bool());val launched=Output(Bool());val globalStaging=Output(Bool());val stagingOutstanding=Output(UInt(2.W))
-    val stagingWrite=Output(Valid(new Bundle {val offset=UInt(32.W);val mask=UInt(64.W)}))
-    val stagingRequest=Output(Valid(new Bundle {
-      val tag=UInt(8.W);val offset=UInt(32.W);val write=Bool();val data=UInt(512.W);val mask=UInt(64.W)
+private class FragmentShaderHarness(
+    local: Boolean = true,
+    lanes: Int = 4,
+    warps: Int = 2,
+    fullInterface: Boolean = false,
+    oversize: Boolean = false,
+    scalarFpu: Boolean = false,
+    nativeProfile: Boolean = false,
+    val geometryInput: Boolean = false,
+    inputReturnCredit: Boolean = true,
+    val guardQualification: Boolean = false,
+    val inputBankQualification: Boolean = false,
+    val sampleShading: Boolean = false,
+    val primitiveIdInput: Boolean = false
+) extends Module {
+  require(
+    !guardQualification || (local && nativeProfile && fullInterface && scalarFpu && lanes == 16 && warps == 8 && !oversize)
+  )
+  require(
+    !inputBankQualification || (local && nativeProfile && fullInterface && scalarFpu && lanes == 16 && warps == 8 && !oversize && !geometryInput)
+  )
+  val cfg =
+    if (inputBankQualification) GpuConfig(l2Sets = 512, l2StoreEntries = 8)
+    else if (nativeProfile) GpuConfig(lanes = lanes, warps = warps)
+    else GpuConfig(lanes = lanes, warps = warps, l2Sets = 8, l2Ways = 2)
+  val vp = if (fullInterface) FragmentShaderConfig() else FragmentShaderConfig(2, 4)
+  val inputAbi = if (primitiveIdInput) { if (sampleShading) 9 else 8 }
+  else if (sampleShading) { if (geometryInput) 7 else 6 }
+  else if (geometryInput) 5
+  else 1
+  val pp =
+    if (guardQualification || inputBankQualification) NativeShaderPayloadSizing.pool(owners = 3, ports = 8)
+    else
+      ShaderPayloadConfig(
+        capacityBytes = if (fullInterface) 65536 else 4096,
+        maxPayloadBytes =
+          if (oversize) 4608 else vp.prefixBytes(lanes * warps, if (fullInterface) 16 else 2, 4, inputAbi),
+        owners = 2,
+        ports = 4
+      )
+  private val hostTransactions = if (inputBankQualification) 32 else 4
+  private val slots = GpuSystem.totalMemoryTransactions(2, 4, hostTransactions)
+  val io = IO(new Bundle {
+    val draw = Flipped(Decoupled(new FragmentShaderDraw(vp)))
+    val in = Flipped(Decoupled(new Fp32RasterizedQuad(vp.vertices, GraphicsConfig())))
+    val geometry = if (geometryInput) Some(Input(Valid(UInt(32.W)))) else None
+    val inputEnd = Flipped(Decoupled(new FragmentInputCompletion)); val cancelSource = Output(Bool())
+    val out = Decoupled(new FragmentShaderQuad(vp, GraphicsConfig()))
+    val completion = Decoupled(new FragmentShaderCompletion)
+    val memoryRequest = Decoupled(new ComputeMemoryRequest(cfg, 64, slots))
+    val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64, slots)))
+    val pressure = Flipped(Decoupled(new ShaderPayloadControlRequest(pp)))
+    val pressureResponse = Decoupled(new ShaderPayloadControlResponse(pp))
+    val context = Input(UInt(32.W)); val cancel = Input(Bool()); val blockLaunch = Input(Bool())
+    val blockStaging = Input(Bool()); val holdPayloadResponses = Input(Bool());
+    val performance = Output(new FragmentPerformanceEvents)
+    val launchOffered = Output(Bool()); val launched = Output(Bool()); val globalStaging = Output(Bool());
+    val stagingOutstanding = Output(UInt(2.W))
+    val stagingWrite = Output(Valid(new Bundle { val offset = UInt(32.W); val mask = UInt(64.W) }))
+    val stagingRequest = Output(Valid(new Bundle {
+      val tag = UInt(8.W); val offset = UInt(32.W); val write = Bool(); val data = UInt(512.W); val mask = UInt(64.W)
     }))
-    val stagingReady=Output(Bool());val stagingReply=Output(Valid(UInt(8.W)))
-    val reservedBytes=Output(UInt(32.W));val poolDrained=Output(Bool());val idle=Output(Bool())
-    val modelsPresent=Output(Bool())
-    val busy=Output(Bool());val task=Output(Valid(new ShaderPayloadBinding(cfg,pp)))
+    val stagingReady = Output(Bool()); val stagingReply = Output(Valid(UInt(8.W)))
+    val reservedBytes = Output(UInt(32.W)); val poolDrained = Output(Bool()); val idle = Output(Bool())
+    val modelsPresent = Output(Bool())
+    val busy = Output(Bool()); val task = Output(Valid(new ShaderPayloadBinding(cfg, pp)))
   })
-  private val stage=Module(new FragmentShaderStage(cfg,vp,SharedCuShaderConfig(2),payload=if(local)Some(pp)else None,
-    useSramBlackBoxes=nativeProfile,geometryInput=geometryInput,inputReturnCredit=inputReturnCredit,groupedTexture=inputBankQualification,sampleShading=sampleShading,primitiveIdInput=primitiveIdInput))
-  private val system=Module(new GpuSystem(cfg,numComputeUnits=2,useBlackBoxes=nativeProfile,
-    enableGraphicsKernels=true,enableFpuBackend=scalarFpu,
-    graphicsHostTransactions=hostTransactions,instructionCacheSets=if(nativeProfile)64 else 4,instructionCacheWays=if(nativeProfile)2 else 1,
-    vectorCacheSets=if(nativeProfile)64 else 4,vectorCacheWays=if(nativeProfile)2 else 1,
-    shaderPayload=if(local)Some(pp)else None,nativeExecutionProfile=nativeProfile,shaderExecutionLimits=guardQualification || inputBankQualification))
-  private val texture=if(inputBankQualification)Some(Module(new NativeRgba8TextureSharedPool(cfg,
-    numComputeUnits=2,clients=1,useBlackBoxes=true,rowsPerCluster=128)))else None
-  io.modelsPresent:=(if(nativeProfile)Module(new FragmentShaderSramModels).io.present else false.B)
-  private def tie(data: Data): Unit=data match {
-    case r: Record=>r.elements.values.foreach(tie)
-    case v: Vec[_]=>v.foreach(tie)
-    case b: Bool if DataMirror.directionOf(b)==ActualDirection.Input=>b:=false.B
-    case s: SInt if DataMirror.directionOf(s)==ActualDirection.Input=>s:=0.S
-    case u: UInt if DataMirror.directionOf(u)==ActualDirection.Input=>u:=0.U
-    case _=>()
+  private val stage = Module(
+    new FragmentShaderStage(
+      cfg,
+      vp,
+      SharedCuShaderConfig(2),
+      payload = if (local) Some(pp) else None,
+      useSramBlackBoxes = nativeProfile,
+      geometryInput = geometryInput,
+      inputReturnCredit = inputReturnCredit,
+      groupedTexture = inputBankQualification,
+      sampleShading = sampleShading,
+      primitiveIdInput = primitiveIdInput
+    )
+  )
+  private val system = Module(
+    new GpuSystem(
+      cfg,
+      numComputeUnits = 2,
+      useBlackBoxes = nativeProfile,
+      enableGraphicsKernels = true,
+      enableFpuBackend = scalarFpu,
+      graphicsHostTransactions = hostTransactions,
+      instructionCacheSets = if (nativeProfile) 64 else 4,
+      instructionCacheWays = if (nativeProfile) 2 else 1,
+      vectorCacheSets = if (nativeProfile) 64 else 4,
+      vectorCacheWays = if (nativeProfile) 2 else 1,
+      shaderPayload = if (local) Some(pp) else None,
+      nativeExecutionProfile = nativeProfile,
+      shaderExecutionLimits = guardQualification || inputBankQualification
+    )
+  )
+  private val texture =
+    if (inputBankQualification)
+      Some(
+        Module(
+          new NativeRgba8TextureSharedPool(
+            cfg,
+            numComputeUnits = 2,
+            clients = 1,
+            useBlackBoxes = true,
+            rowsPerCluster = 128
+          )
+        )
+      )
+    else None
+  io.modelsPresent := (if (nativeProfile) Module(new FragmentShaderSramModels).io.present else false.B)
+  private def tie(data: Data): Unit = data match {
+    case r: Record                                                     => r.elements.values.foreach(tie)
+    case v: Vec[_]                                                     => v.foreach(tie)
+    case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b := false.B
+    case s: SInt if DataMirror.directionOf(s) == ActualDirection.Input => s := 0.S
+    case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u := 0.U
+    case _                                                             => ()
   }
   tie(system.io)
-  if(guardQualification || inputBankQualification)system.io.graphicsInstructionLimit.get:=opengpu.system.NativeShaderExecutionCapabilities.defaultQuota.U
-  stage.io.in<>io.in;stage.io.geometry.foreach(_:=io.geometry.get);stage.io.inputEnd<>io.inputEnd;io.cancelSource:=stage.io.cancelSource
-  stage.io.draw<>io.draw;io.out<>stage.io.out;io.completion<>stage.io.completion;stage.io.cancel:=io.cancel
-  system.io.graphicsKernels.get<>stage.io.shared
-  system.io.graphicsKernels.get.launch.valid:=stage.io.shared.launch.valid && !io.blockLaunch
-  stage.io.shared.launch.ready:=system.io.graphicsKernels.get.launch.ready && !io.blockLaunch
-  io.launchOffered:=stage.io.shared.launch.valid;io.launched:=stage.io.shared.launch.fire
+  if (guardQualification || inputBankQualification)
+    system.io.graphicsInstructionLimit.get := opengpu.system.NativeShaderExecutionCapabilities.defaultQuota.U
+  stage.io.in <> io.in; stage.io.geometry.foreach(_ := io.geometry.get); stage.io.inputEnd <> io.inputEnd;
+  io.cancelSource := stage.io.cancelSource
+  stage.io.draw <> io.draw; io.out <> stage.io.out; io.completion <> stage.io.completion; stage.io.cancel := io.cancel
+  system.io.graphicsKernels.get <> stage.io.shared
+  system.io.graphicsKernels.get.launch.valid := stage.io.shared.launch.valid && !io.blockLaunch
+  stage.io.shared.launch.ready := system.io.graphicsKernels.get.launch.ready && !io.blockLaunch
+  io.launchOffered := stage.io.shared.launch.valid; io.launched := stage.io.shared.launch.fire
   texture match {
-    case None=>
-      system.io.graphicsHostRequest.valid:=stage.io.memoryRequest.valid && !io.blockStaging
-      system.io.graphicsHostRequest.bits:=stage.io.memoryRequest.bits
-      stage.io.memoryRequest.ready:=system.io.graphicsHostRequest.ready && !io.blockStaging
-      stage.io.memoryResponse<>system.io.graphicsHostResponse
-    case Some(pool)=>
-      pool.io.client(0)<>stage.io.grouped.get;pool.io.cuMask(0):=stage.io.shared.owned
-      pool.io.satp:=0.U;pool.io.flush:=0.U.asTypeOf(pool.io.flush)
-      pool.io.invalidate:=false.B;pool.io.cancel:=io.cancel
-      val requests=Seq(stage.io.memoryRequest,pool.io.memoryRequest(0),pool.io.pageWalk(0))
-      val responses=Seq(stage.io.memoryResponse,pool.io.memoryResponse(0),pool.io.pageWalkResponse(0))
-      val ranges=Seq((0,4),(4,16),(20,4))
-      val arbiter=Module(new RRArbiter(new ComputeMemoryRequest(cfg,64,hostTransactions),3))
-      val queue=Module(new Queue(new ComputeMemoryRequest(cfg,64,hostTransactions),2,pipe=true))
-      val response=system.io.graphicsHostResponse
-      val selected=Wire(Vec(3,Bool()))
-      for(i<-0 until 3) {
-        val (base,count)=ranges(i);val enabled=if(i==0)!io.blockStaging else true.B
-        arbiter.io.in(i).valid:=requests(i).valid && enabled
-        arbiter.io.in(i).bits:=requests(i).bits
-        arbiter.io.in(i).bits.transactionId:=requests(i).bits.transactionId.pad(5)+base.U
-        requests(i).ready:=arbiter.io.in(i).ready && enabled
-        selected(i):=response.bits.transactionId>=base.U && response.bits.transactionId<(base+count).U
-        responses(i).valid:=response.valid && selected(i);responses(i).bits:=response.bits
-        responses(i).bits.transactionId:=response.bits.transactionId-base.U
-        when(requests(i).fire){assert(requests(i).bits.transactionId<count.U)}
+    case None =>
+      system.io.graphicsHostRequest.valid := stage.io.memoryRequest.valid && !io.blockStaging
+      system.io.graphicsHostRequest.bits := stage.io.memoryRequest.bits
+      stage.io.memoryRequest.ready := system.io.graphicsHostRequest.ready && !io.blockStaging
+      stage.io.memoryResponse <> system.io.graphicsHostResponse
+    case Some(pool) =>
+      pool.io.client(0) <> stage.io.grouped.get; pool.io.cuMask(0) := stage.io.shared.owned
+      pool.io.satp := 0.U; pool.io.flush := 0.U.asTypeOf(pool.io.flush)
+      pool.io.invalidate := false.B; pool.io.cancel := io.cancel
+      val requests = Seq(stage.io.memoryRequest, pool.io.memoryRequest(0), pool.io.pageWalk(0))
+      val responses = Seq(stage.io.memoryResponse, pool.io.memoryResponse(0), pool.io.pageWalkResponse(0))
+      val ranges = Seq((0, 4), (4, 16), (20, 4))
+      val arbiter = Module(new RRArbiter(new ComputeMemoryRequest(cfg, 64, hostTransactions), 3))
+      val queue = Module(new Queue(new ComputeMemoryRequest(cfg, 64, hostTransactions), 2, pipe = true))
+      val response = system.io.graphicsHostResponse
+      val selected = Wire(Vec(3, Bool()))
+      for (i <- 0 until 3) {
+        val (base, count) = ranges(i); val enabled = if (i == 0) !io.blockStaging else true.B
+        arbiter.io.in(i).valid := requests(i).valid && enabled
+        arbiter.io.in(i).bits := requests(i).bits
+        arbiter.io.in(i).bits.transactionId := requests(i).bits.transactionId.pad(5) + base.U
+        requests(i).ready := arbiter.io.in(i).ready && enabled
+        selected(i) := response.bits.transactionId >= base.U && response.bits.transactionId < (base + count).U
+        responses(i).valid := response.valid && selected(i); responses(i).bits := response.bits
+        responses(i).bits.transactionId := response.bits.transactionId - base.U
+        when(requests(i).fire) { assert(requests(i).bits.transactionId < count.U) }
       }
-      queue.io.enq<>arbiter.io.out;system.io.graphicsHostRequest<>queue.io.deq
-      response.ready:=selected.zip(responses).map{case(s,r)=>s && r.ready}.reduce(_ || _)
-      when(response.valid){assert(PopCount(selected)===1.U)}
+      queue.io.enq <> arbiter.io.out; system.io.graphicsHostRequest <> queue.io.deq
+      response.ready := selected.zip(responses).map { case (s, r) => s && r.ready }.reduce(_ || _)
+      when(response.valid) { assert(PopCount(selected) === 1.U) }
   }
-  io.performance:=stage.io.performance
-  io.globalStaging:=stage.io.memoryRequest.fire && stage.io.memoryRequest.bits.transactionId<2.U
-  io.stagingWrite.valid:=io.globalStaging && stage.io.memoryRequest.bits.isWrite
-  io.stagingWrite.bits.offset:=stage.io.memoryRequest.bits.address-io.draw.bits.scratch.base
-  io.stagingWrite.bits.mask:=stage.io.memoryRequest.bits.byteMask
-  io.stagingRequest.valid:=stage.io.memoryRequest.valid && stage.io.memoryRequest.bits.transactionId<2.U
-  io.stagingRequest.bits.tag:=stage.io.memoryRequest.bits.transactionId
-  io.stagingRequest.bits.offset:=stage.io.memoryRequest.bits.address-io.draw.bits.scratch.base
-  io.stagingRequest.bits.write:=stage.io.memoryRequest.bits.isWrite
-  io.stagingRequest.bits.data:=stage.io.memoryRequest.bits.writeData
-  io.stagingRequest.bits.mask:=stage.io.memoryRequest.bits.byteMask
-  io.stagingReady:=stage.io.memoryRequest.ready
-  io.stagingReply.valid:=stage.io.memoryResponse.fire && stage.io.memoryResponse.bits.transactionId<2.U
-  io.stagingReply.bits:=stage.io.memoryResponse.bits.transactionId
-  private val stagingIssued=if(local)stage.io.payload.get.request.fire else
-    stage.io.memoryRequest.fire && stage.io.memoryRequest.bits.transactionId<2.U
-  private val stagingReplied=if(local)stage.io.payload.get.response.fire else
-    stage.io.memoryResponse.fire && stage.io.memoryResponse.bits.transactionId<2.U
-  private val stagingOutstanding=RegInit(0.U(2.W))
-  when(stagingIssued=/=stagingReplied){stagingOutstanding:=Mux(stagingIssued,stagingOutstanding+1.U,stagingOutstanding-1.U)}
-  assert(stagingOutstanding<=2.U)
-  io.stagingOutstanding:=stagingOutstanding
-  system.io.graphicsDrained:= !stage.io.busy && !texture.map(_.io.busy).getOrElse(false.B)
-  system.io.graphicsShaderL1Invalidate.ready:=true.B
-  io.memoryRequest<>system.io.memoryRequest;system.io.memoryResponse<>io.memoryResponse
-  io.idle:=system.io.vmContextIdle && !stage.io.busy && !texture.map(_.io.busy).getOrElse(false.B);io.busy:=stage.io.busy
-  io.task:=0.U.asTypeOf(io.task);io.reservedBytes:=0.U;io.poolDrained:=true.B
-  io.pressure.ready:=false.B;io.pressureResponse.valid:=false.B;io.pressureResponse.bits:=0.U.asTypeOf(io.pressureResponse.bits)
-  if(local) {
-    val port=stage.io.payload.get;val management=system.io.payloadManagement.get
-    management.control(0)<>port.control;port.controlResponse<>management.controlResponse(0)
-    management.request(0)<>port.request;port.response<>management.response(0)
-    port.response.valid:=management.response(0).valid && !io.holdPayloadResponses
-    management.response(0).ready:=port.response.ready && !io.holdPayloadResponses
-    management.control(1)<>io.pressure;io.pressureResponse<>management.controlResponse(1)
-    port.context:=io.context;port.cancel:=io.cancel;system.io.graphicsPayload.get:=port.task;io.task:=port.task
+  io.performance := stage.io.performance
+  io.globalStaging := stage.io.memoryRequest.fire && stage.io.memoryRequest.bits.transactionId < 2.U
+  io.stagingWrite.valid := io.globalStaging && stage.io.memoryRequest.bits.isWrite
+  io.stagingWrite.bits.offset := stage.io.memoryRequest.bits.address - io.draw.bits.scratch.base
+  io.stagingWrite.bits.mask := stage.io.memoryRequest.bits.byteMask
+  io.stagingRequest.valid := stage.io.memoryRequest.valid && stage.io.memoryRequest.bits.transactionId < 2.U
+  io.stagingRequest.bits.tag := stage.io.memoryRequest.bits.transactionId
+  io.stagingRequest.bits.offset := stage.io.memoryRequest.bits.address - io.draw.bits.scratch.base
+  io.stagingRequest.bits.write := stage.io.memoryRequest.bits.isWrite
+  io.stagingRequest.bits.data := stage.io.memoryRequest.bits.writeData
+  io.stagingRequest.bits.mask := stage.io.memoryRequest.bits.byteMask
+  io.stagingReady := stage.io.memoryRequest.ready
+  io.stagingReply.valid := stage.io.memoryResponse.fire && stage.io.memoryResponse.bits.transactionId < 2.U
+  io.stagingReply.bits := stage.io.memoryResponse.bits.transactionId
+  private val stagingIssued =
+    if (local) stage.io.payload.get.request.fire
+    else
+      stage.io.memoryRequest.fire && stage.io.memoryRequest.bits.transactionId < 2.U
+  private val stagingReplied =
+    if (local) stage.io.payload.get.response.fire
+    else
+      stage.io.memoryResponse.fire && stage.io.memoryResponse.bits.transactionId < 2.U
+  private val stagingOutstanding = RegInit(0.U(2.W))
+  when(stagingIssued =/= stagingReplied) {
+    stagingOutstanding := Mux(stagingIssued, stagingOutstanding + 1.U, stagingOutstanding - 1.U)
+  }
+  assert(stagingOutstanding <= 2.U)
+  io.stagingOutstanding := stagingOutstanding
+  system.io.graphicsDrained := !stage.io.busy && !texture.map(_.io.busy).getOrElse(false.B)
+  system.io.graphicsShaderL1Invalidate.ready := true.B
+  io.memoryRequest <> system.io.memoryRequest; system.io.memoryResponse <> io.memoryResponse
+  io.idle := system.io.vmContextIdle && !stage.io.busy && !texture.map(_.io.busy).getOrElse(false.B);
+  io.busy := stage.io.busy
+  io.task := 0.U.asTypeOf(io.task); io.reservedBytes := 0.U; io.poolDrained := true.B
+  io.pressure.ready := false.B; io.pressureResponse.valid := false.B;
+  io.pressureResponse.bits := 0.U.asTypeOf(io.pressureResponse.bits)
+  if (local) {
+    val port = stage.io.payload.get; val management = system.io.payloadManagement.get
+    management.control(0) <> port.control; port.controlResponse <> management.controlResponse(0)
+    management.request(0) <> port.request; port.response <> management.response(0)
+    port.response.valid := management.response(0).valid && !io.holdPayloadResponses
+    management.response(0).ready := port.response.ready && !io.holdPayloadResponses
+    management.control(1) <> io.pressure; io.pressureResponse <> management.controlResponse(1)
+    port.context := io.context; port.cancel := io.cancel; system.io.graphicsPayload.get := port.task;
+    io.task := port.task
     when(port.request.fire && port.request.bits.write) {
-      io.stagingWrite.valid:=true.B;io.stagingWrite.bits.offset:=port.request.bits.offset
-      io.stagingWrite.bits.mask:=port.request.bits.mask
+      io.stagingWrite.valid := true.B; io.stagingWrite.bits.offset := port.request.bits.offset
+      io.stagingWrite.bits.mask := port.request.bits.mask
     }
-    when(port.request.valid){
-      io.stagingRequest.valid:=true.B;io.stagingReady:=port.request.ready
-      io.stagingRequest.bits.tag:=port.request.bits.tag;io.stagingRequest.bits.offset:=port.request.bits.offset
-      io.stagingRequest.bits.write:=port.request.bits.write;io.stagingRequest.bits.data:=port.request.bits.data
-      io.stagingRequest.bits.mask:=port.request.bits.mask
+    when(port.request.valid) {
+      io.stagingRequest.valid := true.B; io.stagingReady := port.request.ready
+      io.stagingRequest.bits.tag := port.request.bits.tag; io.stagingRequest.bits.offset := port.request.bits.offset
+      io.stagingRequest.bits.write := port.request.bits.write; io.stagingRequest.bits.data := port.request.bits.data
+      io.stagingRequest.bits.mask := port.request.bits.mask
     }
-    when(port.response.fire){io.stagingReply.valid:=true.B;io.stagingReply.bits:=port.response.bits.tag}
-    io.reservedBytes:=management.reservedBytes;io.poolDrained:=management.drained
+    when(port.response.fire) { io.stagingReply.valid := true.B; io.stagingReply.bits := port.response.bits.tag }
+    io.reservedBytes := management.reservedBytes; io.poolDrained := management.drained
   }
 }
 
-abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,routineOnly: Boolean=false) extends AnyFlatSpec {
-  private def zero(data: Data): Unit=data match {
-    case r: Record=>r.elements.values.foreach(zero)
-    case v: Vec[_]=>v.foreach(zero)
-    case b: Bool if DataMirror.directionOf(b)==ActualDirection.Input=>b.poke(false.B)
-    case s: SInt if DataMirror.directionOf(s)==ActualDirection.Input=>s.poke(0.S)
-    case u: UInt if DataMirror.directionOf(u)==ActualDirection.Input=>u.poke(0.U)
-    case _=>()
+abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean, routineOnly: Boolean = false)
+    extends AnyFlatSpec {
+  private def zero(data: Data): Unit = data match {
+    case r: Record                                                     => r.elements.values.foreach(zero)
+    case v: Vec[_]                                                     => v.foreach(zero)
+    case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b.poke(false.B)
+    case s: SInt if DataMirror.directionOf(s) == ActualDirection.Input => s.poke(0.S)
+    case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u.poke(0.U)
+    case _                                                             => ()
   }
-  private def fp(f: Float): BigInt=BigInt(java.lang.Float.floatToRawIntBits(f).toLong&0xffffffffL)
-  private def addi(rd: Int,rs: Int,imm: Int): BigInt=(BigInt(imm&4095)<<20)|(BigInt(rs)<<15)|(BigInt(rd)<<7)|0x13
-  private def add(rd: Int,a: Int,b: Int): BigInt=(BigInt(b)<<20)|(BigInt(a)<<15)|(BigInt(rd)<<7)|0x33
-  private def address(rd: Int,base: Int,offset: Int): Seq[BigInt]={
-    val hi=(offset+2048)>>12;val lo=offset-(hi<<12)
-    if(hi==0)Seq(addi(rd,base,lo))else Seq((BigInt(hi)<<12)|(BigInt(rd)<<7)|0x37,add(rd,base,rd),addi(rd,rd,lo))
+  private def fp(f: Float): BigInt = BigInt(java.lang.Float.floatToRawIntBits(f).toLong & 0xffffffffL)
+  private def addi(rd: Int, rs: Int, imm: Int): BigInt =
+    (BigInt(imm & 4095) << 20) | (BigInt(rs) << 15) | (BigInt(rd) << 7) | 0x13
+  private def add(rd: Int, a: Int, b: Int): BigInt = (BigInt(b) << 20) | (BigInt(a) << 15) | (BigInt(rd) << 7) | 0x33
+  private def address(rd: Int, base: Int, offset: Int): Seq[BigInt] = {
+    val hi = (offset + 2048) >> 12; val lo = offset - (hi << 12)
+    if (hi == 0) Seq(addi(rd, base, lo))
+    else Seq((BigInt(hi) << 12) | (BigInt(rd) << 7) | 0x37, add(rd, base, rd), addi(rd, rd, lo))
   }
-  private def vectorMemory(base: Int,reg: Int,write: Boolean): BigInt=
-    (BigInt(1)<<25)|(BigInt(base)<<15)|(BigInt(6)<<12)|(BigInt(reg)<<7)|(if(write)0x27 else 7)
-  private val cease=BigInt("30500073",16)
-  private def program(lanes: Int,warps: Int,varyings: Int=2): Seq[BigInt]={
-    val stride=4*lanes*warps;val inputs=6+4*varyings;val prefix=(inputs+18)*stride
-    val code=mutable.ArrayBuffer[BigInt](
-      (BigInt(2)<<20)|(BigInt(8)<<15)|(BigInt(1)<<12)|(BigInt(7)<<7)|0x13,
-      add(7,1,7),(BigInt(3)<<30)|(BigInt(0x10)<<20)|(BigInt(lanes)<<15)|(BigInt(7)<<12)|0x57)
-    def copy(in: Int,out: Int): Unit={code++=address(5,7,in*stride);code+=vectorMemory(5,1,false)
-      code++=address(6,7,(inputs+out)*stride);code+=vectorMemory(6,1,true)}
-    if(varyings==16) {
-      for(c<-0 until 16) {
-        code++=address(5,7,(6+c)*stride);code+=vectorMemory(5,1,false)
-        for(group<-1 until 4) {
-          code++=address(5,7,(6+c+16*group)*stride);code+=vectorMemory(5,2,false)
-          code+=(BigInt(0xb)<<26)|(BigInt(1)<<25)|(BigInt(1)<<20)|(BigInt(2)<<15)|(BigInt(1)<<7)|0x57
+  private def vectorMemory(base: Int, reg: Int, write: Boolean): BigInt =
+    (BigInt(1) << 25) | (BigInt(base) << 15) | (BigInt(6) << 12) | (BigInt(reg) << 7) | (if (write) 0x27 else 7)
+  private val cease = BigInt("30500073", 16)
+  private def program(lanes: Int, warps: Int, varyings: Int = 2): Seq[BigInt] = {
+    val stride = 4 * lanes * warps; val inputs = 6 + 4 * varyings; val prefix = (inputs + 18) * stride
+    val code = mutable.ArrayBuffer[BigInt](
+      (BigInt(2) << 20) | (BigInt(8) << 15) | (BigInt(1) << 12) | (BigInt(7) << 7) | 0x13,
+      add(7, 1, 7),
+      (BigInt(3) << 30) | (BigInt(0x10) << 20) | (BigInt(lanes) << 15) | (BigInt(7) << 12) | 0x57
+    )
+    def copy(in: Int, out: Int): Unit = {
+      code ++= address(5, 7, in * stride); code += vectorMemory(5, 1, false)
+      code ++= address(6, 7, (inputs + out) * stride); code += vectorMemory(6, 1, true)
+    }
+    if (varyings == 16) {
+      for (c <- 0 until 16) {
+        code ++= address(5, 7, (6 + c) * stride); code += vectorMemory(5, 1, false)
+        for (group <- 1 until 4) {
+          code ++= address(5, 7, (6 + c + 16 * group) * stride); code += vectorMemory(5, 2, false)
+          code += (BigInt(0xb) << 26) | (BigInt(1) << 25) | (BigInt(1) << 20) | (BigInt(2) << 15) | (BigInt(
+            1
+          ) << 7) | 0x57
         }
-        code++=address(6,7,(inputs+c)*stride);code+=vectorMemory(6,1,true)
+        code ++= address(6, 7, (inputs + c) * stride); code += vectorMemory(6, 1, true)
       }
     } else {
-      for(c<-0 until 4)copy(c,c)
-      for(c<-0 until 8)copy(6+c,4+c)
-      copy(4,12);copy(5,13)
+      for (c <- 0 until 4) copy(c, c)
+      for (c <- 0 until 8) copy(6 + c, 4 + c)
+      copy(4, 12); copy(5, 13)
     }
     // One scalar uniform beyond the private prefix, broadcast to every lane.
-    code++=address(13,1,prefix);code+=(BigInt(13)<<15)|(BigInt(2)<<12)|(BigInt(13)<<7)|3
-    code+=(BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(13)<<15)|(BigInt(4)<<12)|(BigInt(1)<<7)|0x57
-    if(varyings!=16){code++=address(6,7,(inputs+14)*stride);code+=vectorMemory(6,1,true)}
-    copy(12,16);copy(13,17);code+=cease;code.toVector
+    code ++= address(13, 1, prefix); code += (BigInt(13) << 15) | (BigInt(2) << 12) | (BigInt(13) << 7) | 3
+    code += (BigInt(0x17) << 26) | (BigInt(1) << 25) | (BigInt(13) << 15) | (BigInt(4) << 12) | (BigInt(1) << 7) | 0x57
+    if (varyings != 16) { code ++= address(6, 7, (inputs + 14) * stride); code += vectorMemory(6, 1, true) }
+    copy(12, 16); copy(13, 17); code += cease; code.toVector
   }
-  private case class Lane(x: BigInt,y: BigInt,depth: BigInt,coverage: BigInt,helper: Boolean,discard: Boolean,overrideDepth: Boolean,mask: BigInt,colors: Vector[BigInt],sampleDepthValid: Boolean=false,sampleDepths: Vector[BigInt]=Vector.fill(4)(BigInt(0)))
-  private case class Export(sequence: BigInt,primitive: BigInt,instance: BigInt,part: BigInt,front: Boolean,lanes: Vector[Lane])
-  private class Driver(val d: FragmentShaderHarness,verifyEvents: Boolean=false) {
-    val cap=d.cfg.lanes*d.cfg.warps;val stride=4*cap;val varyingSlots=d.vp.varyings
-    val prefix=d.vp.prefixBytes(cap,varyingSlots,4,d.inputAbi);val scratch=BigInt(0x100000)
-    val memory=mutable.Map.empty[BigInt,BigInt]
-    def put(address: BigInt,value: BigInt): Unit=for(b<-0 until 4)memory(address+b)=(value>>(8*b))&255
-    def word(address: BigInt): BigInt=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(memory.getOrElse(address+b,BigInt(0))<<(8*b)))
-    zero(d.io);d.io.context.poke(101.U);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
-    program(d.cfg.lanes,d.cfg.warps,varyingSlots).zipWithIndex.foreach{case(w,i)=>put(0x1000+4*i,w)}
-    for(i<-0 until prefix+128 by 4)put(scratch+i,BigInt("deadbeef",16));put(scratch+prefix,BigInt("bead1234",16))
-    case class Reply(id: BigInt,data: BigInt,due: Int,fault: Boolean,ordinal: Int,accepted: Int)
-    val pending=mutable.ArrayBuffer.empty[Reply];var offered: Option[Reply]=None
-    var sampleDepthEnabled=false
-    var expectedColorTypes=Vector.tabulate(4)(_ % 3)
-    var expectedColorSlots=4
-    var cycle=0;var launches=0;var globalStaging=0;var requests=0;var peakStaging=0
-    val recentRequests=mutable.Queue.empty[(Int,BigInt,Boolean)]
-    val phaseCycles=Array.fill(6)(0L)
-    var stagingOutstandingCycles=0L;var stagingBlockedCycles=0L;var outputBlockedCycles=0L
-    var peakOutstanding=0
-    var externalReadBytes=BigInt(0);var externalWriteBytes=BigInt(0);var enabledExternalWriteBytes=BigInt(0)
-    val externalRequestBlocked=Array.fill(6)(0L);val externalResponseHeld=Array.fill(6)(0L)
-    val payloadHoldWithOwned=Array.fill(6)(0L)
-    var blockMemory=false;var fault: (BigInt,Boolean)=>Boolean=(_,_)=>false
-    var responseDelay: (BigInt,Boolean)=>Int=(_,_)=>0
-    val exports=mutable.ArrayBuffer.empty[Export]
-    val exportCycles=mutable.ArrayBuffer.empty[Int]
-    val stagingWrites=mutable.ArrayBuffer.empty[(BigInt,BigInt)]
-    val stagingAccesses=mutable.ArrayBuffer.empty[(BigInt,Boolean,BigInt,BigInt)]
-    val stagingIds=mutable.Set.empty[BigInt]
-    private val ownedStaging=mutable.Set.empty[BigInt]
-    private var heldStaging: Option[BigInt]=None
-    var payloadResponseStall: Option[Int=>Boolean]=None
-    def preparedExportGaps: Vector[Int]=(1 until exportCycles.size).collect{
+  private case class Lane(
+      x: BigInt,
+      y: BigInt,
+      depth: BigInt,
+      coverage: BigInt,
+      helper: Boolean,
+      discard: Boolean,
+      overrideDepth: Boolean,
+      mask: BigInt,
+      colors: Vector[BigInt],
+      sampleDepthValid: Boolean = false,
+      sampleDepths: Vector[BigInt] = Vector.fill(4)(BigInt(0))
+  )
+  private case class Export(
+      sequence: BigInt,
+      primitive: BigInt,
+      instance: BigInt,
+      part: BigInt,
+      front: Boolean,
+      lanes: Vector[Lane]
+  )
+  private class Driver(val d: FragmentShaderHarness, verifyEvents: Boolean = false) {
+    val cap = d.cfg.lanes * d.cfg.warps; val stride = 4 * cap; val varyingSlots = d.vp.varyings
+    val prefix = d.vp.prefixBytes(cap, varyingSlots, 4, d.inputAbi); val scratch = BigInt(0x100000)
+    val memory = mutable.Map.empty[BigInt, BigInt]
+    def put(address: BigInt, value: BigInt): Unit = for (b <- 0 until 4) memory(address + b) = (value >> (8 * b)) & 255
+    def word(address: BigInt): BigInt =
+      (0 until 4).foldLeft(BigInt(0))((v, b) => v | (memory.getOrElse(address + b, BigInt(0)) << (8 * b)))
+    zero(d.io); d.io.context.poke(101.U); d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
+    program(d.cfg.lanes, d.cfg.warps, varyingSlots).zipWithIndex.foreach { case (w, i) => put(0x1000 + 4 * i, w) }
+    for (i <- 0 until prefix + 128 by 4) put(scratch + i, BigInt("deadbeef", 16));
+    put(scratch + prefix, BigInt("bead1234", 16))
+    case class Reply(id: BigInt, data: BigInt, due: Int, fault: Boolean, ordinal: Int, accepted: Int)
+    val pending = mutable.ArrayBuffer.empty[Reply]; var offered: Option[Reply] = None
+    var sampleDepthEnabled = false
+    var expectedColorTypes = Vector.tabulate(4)(_ % 3)
+    var expectedColorSlots = 4
+    var cycle = 0; var launches = 0; var globalStaging = 0; var requests = 0; var peakStaging = 0
+    val recentRequests = mutable.Queue.empty[(Int, BigInt, Boolean)]
+    val phaseCycles = Array.fill(6)(0L)
+    var stagingOutstandingCycles = 0L; var stagingBlockedCycles = 0L; var outputBlockedCycles = 0L
+    var peakOutstanding = 0
+    var externalReadBytes = BigInt(0); var externalWriteBytes = BigInt(0); var enabledExternalWriteBytes = BigInt(0)
+    val externalRequestBlocked = Array.fill(6)(0L); val externalResponseHeld = Array.fill(6)(0L)
+    val payloadHoldWithOwned = Array.fill(6)(0L)
+    var blockMemory = false; var fault: (BigInt, Boolean) => Boolean = (_, _) => false
+    var responseDelay: (BigInt, Boolean) => Int = (_, _) => 0
+    val exports = mutable.ArrayBuffer.empty[Export]
+    val exportCycles = mutable.ArrayBuffer.empty[Int]
+    val stagingWrites = mutable.ArrayBuffer.empty[(BigInt, BigInt)]
+    val stagingAccesses = mutable.ArrayBuffer.empty[(BigInt, Boolean, BigInt, BigInt)]
+    val stagingIds = mutable.Set.empty[BigInt]
+    private val ownedStaging = mutable.Set.empty[BigInt]
+    private var heldStaging: Option[BigInt] = None
+    var payloadResponseStall: Option[Int => Boolean] = None
+    def preparedExportGaps: Vector[Int] = (1 until exportCycles.size).collect {
       // Each transpose window owns up to sixteen lanes. Its first quad may
       // wait for external reads; later quads consume only captured SRAM data.
-      case i if i%4!=0 && i%(cap/4)!=0=>exportCycles(i)-exportCycles(i-1)
+      case i if i % 4 != 0 && i % (cap / 4) != 0 => exportCycles(i) - exportCycles(i - 1)
     }.toVector
     // Software-only observations of existing ports. No new IO or stimulus.
-    private val phaseAudit=sys.props.get("opengpu.fragmentPhaseAudit").contains("1")
-    private val phaseRows=mutable.ArrayBuffer.empty[String]
-    private val portRows=mutable.ArrayBuffer.empty[String]
-    private val clockRows=mutable.ArrayBuffer.empty[String]
-    private val replyScheduleRows=mutable.ArrayBuffer.empty[String]
-    private val replyFirstOffers=mutable.Map.empty[Int,Int]
-    val drawPublications=mutable.ArrayBuffer.empty[BigInt]
-    val taskPublications=mutable.ArrayBuffer.empty[(String,BigInt)]
-    private var publishedTask: Option[BigInt]=None
-    private var heldDraw: Option[BigInt]=None
-    def publicationDrained: Boolean=publishedTask.isEmpty && heldDraw.isEmpty
+    private val phaseAudit = sys.props.get("opengpu.fragmentPhaseAudit").contains("1")
+    private val phaseRows = mutable.ArrayBuffer.empty[String]
+    private val portRows = mutable.ArrayBuffer.empty[String]
+    private val clockRows = mutable.ArrayBuffer.empty[String]
+    private val replyScheduleRows = mutable.ArrayBuffer.empty[String]
+    private val replyFirstOffers = mutable.Map.empty[Int, Int]
+    val drawPublications = mutable.ArrayBuffer.empty[BigInt]
+    val taskPublications = mutable.ArrayBuffer.empty[(String, BigInt)]
+    private var publishedTask: Option[BigInt] = None
+    private var heldDraw: Option[BigInt] = None
+    def publicationDrained: Boolean = publishedTask.isEmpty && heldDraw.isEmpty
     private var lastObservedPhase = -1
-    private case class ObservedRequest(at: Int,ordinal: Int,address: BigInt,write: Boolean,mask: BigInt)
-    private val memoryOwners=mutable.Map.empty[BigInt,mutable.Queue[ObservedRequest]]
-    private val stagingOwners=mutable.Map.empty[BigInt,mutable.Queue[ObservedRequest]]
-    private var memoryOrdinal=0;private var stagingOrdinal=0
-    private var heldMemory: Option[BigInt]=None
-    private def observePorts(): Unit=if(phaseAudit){
-      val workers=d.io.performance.phaseWorkers.map(_.peek().litValue.toInt)
-      assert(workers.sum==1,s"phase audit lost one-worker conservation: $workers")
-      val phase=workers.indexWhere(_==1)
-      if(phase!=lastObservedPhase){phaseRows+=s"$cycle,$phase";lastObservedPhase=phase}
-      def row(port: String,event: String,valid: Boolean,ready: Boolean,id: BigInt,r: ObservedRequest): Unit={
-        val latency=if(event=="reply")cycle-r.at else -1
-        val acceptedAt=if(event=="reply" || ready)r.at else -1
-        portRows+=s"$cycle,$phase,$port,$event,$valid,$ready,$id,${r.address},${r.write},${r.mask},${r.ordinal},$acceptedAt,$latency"
+    private case class ObservedRequest(at: Int, ordinal: Int, address: BigInt, write: Boolean, mask: BigInt)
+    private val memoryOwners = mutable.Map.empty[BigInt, mutable.Queue[ObservedRequest]]
+    private val stagingOwners = mutable.Map.empty[BigInt, mutable.Queue[ObservedRequest]]
+    private var memoryOrdinal = 0; private var stagingOrdinal = 0
+    private var heldMemory: Option[BigInt] = None
+    private def observePorts(): Unit = if (phaseAudit) {
+      val workers = d.io.performance.phaseWorkers.map(_.peek().litValue.toInt)
+      assert(workers.sum == 1, s"phase audit lost one-worker conservation: $workers")
+      val phase = workers.indexWhere(_ == 1)
+      if (phase != lastObservedPhase) { phaseRows += s"$cycle,$phase"; lastObservedPhase = phase }
+      def row(port: String, event: String, valid: Boolean, ready: Boolean, id: BigInt, r: ObservedRequest): Unit = {
+        val latency = if (event == "reply") cycle - r.at else -1
+        val acceptedAt = if (event == "reply" || ready) r.at else -1
+        portRows += s"$cycle,$phase,$port,$event,$valid,$ready,$id,${r.address},${r.write},${r.mask},${r.ordinal},$acceptedAt,$latency"
       }
-      def reply(owners: mutable.Map[BigInt,mutable.Queue[ObservedRequest]],port: String,id: BigInt,ready: Boolean): Unit={
-        val queue=owners.getOrElse(id,mutable.Queue.empty[ObservedRequest])
-        assert(queue.nonEmpty,s"$port reply lost accepted ID$id at $cycle")
-        row(port,"reply",true,ready,id,queue.front)
-        if(ready){queue.dequeue();if(queue.isEmpty)owners.remove(id)}
+      def reply(
+          owners: mutable.Map[BigInt, mutable.Queue[ObservedRequest]],
+          port: String,
+          id: BigInt,
+          ready: Boolean
+      ): Unit = {
+        val queue = owners.getOrElse(id, mutable.Queue.empty[ObservedRequest])
+        assert(queue.nonEmpty, s"$port reply lost accepted ID$id at $cycle")
+        row(port, "reply", true, ready, id, queue.front)
+        if (ready) { queue.dequeue(); if (queue.isEmpty) owners.remove(id) }
       }
       // Responses retire before same-clock new requests, matching public
       // handshake ownership. These are endpoint FIFOs, not inferred core stalls.
-      if(d.io.memoryResponse.valid.peek().litToBoolean)
-        reply(memoryOwners,"external-memory",d.io.memoryResponse.bits.transactionId.peek().litValue,
-          d.io.memoryResponse.ready.peek().litToBoolean)
-      if(d.io.stagingReply.valid.peek().litToBoolean)
-        reply(stagingOwners,"staging-endpoint",d.io.stagingReply.bits.peek().litValue,true)
-      val request=d.io.memoryRequest;val valid=request.valid.peek().litToBoolean
-      val ready=request.ready.peek().litToBoolean
-      val bits=if(valid || heldMemory.nonEmpty)request.bits.peek().litValue else BigInt(0)
-      heldMemory.foreach(old=>assert(valid && bits==old,"held external request changed during observation"))
-      heldMemory=if(valid && !ready)Some(bits)else None
-      if(valid){
-        val q=request.bits;val id=q.transactionId.peek().litValue
-        val r=ObservedRequest(cycle,memoryOrdinal,q.address.peek().litValue,q.isWrite.peek().litToBoolean,q.byteMask.peek().litValue)
-        row("external-memory","request",true,ready,id,r)
-        if(ready){memoryOwners.getOrElseUpdate(id,mutable.Queue.empty[ObservedRequest]).enqueue(r);memoryOrdinal+=1}
-      }
-      val stage=d.io.stagingRequest
-      if(stage.valid.peek().litToBoolean){
-        val q=stage.bits;val id=q.tag.peek().litValue;val accepted=d.io.stagingReady.peek().litToBoolean
-        val r=ObservedRequest(cycle,stagingOrdinal,q.offset.peek().litValue,q.write.peek().litToBoolean,q.mask.peek().litValue)
-        row("staging-endpoint","request",true,accepted,id,r)
-        if(accepted){stagingOwners.getOrElseUpdate(id,mutable.Queue.empty[ObservedRequest]).enqueue(r);stagingOrdinal+=1}
-      }
-      val auditRequest=d.io.memoryRequest;val auditResponse=d.io.memoryResponse
-      val requestValid=auditRequest.valid.peek().litToBoolean
-      val requestReady=auditRequest.ready.peek().litToBoolean
-      val responseValid=auditResponse.valid.peek().litToBoolean
-      val responseReady=auditResponse.ready.peek().litToBoolean
-      val hold=d.io.holdPayloadResponses.peek().litToBoolean
-      val draw=d.io.draw;val drawValid=draw.valid.peek().litToBoolean;val drawReady=draw.ready.peek().litToBoolean
-      val drawBits=draw.bits.peek().litValue
-      heldDraw.foreach(old=>assert(drawValid && drawBits==old,"held draw publication changed or was withdrawn"))
-      heldDraw=if(drawValid && !drawReady)Some(drawBits)else None
-      if(drawValid && drawReady)drawPublications+=drawBits
-      val taskValid=d.io.task.valid.peek().litToBoolean;val taskBits=d.io.task.bits.peek().litValue
-      if(taskValid){
-        publishedTask match{
-          case Some(old)=>assert(taskBits==old,"published task identity/generation/lease bits changed")
-          case None=>taskPublications+=(("publish",taskBits))
+      if (d.io.memoryResponse.valid.peek().litToBoolean)
+        reply(
+          memoryOwners,
+          "external-memory",
+          d.io.memoryResponse.bits.transactionId.peek().litValue,
+          d.io.memoryResponse.ready.peek().litToBoolean
+        )
+      if (d.io.stagingReply.valid.peek().litToBoolean)
+        reply(stagingOwners, "staging-endpoint", d.io.stagingReply.bits.peek().litValue, true)
+      val request = d.io.memoryRequest; val valid = request.valid.peek().litToBoolean
+      val ready = request.ready.peek().litToBoolean
+      val bits = if (valid || heldMemory.nonEmpty) request.bits.peek().litValue else BigInt(0)
+      heldMemory.foreach(old => assert(valid && bits == old, "held external request changed during observation"))
+      heldMemory = if (valid && !ready) Some(bits) else None
+      if (valid) {
+        val q = request.bits; val id = q.transactionId.peek().litValue
+        val r = ObservedRequest(
+          cycle,
+          memoryOrdinal,
+          q.address.peek().litValue,
+          q.isWrite.peek().litToBoolean,
+          q.byteMask.peek().litValue
+        )
+        row("external-memory", "request", true, ready, id, r)
+        if (ready) {
+          memoryOwners.getOrElseUpdate(id, mutable.Queue.empty[ObservedRequest]).enqueue(r); memoryOrdinal += 1
         }
-        publishedTask=Some(taskBits)
-      }else if(publishedTask.nonEmpty){
-        assert(stagingOwners.isEmpty,"task publication ended with an owned staging request")
-        taskPublications+=(("release",publishedTask.get));publishedTask=None
       }
-      if(requestValid && !requestReady)externalRequestBlocked(phase)+=1
-      if(responseValid && !responseReady)externalResponseHeld(phase)+=1
-      if(hold && d.io.stagingOutstanding.peek().litValue>0)payloadHoldWithOwned(phase)+=1
+      val stage = d.io.stagingRequest
+      if (stage.valid.peek().litToBoolean) {
+        val q = stage.bits; val id = q.tag.peek().litValue; val accepted = d.io.stagingReady.peek().litToBoolean
+        val r = ObservedRequest(
+          cycle,
+          stagingOrdinal,
+          q.offset.peek().litValue,
+          q.write.peek().litToBoolean,
+          q.mask.peek().litValue
+        )
+        row("staging-endpoint", "request", true, accepted, id, r)
+        if (accepted) {
+          stagingOwners.getOrElseUpdate(id, mutable.Queue.empty[ObservedRequest]).enqueue(r); stagingOrdinal += 1
+        }
+      }
+      val auditRequest = d.io.memoryRequest; val auditResponse = d.io.memoryResponse
+      val requestValid = auditRequest.valid.peek().litToBoolean
+      val requestReady = auditRequest.ready.peek().litToBoolean
+      val responseValid = auditResponse.valid.peek().litToBoolean
+      val responseReady = auditResponse.ready.peek().litToBoolean
+      val hold = d.io.holdPayloadResponses.peek().litToBoolean
+      val draw = d.io.draw; val drawValid = draw.valid.peek().litToBoolean;
+      val drawReady = draw.ready.peek().litToBoolean
+      val drawBits = draw.bits.peek().litValue
+      heldDraw.foreach(old => assert(drawValid && drawBits == old, "held draw publication changed or was withdrawn"))
+      heldDraw = if (drawValid && !drawReady) Some(drawBits) else None
+      if (drawValid && drawReady) drawPublications += drawBits
+      val taskValid = d.io.task.valid.peek().litToBoolean; val taskBits = d.io.task.bits.peek().litValue
+      if (taskValid) {
+        publishedTask match {
+          case Some(old) => assert(taskBits == old, "published task identity/generation/lease bits changed")
+          case None      => taskPublications += (("publish", taskBits))
+        }
+        publishedTask = Some(taskBits)
+      } else if (publishedTask.nonEmpty) {
+        assert(stagingOwners.isEmpty, "task publication ended with an owned staging request")
+        taskPublications += (("release", publishedTask.get)); publishedTask = None
+      }
+      if (requestValid && !requestReady) externalRequestBlocked(phase) += 1
+      if (responseValid && !responseReady) externalResponseHeld(phase) += 1
+      if (hold && d.io.stagingOutstanding.peek().litValue > 0) payloadHoldWithOwned(phase) += 1
       // Every column is an existing public port or the CPU peer's own queue.
       // No internal flush/readback state is inferred into this raw record.
-      clockRows+=Vector[Any](cycle,phase,
-        d.io.in.valid.peek().litToBoolean,d.io.in.ready.peek().litToBoolean,
-        d.io.inputEnd.valid.peek().litToBoolean,d.io.inputEnd.ready.peek().litToBoolean,
-        stage.valid.peek().litToBoolean,d.io.stagingReady.peek().litToBoolean,
-        stage.bits.tag.peek().litValue,stage.bits.offset.peek().litValue,
-        stage.bits.write.peek().litToBoolean,stage.bits.mask.peek().litValue,
-        d.io.stagingReply.valid.peek().litToBoolean,d.io.stagingReply.bits.peek().litValue,
+      clockRows += Vector[Any](
+        cycle,
+        phase,
+        d.io.in.valid.peek().litToBoolean,
+        d.io.in.ready.peek().litToBoolean,
+        d.io.inputEnd.valid.peek().litToBoolean,
+        d.io.inputEnd.ready.peek().litToBoolean,
+        stage.valid.peek().litToBoolean,
+        d.io.stagingReady.peek().litToBoolean,
+        stage.bits.tag.peek().litValue,
+        stage.bits.offset.peek().litValue,
+        stage.bits.write.peek().litToBoolean,
+        stage.bits.mask.peek().litValue,
+        d.io.stagingReply.valid.peek().litToBoolean,
+        d.io.stagingReply.bits.peek().litValue,
         d.io.stagingOutstanding.peek().litValue,
-        d.io.launchOffered.peek().litToBoolean,d.io.launched.peek().litToBoolean,
-        requestValid,requestReady,auditRequest.bits.transactionId.peek().litValue,
-        auditRequest.bits.address.peek().litValue,auditRequest.bits.isWrite.peek().litToBoolean,
-        auditRequest.bits.byteMask.peek().litValue,responseValid,responseReady,
-        auditResponse.bits.transactionId.peek().litValue,hold,
-        d.io.out.valid.peek().litToBoolean,d.io.out.ready.peek().litToBoolean,
-        d.io.completion.valid.peek().litToBoolean,d.io.completion.ready.peek().litToBoolean,
-        d.io.reservedBytes.peek().litValue,d.io.poolDrained.peek().litToBoolean,
-        taskValid,taskBits,d.io.busy.peek().litToBoolean,
-        pending.size,pending.count(_.due<=cycle),requests,
-        workers(0),workers(1),workers(2),workers(3),workers(4),workers(5)).mkString(",")
+        d.io.launchOffered.peek().litToBoolean,
+        d.io.launched.peek().litToBoolean,
+        requestValid,
+        requestReady,
+        auditRequest.bits.transactionId.peek().litValue,
+        auditRequest.bits.address.peek().litValue,
+        auditRequest.bits.isWrite.peek().litToBoolean,
+        auditRequest.bits.byteMask.peek().litValue,
+        responseValid,
+        responseReady,
+        auditResponse.bits.transactionId.peek().litValue,
+        hold,
+        d.io.out.valid.peek().litToBoolean,
+        d.io.out.ready.peek().litToBoolean,
+        d.io.completion.valid.peek().litToBoolean,
+        d.io.completion.ready.peek().litToBoolean,
+        d.io.reservedBytes.peek().litValue,
+        d.io.poolDrained.peek().litToBoolean,
+        taskValid,
+        taskBits,
+        d.io.busy.peek().litToBoolean,
+        pending.size,
+        pending.count(_.due <= cycle),
+        requests,
+        workers(0),
+        workers(1),
+        workers(2),
+        workers(3),
+        workers(4),
+        workers(5)
+      ).mkString(",")
     }
-    def writeRawPortAudit(directory: java.nio.file.Path,label: String): Unit=if(phaseAudit){
-      def write(suffix: String,body: String): Unit=java.nio.file.Files.writeString(directory.resolve(label+suffix),body,
-        java.nio.file.StandardOpenOption.CREATE_NEW,java.nio.file.StandardOpenOption.WRITE)
-      write(".clocks.csv","cycle,phase,in_valid,in_ready,input_end_valid,input_end_ready,staging_valid,staging_ready,staging_id,staging_offset,staging_write,staging_mask,staging_reply,staging_reply_id,staging_owned,launch_offered,launch_accepted,external_valid,external_ready,external_id,external_address,external_write,external_mask,external_reply_valid,external_reply_ready,external_reply_id,payload_hold,out_valid,out_ready,completion_valid,completion_ready,reserved_bytes,pool_drained,task_valid,task_bits,busy,cpu_pending,cpu_due,external_request_ordinal,phase0,phase1,phase2,phase3,phase4,phase5\n"+clockRows.mkString("\n")+"\n")
-      write(".raw-ports.csv","cycle,phase,port,event,valid,ready,id,address_or_offset,write,mask,ordinal,accepted_cycle,latency\n"+portRows.mkString("\n")+"\n")
-      write(".external-reply-schedule.csv","request_ordinal,id,request_accepted,due,first_offer,reply_accepted\n"+replyScheduleRows.mkString("\n")+"\n")
-    }
-    def writePhaseAudit(label: String): Unit=if(phaseAudit){
-      assert(phaseCycles.sum==cycle,s"phase clocks did not sum to original draw clocks $cycle: ${phaseCycles.toVector}")
-      assert(memoryOwners.isEmpty && stagingOwners.isEmpty && heldMemory.isEmpty,"phase audit retained endpoint ownership")
-      val directory=java.nio.file.Paths.get(sys.props("opengpu.fragmentPhaseAuditDir"))
-      java.nio.file.Files.createDirectories(directory)
-      def write(name: String,body: String): Unit=java.nio.file.Files.writeString(directory.resolve(label+name),body,
-        java.nio.file.StandardOpenOption.CREATE_NEW,java.nio.file.StandardOpenOption.WRITE)
-      write(".phases.csv","cycle,phase\n"+phaseRows.mkString("\n")+"\n")
-      write(".ports.csv","cycle,phase,port,event,valid,ready,id,address_or_offset,write,mask,ordinal,accepted_cycle,latency\n"+portRows.mkString("\n")+"\n")
-      write(".summary.txt",s"draw=$cycle phases=${phaseCycles.mkString(",")} externalAccepted=$memoryOrdinal stagingAccepted=$stagingOrdinal\n")
-    }
-    def tick(): Unit={
-      peakStaging=math.max(peakStaging,d.io.stagingOutstanding.peek().litValue.toInt)
-      payloadResponseStall.foreach(stall=>d.io.holdPayloadResponses.poke(stall(cycle).B))
-      d.io.memoryRequest.ready.poke((!blockMemory && cycle%7<5).B)
-      if(d.io.launched.peek().litToBoolean)launches+=1
-      if(d.io.globalStaging.peek().litToBoolean)globalStaging+=1
-      if(d.io.stagingWrite.valid.peek().litToBoolean)
-        stagingWrites+=((d.io.stagingWrite.bits.offset.peek().litValue,d.io.stagingWrite.bits.mask.peek().litValue))
-      if(d.io.out.valid.peek().litToBoolean && d.io.out.ready.peek().litToBoolean) {
-        exportCycles+=cycle
-        val r=d.io.out.bits;r.identity.context.expect(7.U);r.identity.pass.expect(8.U);r.identity.generation.expect(9.U)
-        r.colorSlots.expect(expectedColorSlots.U);for(c<-0 until expectedColorSlots)r.colorTypes(c).expect(expectedColorTypes(c).U)
-        exports+=Export(r.sequence.peek().litValue,r.primitiveId.peek().litValue,r.instanceId.peek().litValue,r.partIndex.peek().litValue,
-          r.frontFacing.peek().litToBoolean,r.lanes.map(l=>Lane(l.x.peek().litValue,l.y.peek().litValue,l.depth.peek().litValue,
-            l.coverageMask.peek().litValue,l.helper.peek().litToBoolean,l.discarded.peek().litToBoolean,l.depthOverride.peek().litToBoolean,
-            l.colorMask.peek().litValue,l.colors.flatten.map(_.peek().litValue).toVector,l.sampleDepthValid.peek().litToBoolean,l.sampleDepth.map(_.peek().litValue).toVector)).toVector)
-      }
-      if(offered.isEmpty){val due=pending.indices.filter(i=>pending(i).due<=cycle)
-        if(due.nonEmpty){
-          val selected=pending.remove(if(cycle%2==0)due.last else due.head)
-          offered=Some(selected);if(phaseAudit)replyFirstOffers(selected.ordinal)=cycle
-        }}
-      d.io.memoryResponse.valid.poke(offered.nonEmpty.B)
-      offered.foreach{r=>d.io.memoryResponse.bits.transactionId.poke(r.id.U);d.io.memoryResponse.bits.readData.poke(r.data.U);d.io.memoryResponse.bits.fault.poke(r.fault.B)}
-      observePorts()
-      if(offered.nonEmpty && d.io.memoryResponse.ready.peek().litToBoolean){
-        if(phaseAudit){val r=offered.get;replyScheduleRows+=Vector(r.ordinal,r.id,r.accepted,r.due,replyFirstOffers.remove(r.ordinal).get,cycle).mkString(",")}
-        offered=None
-      }
-      if(d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.ready.peek().litToBoolean){
-        requests+=1;val r=d.io.memoryRequest.bits;val addr=r.address.peek().litValue;val write=r.isWrite.peek().litToBoolean
-        if(write){externalWriteBytes+=64;enabledExternalWriteBytes+=r.byteMask.peek().litValue.bitCount}
-        else externalReadBytes+=64
-        recentRequests.enqueue((cycle,addr,write));if(recentRequests.size>16)recentRequests.dequeue()
-        val failed=fault(addr,write)
-        if(write && !failed){val mask=r.byteMask.peek().litValue;val data=r.writeData.peek().litValue
-          for(b<-0 until 64 if mask.testBit(b))memory(addr+b)=(data>>(8*b))&255}
-        val data=if(write)BigInt(0)else(0 until 64).foldLeft(BigInt(0))((v,b)=>v|(memory.getOrElse(addr+b,BigInt(0))<<(8*b)))
-        pending+=Reply(r.transactionId.peek().litValue,data,cycle+5+(requests%4)+responseDelay(addr,write),failed,requests,cycle)
-      }
-      if(verifyEvents){
-        val request=d.io.stagingRequest;val valid=request.valid.peek().litToBoolean
-        val bits=if(valid || heldStaging.nonEmpty)request.bits.peek().litValue else BigInt(0)
-        heldStaging.foreach(old=>assert(valid && bits==old,"held staging request changed or was withdrawn"))
-        heldStaging=if(valid && !d.io.stagingReady.peek().litToBoolean)Some(bits)else None
-        if(d.io.stagingReply.valid.peek().litToBoolean){
-          val id=d.io.stagingReply.bits.peek().litValue
-          assert(ownedStaging.remove(id),s"staging reply lost ID$id")
-        }
-        if(valid && d.io.stagingReady.peek().litToBoolean){
-          val r=request.bits;val id=r.tag.peek().litValue
-          assert(id<2 && ownedStaging.add(id),s"staging ID$id was reused before its reply")
-          stagingIds+=id
-          val write=r.write.peek().litToBoolean;val mask=r.mask.peek().litValue;val data=r.data.peek().litValue
-          val selected=if(write)(0 until 64).filter(mask.testBit).foldLeft(BigInt(0))((v,b)=>v|(((data>>(8*b))&255)<<(8*b)))else BigInt(0)
-          stagingAccesses+=((r.offset.peek().litValue,write,mask,selected))
-        }
-        val events=d.io.performance;val workers=events.phaseWorkers.map(_.peek().litValue.toInt)
-        assert(workers.sum==1,s"one native fragment worker counted as $workers")
-        for(i<-workers.indices)phaseCycles(i)+=workers(i)
-        val outstanding=events.stagingOutstanding.peek().litValue.toInt
-        assert(outstanding<=2);peakOutstanding=math.max(peakOutstanding,outstanding);stagingOutstandingCycles+=outstanding
-        if(events.stagingBlocked.peek().litToBoolean)stagingBlockedCycles+=1
-        if(events.outputBlocked.peek().litToBoolean)outputBlockedCycles+=1
-      }
-      d.clock.step();cycle+=1
-    }
-    var cycleLimit=80000
-    def until(condition: => Boolean): Unit={var n=0;while(!condition && n<cycleLimit){tick();n+=1}
-      val recent=recentRequests.map{case(c,a,w)=>s"$c:${a.toString(16)}:$w"}.mkString(",")
-      assert(condition,s"fragment stage stalled cycle=$cycle launches=$launches exports=${exports.size} pending=${pending.size} requests=$requests recent=$recent")}
-    def identity(q: GraphicsWorkIdentity): Unit={q.context.poke(7.U);q.pass.poke(8.U);q.generation.poke(9.U)}
-    def descriptor(): Unit={
-      val q=d.io.draw.bits;zero(q);q.version.poke(1.U);identity(q.identity);q.shaderPc.poke(0x1000.U)
-      q.scratch.base.poke(scratch.U);q.scratch.limit.poke((scratch+prefix+4).U)
-      q.scratch.allocationBase.poke(scratch.U);q.scratch.allocationLimit.poke((scratch+prefix+64).U)
-      q.varyingSlots.poke(varyingSlots.U);q.colorSlots.poke(4.U);q.colorMask.poke(15.U)
-      for(c<-0 until 4)q.colorTypes(c).poke((c%3).U)
-      q.allowDepthOverride.poke(true.B);q.sampleMode.poke(2.U);q.sampler.texWidth.poke(1.U);q.sampler.texHeight.poke(1.U)
-    }
-    def submit(): Unit={d.io.draw.valid.poke(true.B);until(d.io.draw.ready.peek().litToBoolean);tick();d.io.draw.valid.poke(false.B)}
-    def coverage(q: Int,l: Int): Int=if(q%3==1 || l==3)0 else if(l==0)15 else 1<<l
-    def control(q: Int,l: Int): Int=if(l==1)0 else if(l==2)3|(5<<2) else 1|(15<<2)
-    def varying(q: Int,l: Int,c: Int): BigInt=c match {
-      case 0=>BigInt("7fc01234",16)+q*4+l
-      case 1=>BigInt("ffffffff",16)-q*4-l
-      case 6=>fp(if(q%2==0) -0.25f else 1.25f)
-      case 7=>BigInt(control(q,l))
-      case _=>(BigInt(0x1234567)+BigInt(q+1)*0x9e3779b9L+BigInt(l+1)*0x85ebca6bL+BigInt(c+1)*BigInt(c+7)*0xc2b2ae35L)&BigInt("ffffffff",16)
-    }
-    def sampleDepth(q: Int,l: Int,s: Int): BigInt=fp((1+(q*7+l*5+s*3)%17)/18.0f)
-    def input(q: Int): Unit={
-      val r=d.io.in.bits;zero(r);identity(r.values.identity);r.values.sequence.poke((q+100).U)
-      r.values.primitiveId.poke((q+20).U);r.values.instanceId.poke((q/2).U);r.values.partIndex.poke((q%7).U)
-      r.frontFacing.poke((q%2==0).B);r.sampleMode.poke(2.U);r.values.varyingSlots.poke(varyingSlots.U)
-      for(l<-0 until 4){val a=r.values.lanes(l);a.x.poke((2*q+l%2).S);a.y.poke((-4+l/2).S)
-        a.covered.poke((coverage(q,l)!=0).B);a.coverageMask.poke(coverage(q,l).U);a.windowDepth.poke(fp(0.5f).U)
-        a.sampleDepthValid.poke(sampleDepthEnabled.B);for(s<-0 until 4)a.sampleDepth(s).poke(sampleDepth(q,l,s).U)
-        a.fragCoordW.poke(fp(2f).U);a.perspectiveValid.poke(true.B);a.reciprocalW.significand.poke((1<<23).U)
-        a.reciprocalW.exponent.poke(1.S)
-        for(c<-0 until 4*varyingSlots)a.varyings(c/4)(c%4).poke(varying(q,l,c).U)
-      }
-    }
-    def end(count: Int,status: Int=0): Unit={identity(d.io.inputEnd.bits.identity);d.io.inputEnd.bits.quads.poke(count.U);d.io.inputEnd.bits.status.poke(status.U)
-      d.io.inputEnd.valid.poke(true.B);until(d.io.inputEnd.ready.peek().litToBoolean);tick();d.io.inputEnd.valid.poke(false.B)}
-    def send(q: Int,last: Boolean=false): Unit={input(q);d.io.in.valid.poke(true.B);until(d.io.in.ready.peek().litToBoolean)
-      if(last){identity(d.io.inputEnd.bits.identity);d.io.inputEnd.bits.quads.poke((q+1).U);d.io.inputEnd.bits.status.poke(0.U);d.io.inputEnd.valid.poke(true.B)}
-      tick();d.io.in.valid.poke(false.B);if(last)d.io.inputEnd.valid.poke(false.B)
-    }
-    def complete(status: Int): Unit={
-      until(d.io.completion.valid.peek().litToBoolean);d.io.completion.bits.status.expect(status.U)
-      val held=d.io.completion.bits.peek().litValue
-      for(_<-0 until 9){d.io.draw.ready.expect(false.B);tick();assert(d.io.completion.bits.peek().litValue==held)}
-      d.io.completion.ready.poke(true.B);tick();d.io.completion.ready.poke(false.B)
-      until(d.io.idle.peek().litToBoolean);assert(pending.isEmpty && offered.isEmpty);d.io.poolDrained.expect(true.B)
-      if(verifyEvents)assert(ownedStaging.isEmpty && heldStaging.isEmpty,"fragment completion retained a staging transaction")
-    }
-    def pressure(op: Int,handle: BigInt=0,generation: BigInt=0): (BigInt,BigInt)={
-      val q=d.io.pressure;q.bits.operation.poke(op.U);q.bits.bytes.poke(prefix.U);q.bits.context.poke(55.U)
-      q.bits.handle.poke(handle.U);q.bits.generation.poke(generation.U);q.valid.poke(true.B)
-      until(q.ready.peek().litToBoolean);tick();q.valid.poke(false.B)
-      val r=d.io.pressureResponse;until(r.valid.peek().litToBoolean);r.bits.fault.expect(false.B);r.bits.spill.expect(false.B)
-      val value=(r.bits.handle.peek().litValue,r.bits.generation.peek().litValue)
-      r.ready.poke(true.B);tick();r.ready.poke(false.B);value
-    }
-    def check(n: Int): Unit={
-      val expected=(0 until n).map{q=>Export(q+100,q+20,q/2,q%7,q%2==0,(0 until 4).map{l=>
-        val covered=coverage(q,l)!=0;val emitted=covered && l!=1;val overrideDepth=emitted && l==2
-        val colors=if(varyingSlots==16)(0 until 16).map(c=>(0 until 4).map(group=>varying(q,l,c+16*group)).reduce(_^_)).toVector else Vector(fp((2*q+l%2+0.5f)),fp((-4+l/2+0.5f)),fp(0.5f),fp(2f))++
-          (0 until 8).map(c=>varying(q,l,c))++Vector(BigInt((if(q%2==0)1 else 0)|(2<<3)|4|(if(covered)0 else 2)),BigInt(coverage(q,l)),BigInt("bead1234",16),BigInt(0))
-        Lane(2*q+l%2,-4+l/2,if(overrideDepth)fp(if(q%2==0)0f else 1f)else fp(0.5f),
-          if(emitted)coverage(q,l)else 0,!covered,covered && !emitted,overrideDepth,if(emitted)(if(l==2)5 else 15)else 0,colors.toVector,sampleDepthEnabled,Vector.tabulate(4)(s=>if(sampleDepthEnabled && (coverage(q,l)&(1<<s))!=0)sampleDepth(q,l,s)else BigInt(0)))
-      }.toVector)}.toVector
-      assert(exports.toVector==expected,s"fragment exports differ:\n${exports.mkString("\n")}\nexpected:\n${expected.mkString("\n")}")
-      assert(word(scratch+prefix)==BigInt("bead1234",16),"private prefix clobbered uniform tail")
-    }
-  }
-
-  if(!nativeTextureMatrixOnly){
-  if(sys.props.get("opengpu.nativeLayeredSamplePlaneQualification").contains("1"))
-  for(local<-Seq(true,false);geometry<-Seq(false,true))
-  it should s"read real sample inputs and apply shader masks after actual CU readback local=$local geometry=$geometry" in {
-    simulate(new FragmentShaderHarness(local=local,warps=1,fullInterface=true,geometryInput=geometry,sampleShading=true)){d=>val t=new Driver(d)
-      val inputs=75+(if(geometry)2 else 0)
-      val code=mutable.ArrayBuffer[BigInt](
-        (BigInt(2)<<20)|(BigInt(8)<<15)|(BigInt(1)<<12)|(BigInt(7)<<7)|0x13,
-        add(7,1,7),(BigInt(3)<<30)|(BigInt(0x10)<<20)|(BigInt(4)<<15)|(BigInt(7)<<12)|0x57)
-      for((in,out)<-Seq((inputs-3,0),(inputs-2,1),(inputs-1,2),(5,3),(0,4),(1,5),(2,6),(3,7),(13,17))){
-        code++=address(5,7,in*t.stride);code+=vectorMemory(5,1,false)
-        code++=address(6,7,(inputs+out)*t.stride);code+=vectorMemory(6,1,true)}
-      code+=cease;code.zipWithIndex.foreach{case(word,i)=>t.put(0x2000+i*4,word)}
-      for(mode<-0 to 2;id<-0 until (1<<mode);(originX,originY)<-Seq((0,0),(-4,-6),(18,22))){
-        val previous=t.exports.size;t.descriptor();d.io.draw.bits.version.poke((if(geometry)7 else 6).U)
-        d.io.draw.bits.sampleMode.poke(mode.U);d.io.draw.bits.shaderPc.poke(0x2000.U);t.submit();t.input(0)
-        d.io.in.bits.sampleMode.poke(mode.U);d.io.in.bits.values.perSample.poke(true.B);d.io.in.bits.values.sampleId.poke(id.U)
-        for(i<-0 until 4){val lane=d.io.in.bits.values.lanes(i);val live=i==0 || i==2
-          lane.x.poke((originX+i%2).S);lane.y.poke((originY+i/2).S)
-          lane.covered.poke(live.B);lane.coverageMask.poke((if(live)1<<id else 0).U)
-          lane.sampleLocationValid.poke(true.B);lane.sampleLocation.poke(id.U)
-          val mask=if(i==0)15 else 0 // Cannot enable samples outside this invocation.
-          lane.varyings(1)(3).poke((61|64|(mask<<7)).U)}
-        d.io.geometry.foreach{x=>x.valid.poke(true.B);x.bits.poke(17.U)}
-        d.io.in.valid.poke(true.B);t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B);t.end(1)
-        d.io.out.ready.poke(false.B);t.until(d.io.out.valid.peek().litToBoolean)
-        val held=d.io.out.bits.peek().litValue;for(_<-0 until 9){t.tick();d.io.out.valid.expect(true.B);assert(d.io.out.bits.peek().litValue==held)}
-        d.io.out.ready.poke(true.B);t.complete(0);assert(t.exports.size==previous+1)
-        val out=t.exports.last
-        for(i<-0 until 4){val lane=out.lanes(i)
-          assert(lane.coverage==(if(i==0)BigInt(1)<<id else BigInt(0)))
-          val sampleX=if(mode==0)0.5f else if((id&1)==0)0.25f else 0.75f
-          val sampleY=if(mode==0)0.5f else if((id&(if(mode==1)1 else 2))==0)0.25f else 0.75f
-          assert(lane.colors(0)==id && lane.colors(1)==fp(sampleX) && lane.colors(2)==fp(sampleY))
-          assert(lane.colors(3)==(if(i==0 || i==2)BigInt(1)<<id else BigInt(0)))
-          // These are actual shader loads of the packed FragCoord arrays,
-          // copied by real CUs through output readback. SamplePosition alone
-          // cannot catch a 1x coordinate erroneously packed at pixel+.25.
-          assert(lane.x==originX+i%2 && lane.y==originY+i/2)
-          assert(lane.colors(4)==fp(originX+i%2+sampleX),s"FragCoord.x mode=$mode id=$id origin=($originX,$originY) lane=$i")
-          assert(lane.colors(5)==fp(originY+i/2+sampleY),s"FragCoord.y mode=$mode id=$id origin=($originX,$originY) lane=$i")
-          assert(lane.colors(6)==fp(0.5f) && lane.colors(7)==fp(2f))
-        }
-      }
-    }
-  }
-  // Full-capacity shader execution is an explicit qualification, separate
-  // from the small ABI/admission RTL fixtures. No GS metadata is provided.
-  if(sys.props.get("opengpu.nativePrimitiveInputQualification").contains("1"))
-  for(local<-Seq(true,false);abi<-Seq(8,9))
-  it should s"execute no-GS PrimitiveID ABI$abi with16 varyings and4 MRTs on two full CUs local=$local" in {
-    simulate(new FragmentShaderHarness(local=local,lanes=16,warps=8,fullInterface=true,
-        nativeProfile=true,scalarFpu=true,primitiveIdInput=true,sampleShading=abi==9)){d=>val t=new Driver(d)
-      val inputs=if(abi==8)73 else 76
-      val code=mutable.ArrayBuffer[BigInt](
-        (BigInt(2)<<20)|(BigInt(8)<<15)|(BigInt(1)<<12)|(BigInt(7)<<7)|0x13,
-        add(7,1,7),(BigInt(3)<<30)|(BigInt(0x10)<<20)|(BigInt(16)<<15)|(BigInt(7)<<12)|0x57)
-      val sourceArrays=Vector(72,4,5,70)++(if(abi==9)Vector(73,74,75,0)else Vector(0,1,2,3))++
-        Vector(66,67,68,69,71,6,37,53)
-      for((in,out)<-(sourceArrays.zipWithIndex:+(13->17))){
-        code++=address(5,7,in*t.stride);code+=vectorMemory(5,1,false)
-        code++=address(6,7,(inputs+out)*t.stride);code+=vectorMemory(6,1,true)}
-      code+=cease;assert(code.size<=512);code.zipWithIndex.foreach{case(w,i)=>t.put(0x2000+4*i,w)}
-      for(mode<-0 to 2;id<-0 until (if(abi==9)1<<mode else 1)){
-        val previous=t.exports.size;val primitive=BigInt("fedcba98",16)-mode*17-id
-        t.descriptor();d.io.draw.bits.version.poke(abi.U);d.io.draw.bits.sampleMode.poke(mode.U)
-        d.io.draw.bits.shaderPc.poke(0x2000.U);t.submit()
-        for(qi<-0 until 32){t.input(qi)
-          val r=d.io.in.bits;r.values.primitiveId.poke((primitive-qi*131).U);r.sampleMode.poke(mode.U)
-          r.frontFacing.poke(true.B);r.values.perSample.poke((abi==9).B);r.values.sampleId.poke(id.U)
-          for(i<-0 until 4){val lane=r.values.lanes(i);val covered=i==0 || i==2
-            lane.covered.poke(covered.B);lane.coverageMask.poke((if(!covered)0 else if(abi==9)1<<id else (1<<(1<<mode))-1).U)
-            lane.sampleLocationValid.poke((abi==9).B);lane.sampleLocation.poke(id.U)
-            lane.pointCoord(0).poke(fp(.25f).U);lane.pointCoord(1).poke(fp(.75f).U)
-            // lane0 keeps only this invocation's samples; lane2 kills all.
-            val mask=if(i==0)15 else 0
-            lane.varyings(1)(3).poke((61|64|(mask<<7)).U)}
-          d.io.in.valid.poke(true.B);t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B)
-        }
-        t.end(32);t.until(d.io.out.valid.peek().litToBoolean);val held=d.io.out.bits.peek().litValue
-        for(_<-0 until 5){t.tick();d.io.out.valid.expect(true.B);assert(d.io.out.bits.peek().litValue==held)}
-        d.io.out.ready.poke(true.B);t.complete(0);d.io.out.ready.poke(false.B)
-        assert(t.exports.size==previous+32)
-        for(qi<-0 until 32){val out=t.exports(previous+qi);assert(out.primitive==primitive-qi*131)
-          for(i<-0 until 4){val lane=out.lanes(i);val covered=i==0 || i==2
-            val expectedCoverage=if(i!=0)0 else if(abi==9)1<<id else (1<<(1<<mode))-1
-            assert(lane.coverage==expectedCoverage)
-            assert(lane.colors(0)==primitive-qi*131 && lane.colors(1)==(5+(if(covered)0 else 2)+(mode<<3)))
-            assert(lane.colors(2)==(if(!covered)0 else if(abi==9)1<<id else (1<<(1<<mode))-1))
-            assert(lane.colors(3)==fp(.25f) && lane.colors(12)==fp(.75f))
-            for((component,color)<-Seq(60->8,61->9,62->10,63->11,0->13,31->14,47->15))
-              assert(lane.colors(color)==t.varying(qi,i,component))
-            if(abi==9){val x=if(mode==0).5f else if((id&1)==0).25f else .75f
-              val y=if(mode==0).5f else if((id&(if(mode==1)1 else 2))==0).25f else .75f
-              assert(lane.colors(4)==id && lane.colors(5)==fp(x) && lane.colors(6)==fp(y))}
-            else {assert(lane.colors(4)==fp(2*qi+i%2+.5f) && lane.colors(5)==fp(-4+i/2+.5f))}
-          }
-        }
-      }
-    }
-  }
-  it should "deliver captured geometry metadata to a real fragment shader and reject missing metadata" in {
-    simulate(new FragmentShaderHarness(local=false,geometryInput=true)) {d=>
-      val t=new Driver(d);val inputs=10+4*t.varyingSlots
-      val code=mutable.ArrayBuffer[BigInt](
-        (BigInt(2)<<20)|(BigInt(8)<<15)|(BigInt(1)<<12)|(BigInt(7)<<7)|0x13,
-        add(7,1,7),(BigInt(3)<<30)|(BigInt(0x10)<<20)|(BigInt(d.cfg.lanes)<<15)|(BigInt(7)<<12)|0x57)
-      for(i<-0 until 2){code++=address(5,7,(inputs-2+i)*t.stride);code+=vectorMemory(5,1,false)
-        code++=address(6,7,(inputs+i)*t.stride);code+=vectorMemory(6,1,true)}
-      code+=cease;code.zipWithIndex.foreach{case(w,i)=>t.put(0x2000+4*i,w)}
-      t.descriptor();d.io.draw.bits.version.poke(FragmentInputAbi.geometry.U);d.io.draw.bits.shaderPc.poke(0x2000.U);t.submit()
-      d.io.geometry.get.valid.poke(true.B);d.io.geometry.get.bits.poke(17.U);t.send(0)
-      d.io.geometry.get.bits.poke(42.U);t.send(1,true)
-      d.io.geometry.get.valid.poke(false.B);d.io.geometry.get.bits.poke(99.U)
-      d.io.out.ready.poke(true.B);t.until(d.io.completion.valid.peek().litToBoolean)
-      assert(t.exports.size==2)
-      for((q,index)<-t.exports.zipWithIndex;l<-q.lanes){assert(l.colors(0)==20+index);assert(l.colors(1)==(if(index==0)17 else 42))}
-      t.complete(0)
-      t.descriptor();d.io.draw.bits.version.poke(FragmentInputAbi.geometry.U);d.io.draw.bits.shaderPc.poke(0x2000.U);t.submit();t.send(0,true)
-      t.until(d.io.completion.valid.peek().litToBoolean);d.io.completion.bits.faultSource.expect(2.U);t.complete(6)
-    }
-  }
-
-  for(local<-Seq(true,false))
-  it should s"deliver FP32 and typed raw fragment quads through real shared CUs local=$local" in {
-    simulate(new FragmentShaderHarness(local)) {d=>
-      val t=new Driver(d,verifyEvents=true);t.descriptor();t.submit();d.io.context.poke(999.U)
-      // Force real reply backpressure to exercise both credits even when the
-      // pool serves cold lines immediately, without waiting for initialization.
-      if(local)d.io.holdPayloadResponses.poke(true.B)
-      // Two input quads fill a batch; retain its first export while the source waits.
-      t.send(0);t.send(1)
-      if(local){
-        t.until(d.io.stagingOutstanding.peek().litValue==2)
-        for(_<-0 until 7){d.io.stagingOutstanding.expect(2.U);t.tick()}
-        d.io.holdPayloadResponses.poke(false.B)
-      }
-      t.until(d.io.out.valid.peek().litToBoolean)
-      val held=d.io.out.bits.peek().litValue
-      val blockedOutput=t.outputBlockedCycles
-      for(_<-0 until 13){t.tick();assert(d.io.out.bits.peek().litValue==held);d.io.idle.expect(false.B)
-        if(local){d.io.reservedBytes.expect(d.pp.slotBytes.U);d.io.task.valid.expect(true.B);d.io.task.bits.context.expect(101.U)}}
-      assert(t.outputBlockedCycles-blockedOutput==13,"held native output was not counted")
-      d.io.out.ready.poke(true.B);for(q<-2 until 5)t.send(q,q==4)
-      t.until(d.io.completion.valid.peek().litToBoolean);val r=d.io.completion.bits
-      r.inputQuads.expect(5.U);r.outputQuads.expect(5.U);r.batches.expect(3.U);r.maxLocalX.expect(8.U);r.shadedLanes.expect(20.U)
-      r.localBatches.expect((if(local)3 else 0).U);r.globalBatches.expect((if(local)0 else 3).U)
-      r.exportedLanes.expect(6.U);r.discardedLanes.expect(3.U);r.helperLanes.expect(11.U);r.coveredSamples.expect(15.U)
-      t.check(5);t.complete(0);assert(t.launches==3);assert((t.globalStaging==0)==local)
-      assert(t.phaseCycles.forall(_>0) && t.stagingOutstandingCycles>0 && t.peakOutstanding==2)
-      assert(t.peakStaging==2,"native staging did not overlap two real payload or memory transfers")
-      info(s"FRAGMENT_SHADER local=$local CUs=2 quads=5 batches=3 FP32=true rawNaNInteger=true helpers=true discard=true depthOverride=true heldExport=true cycles=${t.cycle} peakStaging=${t.peakStaging}")
-    }
-  }
-
-  if(!routineOnly){
-  val metadataPackingQualification=sys.props.get("opengpu.fragmentMetadataPackingQualification").contains("1")
-  if(sys.props.get("opengpu.fragmentInputBankQualification").contains("1") || metadataPackingQualification)
-  it should s"measure unchanged product shaders through native ${if(metadataPackingQualification)"metadata word packing"else "input bank packing"}" in {
-    require(!metadataPackingQualification || !sys.props.get("opengpu.fragmentInputBankQualification").contains("1"))
-    val property=if(metadataPackingQualification)"opengpu.fragmentMetadataPacking"else "opengpu.fragmentInputBank"
-    val profile=if(metadataPackingQualification)"native-product-metadata-word-v1"else "native-product-input-bank-v1"
-    val mode=sys.props(property+"Mode")
-    require(Set("control","candidate")(mode))
-    require(sys.props.get("opengpu.fragmentPhaseAudit").contains("1"))
-    val directory=java.nio.file.Paths.get(sys.props(property+"Output"))
-    val baseline=java.nio.file.Paths.get(sys.props(property+"Baseline"))
-    require(!java.nio.file.Files.exists(directory),"input-bank output must be fresh")
-    java.nio.file.Files.createDirectories(directory)
-    def write(name: String,bytes: Array[Byte]): Unit=java.nio.file.Files.write(directory.resolve(name),bytes,
-      java.nio.file.StandardOpenOption.CREATE_NEW,java.nio.file.StandardOpenOption.WRITE)
-    def sha(bytes: Array[Byte]): String=java.security.MessageDigest.getInstance("SHA-256")
-      .digest(bytes).map(b=>f"${b & 255}%02x").mkString
-    simulate(new FragmentShaderHarness(local=true,lanes=16,warps=8,fullInterface=true,
-        scalarFpu=true,nativeProfile=true,inputBankQualification=true)){d=>
-      for(textured<-Seq(false,true);quads<-Seq(1,35)){
-        val t=new Driver(d,verifyEvents=true);t.cycleLimit=400000
-        t.expectedColorSlots=1;t.expectedColorTypes=Vector.fill(4)(0)
-        t.payloadResponseStall=Some(c=>c%13<4)
-        val code=NativeProductShaderPrograms.fragment(16,8,textured)
-        val name=s"words${code.size}-quads$quads"
-        var completion: Option[BigInt]=None
-        var observedStatus: Option[BigInt]=None
-        var initialMemorySha256="unavailable"
-        var drained=false
-        var persisted=false
-        val codeBytes=code.flatMap(w=>(0 until 4).map(b=>((w>>(8*b))&255).toByte)).toArray
-        def snapshot(): Unit={
-          val canonical=Vector("draw="+t.drawPublications.toVector,"task="+t.taskPublications.toVector,
-            "completion="+completion,"exports="+t.exports.toVector,
-            "staging="+t.stagingAccesses.toVector,"memory="+t.memory.toVector.sortBy(_._1)).mkString("\n")+"\n"
-          val bytes=canonical.getBytes(java.nio.charset.StandardCharsets.UTF_8)
-          write(name+".canonical.txt",bytes)
-          write(name+".returned-memory.txt",(t.memory.toVector.sortBy(_._1)
-            .map{case(a,b)=>s"$a $b"}.mkString("\n")+"\n").getBytes(java.nio.charset.StandardCharsets.UTF_8))
-          val metrics=ujson.Obj("profile"->profile,"mode"->mode,
-            "shaderWords"->code.size,"shaderSha256"->sha(codeBytes),"quads"->quads,"clocks"->t.cycle,
-            "phases"->ujson.Arr.from(t.phaseCycles.map(n=>ujson.Num(n.toDouble))),
-            "canonicalSha256"->sha(bytes),"observedStatus"->ujson.Str(observedStatus.map(_.toString).getOrElse("unavailable")),
-            "initialMemorySha256"->initialMemorySha256,
-            "completionObserved"->completion.nonEmpty,"allOwnedTrafficDrained"->drained,
-            "externalRequests"->t.requests,"externalReadBytes"->t.externalReadBytes.toString,
-            "externalWriteBytes"->t.externalWriteBytes.toString,"enabledExternalWriteBytes"->t.enabledExternalWriteBytes.toString,
-            "capacity"->128,"activeVaryings"->2,"activeColors"->1,"hardwareVaryings"->16,"hardwareColors"->4,
-            "poolBytes"->262144,"maxPayloadBytes"->69632,"nativeSram"->true,"nativeGroupedTextures"->true,
-            "instructionQuota"->1048576,"launches"->t.launches,"peakStaging"->t.peakStaging,
-            "drawPublications"->ujson.Arr.from(t.drawPublications.map(_.toString)),
-            "taskPublications"->ujson.Arr.from(t.taskPublications.map{case(event,bits)=>ujson.Arr(event,bits.toString)}),
-            "externalRequestBlocked"->ujson.Arr.from(t.externalRequestBlocked.map(n=>ujson.Num(n.toDouble))),
-            "externalResponseHeld"->ujson.Arr.from(t.externalResponseHeld.map(n=>ujson.Num(n.toDouble))),
-            "payloadHoldWithOwned"->ujson.Arr.from(t.payloadHoldWithOwned.map(n=>ujson.Num(n.toDouble))),
-            "rawMeasurementsPreservedOnFailure"->true)
-          write(name+".metrics.json",ujson.write(metrics,indent=2).getBytes(java.nio.charset.StandardCharsets.UTF_8))
-          t.writeRawPortAudit(directory,name)
-          persisted=true
-        }
-        try{
-          assert(code.size==(if(textured)67 else 42))
-          assert(t.cap==128 && d.vp.varyings==16 && d.vp.colors==4)
-          assert(d.pp==NativeShaderPayloadSizing.pool(owners=3,ports=8))
-          assert(d.cfg==GpuConfig(l2Sets=512,l2StoreEntries=8))
-          assert(d.pp.capacityBytes==262144 && d.pp.maxPayloadBytes==69632)
-          d.io.modelsPresent.expect(true.B)
-          code.zipWithIndex.foreach{case(w,i)=>t.put(0x1000+4*i,w)}
-          val data=NativeTextureFetchTestData;val identity=Seq[BigInt](7,8,9)
-          data.roots(t.put,stage=1,id=identity)
-          data.install(t.put,(a,b)=>t.memory(a)=BigInt(b),0,
-            format=ImageFormatReference.names.indexOf("RGBA8"),stage=1,id=identity)
-          t.put(data.images+11*4,8);t.put(data.images+12*4,8)
-          t.put(data.levels+13*4,8);t.put(data.levels+14*4,8);t.put(data.levels+17*4,32)
-          NativeProductWorkloads.textureRgba8.zipWithIndex.foreach{case(w,i)=>t.put(0x20000+60+4*i,BigInt(w.toLong&0xffffffffL))}
-          val us=Vector(-0.03125f,0.03125f,0.28125f,1.28125f)
-          val vs=Vector(0.03125f,0.28125f,0.03125f,-0.03125f)
-          val rgba=Vector(0.5f,0.75f,1f,1f)
-          t.descriptor();val q=d.io.draw.bits
-          q.varyingSlots.poke(2.U);q.colorSlots.poke(1.U);q.colorMask.poke(1.U)
-          q.allowDepthOverride.poke(false.B);q.colorTypes(0).poke(0.U);q.sampleMode.poke(0.U)
-          if(textured){q.resources.version.poke(1.U);q.resources.address.poke(data.root.U)}
-          val initialMemory=(t.memory.toVector.sortBy(_._1).map{case(a,b)=>s"$a $b"}.mkString("\n")+"\n")
-            .getBytes(java.nio.charset.StandardCharsets.UTF_8)
-          initialMemorySha256=sha(initialMemory);write(name+".initial-memory.txt",initialMemory)
-          d.io.out.ready.poke(true.B);t.submit()
-          for(quad<-0 until quads){
-            t.input(quad);val r=d.io.in.bits;r.sampleMode.poke(0.U);r.values.varyingSlots.poke(2.U)
-            for(l<-0 until 4){
-              val a=r.values.lanes(l);a.covered.poke((l!=3).B);a.coverageMask.poke((if(l==3)0 else 1).U)
-              a.varyings(0)(0).poke(fp(us(l)).U);a.varyings(0)(1).poke(fp(vs(l)).U)
-              a.varyings(0)(2).poke(0.U);a.varyings(0)(3).poke(fp(1f).U)
-              for(c<-0 until 4)a.varyings(1)(c).poke(fp(rgba(c)).U)
-            }
-            d.io.in.valid.poke(true.B);t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B)
-          }
-          t.end(quads);t.until(d.io.completion.valid.peek().litToBoolean)
-          val result=d.io.completion.bits
-          completion=Some(result.peek().litValue);observedStatus=Some(result.status.peek().litValue)
-          // Read the actual completion fields before consuming the held reply.
-          val completionFields=Vector(result.inputQuads,result.outputQuads,result.batches,result.shadedLanes,
-            result.maxLocalX,result.localBatches,result.globalBatches,result.spilledBatches,
-            result.stagingWriteBytes,result.stagingReadBytes).map(_.peek().litValue)
-          val beforeAssertions=ujson.Obj("clocks"->t.cycle,"status"->observedStatus.get.toString,
-            "completion"->completion.get.toString,"fields"->ujson.Arr.from(completionFields.map(_.toString)),
-            "phases"->ujson.Arr.from(t.phaseCycles.map(n=>ujson.Num(n.toDouble))),
-            "externalRequests"->t.requests,"externalReadBytes"->t.externalReadBytes.toString,
-            "externalWriteBytes"->t.externalWriteBytes.toString,"enabledExternalWriteBytes"->t.enabledExternalWriteBytes.toString)
-          write(name+".completion-observed.json",ujson.write(beforeAssertions,indent=2).getBytes(java.nio.charset.StandardCharsets.UTF_8))
-          t.complete(0);drained=true
-          snapshot()
-          val batches=(quads*4+127)/128
-          val expectedFields=Vector[BigInt](quads,quads,batches,quads*4,math.min(128,quads*4),batches,0,0,
-            quads*4*(8+4*2)*4,quads*4*(4+2)*4)
-          assert(completionFields==expectedFields,s"input bank completion fields changed: $completionFields")
-          assert(t.launches==batches && t.globalStaging==0 && t.phaseCycles.sum==t.cycle)
-          assert(t.externalWriteBytes==0 && t.enabledExternalWriteBytes==0,
-            "resident product recipes must not write external memory")
-          assert(t.drawPublications.size==1 && t.taskPublications.size==2*batches && t.publicationDrained)
-          assert(t.stagingIds==Set(BigInt(0),BigInt(1)) && t.peakStaging==2)
-          assert(t.exports.size==quads && t.exports.map(_.sequence).toVector==Vector.tabulate(quads)(n=>BigInt(100+n)))
-          def repeat(v: Float): Int={val n=math.floor(v.toDouble*8).toInt;((n%8)+8)%8}
-          for((export,n)<-t.exports.zipWithIndex;(lane,l)<-export.lanes.zipWithIndex){
-            assert(export.primitive==n+20 && export.instance==n/2 && export.part==n%7 && export.front==(n%2==0))
-            assert(lane.x==2*n+l%2 && lane.y== -4+l/2 && lane.depth==fp(0.5f))
-            assert(lane.helper==(l==3) && !lane.discard && !lane.overrideDepth && lane.mask==(if(l==3)0 else 1))
-            val texel=if(textured)TypedBlendReference.decode("RGBA8",BigInt(NativeProductWorkloads.textureRgba8(
-              repeat(vs(l))*8+repeat(us(l))).toLong&0xffffffffL))else Vector.fill(4)(fp(1f))
-            val expected=Vector.tabulate(4)(c=>Fp32ViewportReference.fp(Fp32ViewportReference.number(texel(c))*rgba(c).toDouble))
-            assert(lane.colors.take(4)==expected,s"product shader oracle differs textured=$textured quad=$n lane=$l")
-          }
-          if(mode=="candidate"){
-            val control=ujson.read(java.nio.file.Files.readString(baseline.resolve(name+".metrics.json")))
-            assert(control("profile").str==profile && control("allOwnedTrafficDrained").bool)
-            assert(control("shaderSha256").str==sha(codeBytes))
-            assert(java.util.Arrays.equals(java.nio.file.Files.readAllBytes(baseline.resolve(name+".canonical.txt")),
-              java.nio.file.Files.readAllBytes(directory.resolve(name+".canonical.txt"))),
-              "input packing changed shader work, completion,metadata,exports,staging byte/mask/order or backing memory")
-            val clocks=control("clocks").num.toLong;val input=control("phases")(1).num.toLong
-            val totalGate=if(quads==1)t.cycle<=clocks else t.cycle.toLong*100<=clocks*(if(textured)98 else 95)
-            val inputGate=if(quads==1)t.phaseCycles(1)<=input else t.phaseCycles(1)*100<=input*(if(metadataPackingQualification)90 else 85)
-            val trafficGate=t.externalReadBytes==BigInt(control("externalReadBytes").str) &&
-              t.externalWriteBytes==BigInt(control("externalWriteBytes").str) &&
-              t.enabledExternalWriteBytes==BigInt(control("enabledExternalWriteBytes").str)
-            val rawPhaseDelta=t.phaseCycles.indices.map(i=>t.phaseCycles(i)-control("phases")(i).num.toLong).toVector
-            val gate=ujson.Obj("totalGatePassed"->totalGate,"phase1GatePassed"->inputGate,"trafficExact"->trafficGate,
-              "rawPhaseDeltas"->ujson.Arr.from(rawPhaseDelta),
-              "nonTargetCausalReviewRequired"->Seq(2,3,4,5).exists(i=>rawPhaseDelta(i)>0),
-              "environmentBudgetDoesNotWaiveNewBubbles"->true)
-            write(name+".gates.json",ujson.write(gate,indent=2).getBytes(java.nio.charset.StandardCharsets.UTF_8))
-            assert(totalGate && inputGate && trafficGate,
-              s"input-bank predeclared benefit/traffic gate failed words=${code.size} quads=$quads clocks=${t.cycle} phases=${t.phaseCycles.toVector}")
-          }
-          t.writePhaseAudit(s"input-bank-$mode-$name")
-          info(s"FRAGMENT_INPUT_BANK mode=$mode words=${code.size} quads=$quads clocks=${t.cycle} phases=${t.phaseCycles.mkString(",")} exactCanonical=true fullCapacity=true nativeSram=true")
-        }finally{if(!persisted)snapshot()}
-      }
-    }
-  }
-
-
-  for(local<-Seq(true,false))
-  it should s"shade product recipe colors with native floating texture operands local=$local" in {
-    simulate(new FragmentShaderHarness(local,lanes=16,warps=8,fullInterface=true,scalarFpu=true,nativeProfile=true)){d=>
-      val t=new Driver(d);t.cycleLimit=200000
-      t.expectedColorSlots=1;t.expectedColorTypes=Vector.fill(4)(0)
-      val data=NativeTextureFetchTestData;val id=Seq[BigInt](7,8,9)
-      data.roots(t.put,stage=1,id=id)
-      data.install(t.put,(a,b)=>t.memory(a)=BigInt(b),0,
-        format=ImageFormatReference.names.indexOf("RGBA8"),stage=1,id=id)
-      // Replace the generic tiny pitched view with the actual 8x8 recipe image.
-      val imageBase=BigInt(0x20000)+60
-      t.put(data.images+11*4,8);t.put(data.images+12*4,8)
-      t.put(data.levels+13*4,8);t.put(data.levels+14*4,8);t.put(data.levels+17*4,32)
-      NativeProductWorkloads.textureRgba8.zipWithIndex.foreach{case(w,i)=>t.put(imageBase+4*i,BigInt(w.toLong&0xffffffffL))}
-      for(textured<-Seq(false,true))NativeProductShaderPrograms.fragment(16,8,textured).zipWithIndex.foreach{
-        case(w,i)=>t.put((if(textured)0x4000 else 0x1000)+4*i,w)}
-      val us=Vector(-0.03125f,0.03125f,0.28125f,1.28125f)
-      val vs=Vector(0.03125f,0.28125f,0.03125f,-0.03125f)
-      d.io.out.ready.poke(true.B)
-      var draws=0
-      val recipes=NativeProductWorkloads.suite(32,32).flatMap(scene=>scene.draws.map(draw=>(scene,draw)))
-      var faultReads=0
-      for(((scene,draw),index)<-(recipes++Vector(recipes.last,recipes.last)).zipWithIndex){
-        // The full eight-warp texture batch needs a separate correctness
-        // guard. This is not a throughput qualification or a frame deadline.
-        t.cycleLimit=if(index==0)1000000 else 200000
-        val bad=index==recipes.size
-        t.fault=(a,w)=>{val hit=bad && !w && a==data.root;if(hit)faultReads+=1;hit}
-        d.io.out.ready.poke((index!=0).B)
-        t.descriptor();val q=d.io.draw.bits
-        q.shaderPc.poke((if(draw.textured)0x4000 else 0x1000).U)
-        q.varyingSlots.poke(2.U);q.colorSlots.poke(1.U);q.colorMask.poke(1.U)
-        q.allowDepthOverride.poke(false.B);q.colorTypes(0).poke(0.U)
-        q.sampleMode.poke((if(scene.samples==4)2 else 0).U)
-        if(draw.textured){q.resources.version.poke(1.U);q.resources.address.poke(data.root.U)}
-        t.exports.clear();t.submit()
-        q.resources.version.poke(3.U);q.resources.address.poke("hffffffff".U)
-        val quads=if(index==0)t.cap/4 else 1
-        for(quad<-0 until quads){
-          t.input(quad)
-          val r=d.io.in.bits;r.sampleMode.poke((if(scene.samples==4)2 else 0).U)
-          r.values.varyingSlots.poke(2.U)
-          for(l<-0 until 4){val a=r.values.lanes(l)
-            a.covered.poke((l!=3).B);a.coverageMask.poke((if(l==3)0 else if(scene.samples==1)1 else 15).U)
-            a.varyings(0)(0).poke(fp(us(l)).U);a.varyings(0)(1).poke(fp(vs(l)).U)
-            a.varyings(0)(2).poke(0.U);a.varyings(0)(3).poke(fp(1f).U)
-            for(c<-0 until 4)a.varyings(1)(c).poke(fp(draw.rgba(c)).U)
-          }
-          d.io.in.valid.poke(true.B);t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B)
-        }
-        t.end(quads)
-        if(index==0){
-          t.until(d.io.out.valid.peek().litToBoolean);val held=d.io.out.bits.peek().litValue
-          for(_<-0 until 9){t.tick();d.io.out.valid.expect(true.B);assert(d.io.out.bits.peek().litValue==held)}
-          d.io.out.ready.poke(true.B)
-          t.until(d.io.completion.valid.peek().litToBoolean)
-          d.io.completion.bits.maxLocalX.expect(t.cap.U)
-          d.io.completion.bits.shadedLanes.expect(t.cap.U)
-        }
-        withClue(s"${scene.id} draw=$draws bad=$bad: "){t.complete(if(bad)3 else 0)}
-        assert(t.exports.size==(if(bad)0 else quads))
-        t.exports.zipWithIndex.foreach{case(result,n)=>assert(result.sequence==100+n)}
-        for(result<-t.exports;(lane,l)<-result.lanes.zipWithIndex){
-          def repeat(x: Float): Int={val n=math.floor(x.toDouble*8).toInt;((n%8)+8)%8}
-          val texel=if(draw.textured)TypedBlendReference.decode("RGBA8",
-            BigInt(NativeProductWorkloads.textureRgba8(repeat(vs(l))*8+repeat(us(l))).toLong&0xffffffffL))
-            else Vector.fill(4)(fp(1f))
-          val expected=Vector.tabulate(4)(c=>Fp32ViewportReference.fp(
-            Fp32ViewportReference.number(texel(c))*draw.rgba(c).toDouble))
-          assert(lane.colors.take(4)==expected,s"${scene.id} lane=$l color differs")
-          assert(lane.helper==(l==3) && !lane.discard && !lane.overrideDepth)
-          assert(lane.depth==fp(0.5f) && lane.mask==(if(l==3)0 else 1))
-          assert(lane.coverage==(if(l==3)0 else if(scene.samples==1)1 else 15))
-        }
-        draws+=1
-      }
-      assert(draws==27 && t.launches==draws && faultReads>0)
-      assert((t.globalStaging==0)==local)
-    }
-  }
-
-  it should "count held global staging requests without withdrawing offers local=false" in {
-    simulate(new FragmentShaderHarness(false)){d=>val t=new Driver(d,verifyEvents=true)
-      t.descriptor();t.submit();d.io.out.ready.poke(true.B);d.io.blockStaging.poke(true.B);t.send(0,true)
-      t.until(d.io.performance.stagingBlocked.peek().litToBoolean)
-      val blocked=t.stagingBlockedCycles
-      for(_<-0 until 11)t.tick()
-      assert(t.stagingBlockedCycles-blocked==11,"held global staging request was not counted")
-      d.io.blockStaging.poke(false.B);t.complete(0);t.check(1)
-    }
-  }
-
-  it should "reject descriptor, quad and EOF errors before launching younger work and allow reuse" in {
-    simulate(new FragmentShaderHarness()) {d=>
-      val t=new Driver(d);val q=d.io.draw.bits;d.io.out.ready.poke(true.B)
-      val bad=Seq[(Int,()=>Unit)](
-        (1,()=>q.version.poke(0.U)),(1,()=>q.shaderPc.poke(0.U)),(1,()=>q.shaderPc.poke(0x1002.U)),
-        (1,()=>q.varyingSlots.poke(3.U)),(1,()=>q.colorSlots.poke(5.U)),(1,()=>q.colorSlots.poke(3.U)),
-        (1,()=>q.colorTypes(0).poke(3.U)),(1,()=>q.sampleMode.poke(3.U)),
-        (1,()=>q.scratch.base.poke((t.scratch+4).U)),(1,()=>q.scratch.allocationLimit.poke((t.scratch+t.prefix+63).U)),
-        (1,()=>q.scratch.limit.poke((t.scratch+t.prefix+65).U)),
-        (2,()=>q.scratch.limit.poke((t.scratch+t.prefix-1).U)),
-        (1,()=>{q.scratch.base.poke(d.cfg.sharedMemoryBase.U);q.scratch.allocationBase.poke(d.cfg.sharedMemoryBase.U)
-          q.scratch.limit.poke((d.cfg.sharedMemoryBase+t.prefix).U);q.scratch.allocationLimit.poke((d.cfg.sharedMemoryBase+t.prefix).U)})
+    def writeRawPortAudit(directory: java.nio.file.Path, label: String): Unit = if (phaseAudit) {
+      def write(suffix: String, body: String): Unit = java.nio.file.Files.writeString(
+        directory.resolve(label + suffix),
+        body,
+        java.nio.file.StandardOpenOption.CREATE_NEW,
+        java.nio.file.StandardOpenOption.WRITE
       )
-      for((status,mutate)<-bad){t.descriptor();mutate();val before=t.requests;t.submit();t.end(0);t.complete(status)
-        assert(t.requests==before && t.launches==0 && t.exports.isEmpty)}
-      val badInput=Seq[()=>Unit](
-        ()=>d.io.in.bits.values.identity.context.poke(99.U),()=>d.io.in.bits.values.varyingSlots.poke(1.U),
-        ()=>{d.io.in.bits.values.varyingSlots.poke(0.U);d.io.in.bits.values.flatMask.poke(1.U)},()=>d.io.in.bits.sampleMode.poke(1.U),
-        ()=>d.io.in.bits.values.partIndex.poke(7.U),()=>d.io.in.bits.values.lanes(0).x.poke(1.S),
-        ()=>d.io.in.bits.values.lanes(1).x.poke(9.S),()=>d.io.in.bits.values.lanes(2).covered.poke(false.B),
-        ()=>d.io.in.bits.values.lanes(0).perspectiveValid.poke(false.B),
-        ()=>d.io.in.bits.values.lanes(0).reciprocalW.negative.poke(true.B),
-        ()=>d.io.in.bits.values.lanes(0).windowDepth.poke(fp(-0.25f).U))
-      for(mutate<-badInput){t.descriptor();t.submit();t.input(0);mutate();d.io.in.valid.poke(true.B)
-        t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B);t.end(1);t.complete(6)
-        assert(t.requests==0 && t.launches==0)}
-      t.descriptor();t.submit();t.end(1);t.complete(6)
-      for(badCount<-Seq(BigInt(0),BigInt(2),BigInt(1)<<98)){
-        t.descriptor();t.submit();t.input(0);d.io.in.valid.poke(true.B)
-        t.until(d.io.in.ready.peek().litToBoolean)
-        t.identity(d.io.inputEnd.bits.identity);d.io.inputEnd.bits.quads.poke(badCount.U)
-        d.io.inputEnd.bits.status.poke(0.U);d.io.inputEnd.valid.poke(true.B)
-        t.tick();d.io.in.valid.poke(false.B);d.io.inputEnd.valid.poke(false.B)
-        t.complete(6);assert(t.requests==0 && t.launches==0 && t.exports.isEmpty)
+      write(
+        ".clocks.csv",
+        "cycle,phase,in_valid,in_ready,input_end_valid,input_end_ready,staging_valid,staging_ready,staging_id,staging_offset,staging_write,staging_mask,staging_reply,staging_reply_id,staging_owned,launch_offered,launch_accepted,external_valid,external_ready,external_id,external_address,external_write,external_mask,external_reply_valid,external_reply_ready,external_reply_id,payload_hold,out_valid,out_ready,completion_valid,completion_ready,reserved_bytes,pool_drained,task_valid,task_bits,busy,cpu_pending,cpu_due,external_request_ordinal,phase0,phase1,phase2,phase3,phase4,phase5\n" + clockRows
+          .mkString("\n") + "\n"
+      )
+      write(
+        ".raw-ports.csv",
+        "cycle,phase,port,event,valid,ready,id,address_or_offset,write,mask,ordinal,accepted_cycle,latency\n" + portRows
+          .mkString("\n") + "\n"
+      )
+      write(
+        ".external-reply-schedule.csv",
+        "request_ordinal,id,request_accepted,due,first_offer,reply_accepted\n" + replyScheduleRows.mkString("\n") + "\n"
+      )
+    }
+    def writePhaseAudit(label: String): Unit = if (phaseAudit) {
+      assert(
+        phaseCycles.sum == cycle,
+        s"phase clocks did not sum to original draw clocks $cycle: ${phaseCycles.toVector}"
+      )
+      assert(
+        memoryOwners.isEmpty && stagingOwners.isEmpty && heldMemory.isEmpty,
+        "phase audit retained endpoint ownership"
+      )
+      val directory = java.nio.file.Paths.get(sys.props("opengpu.fragmentPhaseAuditDir"))
+      java.nio.file.Files.createDirectories(directory)
+      def write(name: String, body: String): Unit = java.nio.file.Files.writeString(
+        directory.resolve(label + name),
+        body,
+        java.nio.file.StandardOpenOption.CREATE_NEW,
+        java.nio.file.StandardOpenOption.WRITE
+      )
+      write(".phases.csv", "cycle,phase\n" + phaseRows.mkString("\n") + "\n")
+      write(
+        ".ports.csv",
+        "cycle,phase,port,event,valid,ready,id,address_or_offset,write,mask,ordinal,accepted_cycle,latency\n" + portRows
+          .mkString("\n") + "\n"
+      )
+      write(
+        ".summary.txt",
+        s"draw=$cycle phases=${phaseCycles.mkString(",")} externalAccepted=$memoryOrdinal stagingAccepted=$stagingOrdinal\n"
+      )
+    }
+    def tick(): Unit = {
+      peakStaging = math.max(peakStaging, d.io.stagingOutstanding.peek().litValue.toInt)
+      payloadResponseStall.foreach(stall => d.io.holdPayloadResponses.poke(stall(cycle).B))
+      d.io.memoryRequest.ready.poke((!blockMemory && cycle % 7 < 5).B)
+      if (d.io.launched.peek().litToBoolean) launches += 1
+      if (d.io.globalStaging.peek().litToBoolean) globalStaging += 1
+      if (d.io.stagingWrite.valid.peek().litToBoolean)
+        stagingWrites += ((d.io.stagingWrite.bits.offset.peek().litValue, d.io.stagingWrite.bits.mask.peek().litValue))
+      if (d.io.out.valid.peek().litToBoolean && d.io.out.ready.peek().litToBoolean) {
+        exportCycles += cycle
+        val r = d.io.out.bits; r.identity.context.expect(7.U); r.identity.pass.expect(8.U);
+        r.identity.generation.expect(9.U)
+        r.colorSlots.expect(expectedColorSlots.U);
+        for (c <- 0 until expectedColorSlots) r.colorTypes(c).expect(expectedColorTypes(c).U)
+        exports += Export(
+          r.sequence.peek().litValue,
+          r.primitiveId.peek().litValue,
+          r.instanceId.peek().litValue,
+          r.partIndex.peek().litValue,
+          r.frontFacing.peek().litToBoolean,
+          r.lanes
+            .map(l =>
+              Lane(
+                l.x.peek().litValue,
+                l.y.peek().litValue,
+                l.depth.peek().litValue,
+                l.coverageMask.peek().litValue,
+                l.helper.peek().litToBoolean,
+                l.discarded.peek().litToBoolean,
+                l.depthOverride.peek().litToBoolean,
+                l.colorMask.peek().litValue,
+                l.colors.flatten.map(_.peek().litValue).toVector,
+                l.sampleDepthValid.peek().litToBoolean,
+                l.sampleDepth.map(_.peek().litValue).toVector
+              )
+            )
+            .toVector
+        )
       }
-      t.descriptor();t.submit();t.end(0,3);t.complete(3)
-      t.descriptor();t.submit();t.end(0);t.complete(0)
-      t.descriptor();t.submit();t.send(0,true);t.complete(0);t.check(1)
-      info("FRAGMENT_SHADER descriptorErrors=13 quadErrors=11 EOFErrors=5 simultaneousEOFCountChecks=true noBadInputAccess=true empty=true reuse=true")
+      if (offered.isEmpty) {
+        val due = pending.indices.filter(i => pending(i).due <= cycle)
+        if (due.nonEmpty) {
+          val selected = pending.remove(if (cycle % 2 == 0) due.last else due.head)
+          offered = Some(selected); if (phaseAudit) replyFirstOffers(selected.ordinal) = cycle
+        }
+      }
+      d.io.memoryResponse.valid.poke(offered.nonEmpty.B)
+      offered.foreach { r =>
+        d.io.memoryResponse.bits.transactionId.poke(r.id.U); d.io.memoryResponse.bits.readData.poke(r.data.U);
+        d.io.memoryResponse.bits.fault.poke(r.fault.B)
+      }
+      observePorts()
+      if (offered.nonEmpty && d.io.memoryResponse.ready.peek().litToBoolean) {
+        if (phaseAudit) {
+          val r = offered.get;
+          replyScheduleRows += Vector(r.ordinal, r.id, r.accepted, r.due, replyFirstOffers.remove(r.ordinal).get, cycle)
+            .mkString(",")
+        }
+        offered = None
+      }
+      if (d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.ready.peek().litToBoolean) {
+        requests += 1; val r = d.io.memoryRequest.bits; val addr = r.address.peek().litValue;
+        val write = r.isWrite.peek().litToBoolean
+        if (write) { externalWriteBytes += 64; enabledExternalWriteBytes += r.byteMask.peek().litValue.bitCount }
+        else externalReadBytes += 64
+        recentRequests.enqueue((cycle, addr, write)); if (recentRequests.size > 16) recentRequests.dequeue()
+        val failed = fault(addr, write)
+        if (write && !failed) {
+          val mask = r.byteMask.peek().litValue; val data = r.writeData.peek().litValue
+          for (b <- 0 until 64 if mask.testBit(b)) memory(addr + b) = (data >> (8 * b)) & 255
+        }
+        val data =
+          if (write) BigInt(0)
+          else (0 until 64).foldLeft(BigInt(0))((v, b) => v | (memory.getOrElse(addr + b, BigInt(0)) << (8 * b)))
+        pending += Reply(
+          r.transactionId.peek().litValue,
+          data,
+          cycle + 5 + (requests % 4) + responseDelay(addr, write),
+          failed,
+          requests,
+          cycle
+        )
+      }
+      if (verifyEvents) {
+        val request = d.io.stagingRequest; val valid = request.valid.peek().litToBoolean
+        val bits = if (valid || heldStaging.nonEmpty) request.bits.peek().litValue else BigInt(0)
+        heldStaging.foreach(old => assert(valid && bits == old, "held staging request changed or was withdrawn"))
+        heldStaging = if (valid && !d.io.stagingReady.peek().litToBoolean) Some(bits) else None
+        if (d.io.stagingReply.valid.peek().litToBoolean) {
+          val id = d.io.stagingReply.bits.peek().litValue
+          assert(ownedStaging.remove(id), s"staging reply lost ID$id")
+        }
+        if (valid && d.io.stagingReady.peek().litToBoolean) {
+          val r = request.bits; val id = r.tag.peek().litValue
+          assert(id < 2 && ownedStaging.add(id), s"staging ID$id was reused before its reply")
+          stagingIds += id
+          val write = r.write.peek().litToBoolean; val mask = r.mask.peek().litValue; val data = r.data.peek().litValue
+          val selected =
+            if (write)
+              (0 until 64)
+                .filter(mask.testBit)
+                .foldLeft(BigInt(0))((v, b) => v | (((data >> (8 * b)) & 255) << (8 * b)))
+            else BigInt(0)
+          stagingAccesses += ((r.offset.peek().litValue, write, mask, selected))
+        }
+        val events = d.io.performance; val workers = events.phaseWorkers.map(_.peek().litValue.toInt)
+        assert(workers.sum == 1, s"one native fragment worker counted as $workers")
+        for (i <- workers.indices) phaseCycles(i) += workers(i)
+        val outstanding = events.stagingOutstanding.peek().litValue.toInt
+        assert(outstanding <= 2); peakOutstanding = math.max(peakOutstanding, outstanding);
+        stagingOutstandingCycles += outstanding
+        if (events.stagingBlocked.peek().litToBoolean) stagingBlockedCycles += 1
+        if (events.outputBlocked.peek().litToBoolean) outputBlockedCycles += 1
+      }
+      d.clock.step(); cycle += 1
+    }
+    var cycleLimit = 80000
+    def until(condition: => Boolean): Unit = {
+      var n = 0; while (!condition && n < cycleLimit) { tick(); n += 1 }
+      val recent = recentRequests.map { case (c, a, w) => s"$c:${a.toString(16)}:$w" }.mkString(",")
+      assert(
+        condition,
+        s"fragment stage stalled cycle=$cycle launches=$launches exports=${exports.size} pending=${pending.size} requests=$requests recent=$recent"
+      )
+    }
+    def identity(q: GraphicsWorkIdentity): Unit = { q.context.poke(7.U); q.pass.poke(8.U); q.generation.poke(9.U) }
+    def descriptor(): Unit = {
+      val q = d.io.draw.bits; zero(q); q.version.poke(1.U); identity(q.identity); q.shaderPc.poke(0x1000.U)
+      q.scratch.base.poke(scratch.U); q.scratch.limit.poke((scratch + prefix + 4).U)
+      q.scratch.allocationBase.poke(scratch.U); q.scratch.allocationLimit.poke((scratch + prefix + 64).U)
+      q.varyingSlots.poke(varyingSlots.U); q.colorSlots.poke(4.U); q.colorMask.poke(15.U)
+      for (c <- 0 until 4) q.colorTypes(c).poke((c % 3).U)
+      q.allowDepthOverride.poke(true.B); q.sampleMode.poke(2.U); q.sampler.texWidth.poke(1.U);
+      q.sampler.texHeight.poke(1.U)
+    }
+    def submit(): Unit = {
+      d.io.draw.valid.poke(true.B); until(d.io.draw.ready.peek().litToBoolean); tick(); d.io.draw.valid.poke(false.B)
+    }
+    def coverage(q: Int, l: Int): Int = if (q % 3 == 1 || l == 3) 0 else if (l == 0) 15 else 1 << l
+    def control(q: Int, l: Int): Int = if (l == 1) 0 else if (l == 2) 3 | (5 << 2) else 1 | (15 << 2)
+    def varying(q: Int, l: Int, c: Int): BigInt = c match {
+      case 0 => BigInt("7fc01234", 16) + q * 4 + l
+      case 1 => BigInt("ffffffff", 16) - q * 4 - l
+      case 6 => fp(if (q % 2 == 0) -0.25f else 1.25f)
+      case 7 => BigInt(control(q, l))
+      case _ =>
+        (BigInt(0x1234567) + BigInt(q + 1) * 0x9e3779b9L + BigInt(l + 1) * 0x85ebca6bL + BigInt(c + 1) * BigInt(
+          c + 7
+        ) * 0xc2b2ae35L) & BigInt("ffffffff", 16)
+    }
+    def sampleDepth(q: Int, l: Int, s: Int): BigInt = fp((1 + (q * 7 + l * 5 + s * 3) % 17) / 18.0f)
+    def input(q: Int): Unit = {
+      val r = d.io.in.bits; zero(r); identity(r.values.identity); r.values.sequence.poke((q + 100).U)
+      r.values.primitiveId.poke((q + 20).U); r.values.instanceId.poke((q / 2).U); r.values.partIndex.poke((q % 7).U)
+      r.frontFacing.poke((q % 2 == 0).B); r.sampleMode.poke(2.U); r.values.varyingSlots.poke(varyingSlots.U)
+      for (l <- 0 until 4) {
+        val a = r.values.lanes(l); a.x.poke((2 * q + l % 2).S); a.y.poke((-4 + l / 2).S)
+        a.covered.poke((coverage(q, l) != 0).B); a.coverageMask.poke(coverage(q, l).U); a.windowDepth.poke(fp(0.5f).U)
+        a.sampleDepthValid.poke(sampleDepthEnabled.B);
+        for (s <- 0 until 4) a.sampleDepth(s).poke(sampleDepth(q, l, s).U)
+        a.fragCoordW.poke(fp(2f).U); a.perspectiveValid.poke(true.B); a.reciprocalW.significand.poke((1 << 23).U)
+        a.reciprocalW.exponent.poke(1.S)
+        for (c <- 0 until 4 * varyingSlots) a.varyings(c / 4)(c % 4).poke(varying(q, l, c).U)
+      }
+    }
+    def end(count: Int, status: Int = 0): Unit = {
+      identity(d.io.inputEnd.bits.identity); d.io.inputEnd.bits.quads.poke(count.U);
+      d.io.inputEnd.bits.status.poke(status.U)
+      d.io.inputEnd.valid.poke(true.B); until(d.io.inputEnd.ready.peek().litToBoolean); tick();
+      d.io.inputEnd.valid.poke(false.B)
+    }
+    def send(q: Int, last: Boolean = false): Unit = {
+      input(q); d.io.in.valid.poke(true.B); until(d.io.in.ready.peek().litToBoolean)
+      if (last) {
+        identity(d.io.inputEnd.bits.identity); d.io.inputEnd.bits.quads.poke((q + 1).U);
+        d.io.inputEnd.bits.status.poke(0.U); d.io.inputEnd.valid.poke(true.B)
+      }
+      tick(); d.io.in.valid.poke(false.B); if (last) d.io.inputEnd.valid.poke(false.B)
+    }
+    def complete(status: Int): Unit = {
+      until(d.io.completion.valid.peek().litToBoolean); d.io.completion.bits.status.expect(status.U)
+      val held = d.io.completion.bits.peek().litValue
+      for (_ <- 0 until 9) {
+        d.io.draw.ready.expect(false.B); tick(); assert(d.io.completion.bits.peek().litValue == held)
+      }
+      d.io.completion.ready.poke(true.B); tick(); d.io.completion.ready.poke(false.B)
+      until(d.io.idle.peek().litToBoolean); assert(pending.isEmpty && offered.isEmpty); d.io.poolDrained.expect(true.B)
+      if (verifyEvents)
+        assert(ownedStaging.isEmpty && heldStaging.isEmpty, "fragment completion retained a staging transaction")
+    }
+    def pressure(op: Int, handle: BigInt = 0, generation: BigInt = 0): (BigInt, BigInt) = {
+      val q = d.io.pressure; q.bits.operation.poke(op.U); q.bits.bytes.poke(prefix.U); q.bits.context.poke(55.U)
+      q.bits.handle.poke(handle.U); q.bits.generation.poke(generation.U); q.valid.poke(true.B)
+      until(q.ready.peek().litToBoolean); tick(); q.valid.poke(false.B)
+      val r = d.io.pressureResponse; until(r.valid.peek().litToBoolean); r.bits.fault.expect(false.B);
+      r.bits.spill.expect(false.B)
+      val value = (r.bits.handle.peek().litValue, r.bits.generation.peek().litValue)
+      r.ready.poke(true.B); tick(); r.ready.poke(false.B); value
+    }
+    def check(n: Int): Unit = {
+      val expected = (0 until n).map { q =>
+        Export(
+          q + 100,
+          q + 20,
+          q / 2,
+          q % 7,
+          q % 2 == 0,
+          (0 until 4).map { l =>
+            val covered = coverage(q, l) != 0; val emitted = covered && l != 1; val overrideDepth = emitted && l == 2
+            val colors =
+              if (varyingSlots == 16)
+                (0 until 16).map(c => (0 until 4).map(group => varying(q, l, c + 16 * group)).reduce(_ ^ _)).toVector
+              else
+                Vector(fp((2 * q + l % 2 + 0.5f)), fp((-4 + l / 2 + 0.5f)), fp(0.5f), fp(2f)) ++
+                  (0 until 8).map(c => varying(q, l, c)) ++ Vector(
+                    BigInt((if (q % 2 == 0) 1 else 0) | (2 << 3) | 4 | (if (covered) 0 else 2)),
+                    BigInt(coverage(q, l)),
+                    BigInt("bead1234", 16),
+                    BigInt(0)
+                  )
+            Lane(
+              2 * q + l % 2,
+              -4 + l / 2,
+              if (overrideDepth) fp(if (q % 2 == 0) 0f else 1f) else fp(0.5f),
+              if (emitted) coverage(q, l) else 0,
+              !covered,
+              covered && !emitted,
+              overrideDepth,
+              if (emitted) (if (l == 2) 5 else 15) else 0,
+              colors.toVector,
+              sampleDepthEnabled,
+              Vector.tabulate(4)(s =>
+                if (sampleDepthEnabled && (coverage(q, l) & (1 << s)) != 0) sampleDepth(q, l, s) else BigInt(0)
+              )
+            )
+          }.toVector
+        )
+      }.toVector
+      assert(
+        exports.toVector == expected,
+        s"fragment exports differ:\n${exports.mkString("\n")}\nexpected:\n${expected.mkString("\n")}"
+      )
+      assert(word(scratch + prefix) == BigInt("bead1234", 16), "private prefix clobbered uniform tail")
     }
   }
 
-  it should "spill under pool pressure and retain offered exports and launches through cancellation" in {
-    simulate(new FragmentShaderHarness()) {d=>
-      val t=new Driver(d);val leases=Vector.fill(d.pp.slots)(t.pressure(ShaderPayloadControl.allocate))
-      t.descriptor();t.submit();d.io.out.ready.poke(true.B);for(q<-0 until 3)t.send(q,q==2)
-      t.until(d.io.completion.valid.peek().litToBoolean);d.io.completion.bits.spilledBatches.expect(2.U)
-      t.check(3);assert(t.globalStaging>0)
-      leases.foreach{case(h,g)=>t.pressure(ShaderPayloadControl.release,h,g)};t.complete(0)
-      t.exports.clear();t.descriptor();t.submit();d.io.out.ready.poke(false.B);t.send(0,true)
-      t.until(d.io.out.valid.peek().litToBoolean);val held=d.io.out.bits.peek().litValue
-      d.io.cancel.poke(true.B)
-      for(_<-0 until 11){t.tick();assert(d.io.out.bits.peek().litValue==held);d.io.completion.valid.expect(false.B);d.io.poolDrained.expect(false.B);d.io.idle.expect(false.B)}
-      d.io.out.ready.poke(true.B);t.complete(4);d.io.cancel.poke(false.B);t.check(1)
-      t.exports.clear();t.descriptor();d.io.blockLaunch.poke(true.B);t.submit();t.send(0,true)
-      t.until(d.io.launchOffered.peek().litToBoolean);d.io.cancel.poke(true.B)
-      for(_<-0 until 7){t.tick();d.io.launchOffered.expect(true.B);d.io.completion.valid.expect(false.B);d.io.idle.expect(false.B)}
-      d.io.blockLaunch.poke(false.B);t.complete(4);d.io.cancel.poke(false.B);assert(t.exports.isEmpty)
-      t.descriptor();t.submit();t.send(0,true);t.complete(0);t.check(1)
-      info("FRAGMENT_SHADER forcedSpill=true heldExportCancel=true offeredLaunchCancel=true leaseAndVMRetained=true reuse=true")
-    }
-  }
-
-  it should "attribute a late input write fault while younger staging transfers retire and permit reuse" in {
-    simulate(new FragmentShaderHarness(false,4,4)){d=>val t=new Driver(d,verifyEvents=true)
-      val bad=t.scratch+t.stride
-      d.io.out.ready.poke(true.B);t.descriptor();t.submit()
-      t.fault=(a,w)=>w && a==bad;t.responseDelay=(a,w)=>if(w && a==bad)40 else 0
-      t.send(0,true);t.until(d.io.completion.valid.peek().litToBoolean)
-      d.io.completion.bits.faultSource.expect(3.U);d.io.completion.bits.faultAddress.expect(bad.U)
-      assert(t.peakStaging==2 && t.exports.isEmpty && t.launches==0)
-      t.complete(3);t.fault=(_,_)=>false;t.responseDelay=(_,_)=>0
-      t.descriptor();t.submit();t.send(0,true);t.complete(0);t.check(1)
-    }
-  }
-
-  it should "drain staging, shader and malformed export faults with ordered attribution" in {
-    simulate(new FragmentShaderHarness(false)) {d=>
-      val t=new Driver(d);d.io.out.ready.poke(true.B)
-      for(write<-Seq(true,false)) {
-        t.descriptor();t.submit();t.fault=(a,w)=>a>=t.scratch+(6+4*t.varyingSlots)*t.stride && a<t.scratch+t.prefix && w==write
-        t.send(0,true);t.until(d.io.completion.valid.peek().litToBoolean)
-        d.io.completion.bits.faultSource.expect(3.U);t.complete(3);assert(t.exports.isEmpty);t.fault=(_,_)=>false
-      }
-      // A trapped shader retires its accepted work before completion.
-      t.put(0x3000,0);t.descriptor();d.io.draw.bits.shaderPc.poke(0x3000.U);t.submit();t.send(0,true)
-      t.until(d.io.completion.valid.peek().litToBoolean);d.io.completion.bits.faultSource.expect(4.U);t.complete(5)
-      program(d.cfg.lanes,d.cfg.warps).zipWithIndex.foreach{case(w,i)=>t.put(0x2000+4*i,w)}
-      for((badDepth,control)<-Seq((fp(0.25f),BigInt(64)),(fp(0.25f),BigInt(3|(15<<2))),(BigInt("7fc00001",16),BigInt(3|(15<<2))))) {
-        t.descriptor();d.io.draw.bits.shaderPc.poke(0x2000.U)
-        if(badDepth==fp(0.25f) && control.testBit(1))d.io.draw.bits.allowDepthOverride.poke(false.B)
-        t.submit();t.input(0);d.io.in.bits.values.lanes(0).varyings(1)(2).poke(badDepth.U)
-        d.io.in.bits.values.lanes(0).varyings(1)(3).poke(control.U);d.io.in.valid.poke(true.B)
-        t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B);t.end(1)
-        t.until(d.io.completion.valid.peek().litToBoolean);val r=d.io.completion.bits
-        r.faultSource.expect(6.U);r.faultQuadValid.expect(true.B);r.faultSequence.expect(100.U);r.faultLane.expect(0.U)
-        t.complete(7);assert(t.exports.isEmpty)
-      }
-      t.descriptor();d.io.draw.bits.shaderPc.poke(0x2000.U);t.submit();t.send(0,true);t.complete(0);t.check(1)
-      info("FRAGMENT_SHADER stagingFaults=2 shaderTrap=true exportFaults=3 drain=true attribution=true reuse=true")
-    }
-  }
-
-  for(local<-Seq(false,true))
-  it should s"overlap metadata with minimal inputs and drain cancellation before healthy reuse local=$local" in {
-    simulate(new FragmentShaderHarness(local,4,4)) {d=>
-      val t=new Driver(d);t.sampleDepthEnabled=true;t.put(0x3000,cease);t.descriptor()
-      val draw=d.io.draw.bits
-      draw.shaderPc.poke(0x3000.U);draw.varyingSlots.poke(0.U);draw.colorSlots.poke(0.U);draw.colorMask.poke(0.U)
-      t.expectedColorSlots=0;t.expectedColorTypes=Vector.empty;t.submit();d.io.out.ready.poke(true.B)
-      def sendMinimal(q: Int): Unit={
-        t.input(q);d.io.in.bits.values.varyingSlots.poke(0.U);d.io.in.valid.poke(true.B)
-        t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B)
-      }
-      // Six inputs plus depth/control initialization finish before the nine
-      // metadata rows. Exercise that tail across full and partial batches.
-      for(q<-0 until 6)sendMinimal(q)
-      t.end(6);t.until(d.io.completion.valid.peek().litToBoolean)
-      d.io.completion.bits.inputQuads.expect(6.U);d.io.completion.bits.outputQuads.expect(6.U)
-      d.io.completion.bits.batches.expect(2.U)
-      val expected=(0 until 6).map{q=>Export(q+100,q+20,q/2,q%7,q%2==0,Vector.tabulate(4){l=>
-        Lane(2*q+l%2,-4+l/2,fp(0.5f),t.coverage(q,l),t.coverage(q,l)==0,false,false,0,
-          Vector.fill(16)(BigInt(0)),true,Vector.tabulate(4)(s=>
-            if((t.coverage(q,l)&(1<<s))!=0)t.sampleDepth(q,l,s)else BigInt(0)))
-      })}.toVector
-      assert(t.exports.toVector==expected,"minimal inputs lost ordered per-sample metadata")
-      t.complete(0);t.exports.clear()
-      val readCuts=Vector(0,4,8)
-      for(cut<-readCuts){
-        t.descriptor();draw.shaderPc.poke(0x3000.U);draw.varyingSlots.poke(0.U)
-        draw.colorSlots.poke(0.U);draw.colorMask.poke(0.U);t.submit();d.io.out.ready.poke(false.B)
-        for(q<-0 until 4)sendMinimal(q)
-        t.end(4);t.until(d.io.performance.phaseWorkers(4).peek().litValue==1)
-        for(_<-0 until cut)t.tick()
-        d.io.out.valid.expect(false.B);d.io.cancel.poke(true.B);d.io.out.ready.poke(true.B)
-        t.complete(4);assert(t.exports.isEmpty,"canceled metadata prefetch exported a partial quad")
-        d.io.cancel.poke(false.B)
-        t.descriptor();draw.shaderPc.poke(0x3000.U);draw.varyingSlots.poke(0.U)
-        draw.colorSlots.poke(0.U);draw.colorMask.poke(0.U);t.submit()
-        for(q<-0 until 4)sendMinimal(q)
-        t.end(4);t.complete(0)
-        assert(t.exports.toVector==expected.take(4),"healthy reuse consumed canceled metadata rows")
-        t.exports.clear()
-      }
-      t.expectedColorSlots=4;t.expectedColorTypes=Vector.tabulate(4)(_ % 3)
-      val cuts=Vector(0,2,6,9,13,18)
-      for(cut<-cuts){
-        t.descriptor();t.submit();t.send(0);t.send(1)
-        // The second quad reuses its lease. Cuts span input validation,
-        // overlapping metadata writes, and the completed metadata prefix.
-        for(_<-0 until cut)t.tick()
-        val launches=t.launches;d.io.cancel.poke(true.B);t.end(2);t.complete(4)
-        assert(t.exports.isEmpty && t.launches==launches,"canceled staging launched or exported a partial batch")
-        d.io.cancel.poke(false.B)
-        t.descriptor();t.submit();t.send(0);t.send(1,true);t.complete(0);t.check(2);t.exports.clear()
-      }
-      info(s"FRAGMENT_METADATA_STAGING local=$local zeroVaryings=true depthOnly=true quads=6 batches=2 sampleDepthsExact=true cancellationCuts=${cuts.mkString(",")} readCancellationCuts=${readCuts.mkString(",")} healthyReuse=true")
-    }
-  }
-
-  for(local<-Seq(false,true))
-  it should s"coalesce four input quads before launch and preserve a partial following batch local=$local" in {
-    simulate(new FragmentShaderHarness(local,4,4)) {d=>
-      val t=new Driver(d,verifyEvents=true);t.sampleDepthEnabled=true;t.descriptor();t.submit();d.io.out.ready.poke(true.B)
-      for(q<-0 until 6)t.send(q,q==5)
-      t.until(d.io.completion.valid.peek().litToBoolean)
-      d.io.completion.bits.batches.expect(2.U);d.io.completion.bits.inputQuads.expect(6.U)
-      d.io.completion.bits.stagingReadBytes.expect((6*4*18*4).U)
-      d.io.completion.bits.outputQuads.expect(6.U);t.check(6);t.complete(0)
-      val fields=6+4*t.varyingSlots
-      val inputs=t.stagingWrites.filter(_._1<fields*t.stride)
-      assert(inputs.size==fields*2,s"input fields used${inputs.size} requests instead of${fields*2}")
-      for((writes,mask)<-Seq(inputs.take(fields)->((BigInt(1)<<64)-1),
-          inputs.drop(fields)->((BigInt(1)<<32)-1))) {
-        assert(writes.map(_._1).toVector==Vector.tabulate(fields)(f=>BigInt(f*t.stride)))
-        assert(writes.forall(_._2==mask),s"incorrect full/partial input masks: $writes")
-      }
-      assert(inputs.map(_._2.bitCount).sum==6*4*fields*4)
-      assert(t.phaseCycles(4)<=(if(local)380 else 490),s"fragment readback exceeded its clock budget: ${t.phaseCycles.toVector}")
-      assert(t.phaseCycles(1)<=(if(local)260 else 970),s"fragment input staging exceeded its clock budget: ${t.phaseCycles.toVector}")
-      assert(t.cycle<=(if(local)3320 else 6000),s"fragment draw exceeded its clock budget: ${t.cycle}")
-      info(s"FRAGMENT_INPUT_COALESCING local=$local quads=6 batches=2 inputRequests=${inputs.size} previousQuadRequests=${6*fields} exactEnabledBytes=${6*4*fields*4} storedExportsExact=true")
-      info(s"FRAGMENT_OUTPUT_READBACK local=$local quads=6 colors=4 totalClocks=${t.cycle} readWorkerClocks=${t.phaseCycles(4)}")
-      info(s"FRAGMENT_METADATA_STAGING_RATE local=$local quads=6 totalClocks=${t.cycle} stagingWorkerClocks=${t.phaseCycles(1)}")
-    }
-  }
-
-  for(local<-Seq(false,true))
-  it should s"reuse returned input IDs through identical delayed shared-CU traffic and complete draws local=$local" in {
-    case class Measurement(clocks: Int,staging: Long,phases: Vector[Long],completion: BigInt,exports: Vector[Export],
-      accesses: Vector[(BigInt,Boolean,BigInt,BigInt)],memory: Map[BigInt,BigInt])
-    val results=mutable.Map.empty[(Boolean,Int),Measurement]
-    for(returnedCredit<-Seq(false,true)){
-      simulate(new FragmentShaderHarness(local,lanes=16,warps=8,fullInterface=true,
-          scalarFpu=true,nativeProfile=true,inputReturnCredit=returnedCredit)){d=>
-        for(quads<-Seq(1,35)){
-          // Each control starts cold after the preceding complete drain. The
-          // workload, instruction bytes and cycle-based service rules match.
-          val t=new Driver(d,verifyEvents=true);t.sampleDepthEnabled=true;t.cycleLimit=250000
-          assert(d.cfg==GpuConfig() && t.cap==128 && t.varyingSlots==16 && d.vp.colors==4)
-          d.io.modelsPresent.expect(true.B)
-          val batches=(quads*4+t.cap-1)/t.cap
-          val fields=6+4*t.varyingSlots
-          val inputBytes=quads*4*(fields+2)*4
-          val clearBytes=if(local)0 else batches*d.vp.maxOutputWords*t.stride
-          if(local)t.payloadResponseStall=Some(c=>c%13<4)
-          t.descriptor();t.submit();d.io.out.ready.poke(true.B)
-          for(q<-0 until quads)t.send(q,q==quads-1)
-          t.until(d.io.completion.valid.peek().litToBoolean)
-          d.io.completion.bits.inputQuads.expect(quads.U);d.io.completion.bits.outputQuads.expect(quads.U)
-          d.io.completion.bits.batches.expect(batches.U);d.io.completion.bits.shadedLanes.expect((quads*4).U)
-          d.io.completion.bits.maxLocalX.expect(math.min(t.cap,quads*4).U)
-          d.io.completion.bits.localBatches.expect((if(local)batches else 0).U)
-          d.io.completion.bits.globalBatches.expect((if(local)0 else batches).U)
-          d.io.completion.bits.spilledBatches.expect(0.U)
-          d.io.completion.bits.stagingWriteBytes.expect((inputBytes+clearBytes).U)
-          d.io.completion.bits.stagingReadBytes.expect((quads*4*d.vp.maxOutputWords*4).U)
-          val completion=d.io.completion.bits.peek().litValue
-          t.check(quads);t.complete(0)
-          assert(t.launches==batches && t.peakStaging==2 && t.stagingIds==Set(BigInt(0),BigInt(1)))
-          if(sys.props.get("opengpu.fragmentPhaseAudit").contains("1")){
-            val expected=(local,returnedCredit,quads) match {
-              case(false,false,1)=>(10330,2934L);case(false,true,1)=>(10288,2893L)
-              case(false,false,35)=>(38465,12487L);case(false,true,35)=>(38129,12153L)
-              case(true,false,1)=>(6402,400L);case(true,true,1)=>(6402,399L)
-              case(true,false,35)=>(19827,5417L);case(true,true,35)=>(19823,5411L)
-              case other=>throw new IllegalArgumentException(s"unexpected historical draw $other")
+  if (!nativeTextureMatrixOnly) {
+    if (sys.props.get("opengpu.nativeLayeredSamplePlaneQualification").contains("1"))
+      for (local <- Seq(true, false); geometry <- Seq(false, true))
+        it should s"read real sample inputs and apply shader masks after actual CU readback local=$local geometry=$geometry" in {
+          simulate(
+            new FragmentShaderHarness(
+              local = local,
+              warps = 1,
+              fullInterface = true,
+              geometryInput = geometry,
+              sampleShading = true
+            )
+          ) { d =>
+            val t = new Driver(d)
+            val inputs = 75 + (if (geometry) 2 else 0)
+            val code = mutable.ArrayBuffer[BigInt](
+              (BigInt(2) << 20) | (BigInt(8) << 15) | (BigInt(1) << 12) | (BigInt(7) << 7) | 0x13,
+              add(7, 1, 7),
+              (BigInt(3) << 30) | (BigInt(0x10) << 20) | (BigInt(4) << 15) | (BigInt(7) << 12) | 0x57
+            )
+            for (
+              (in, out) <- Seq(
+                (inputs - 3, 0),
+                (inputs - 2, 1),
+                (inputs - 1, 2),
+                (5, 3),
+                (0, 4),
+                (1, 5),
+                (2, 6),
+                (3, 7),
+                (13, 17)
+              )
+            ) {
+              code ++= address(5, 7, in * t.stride); code += vectorMemory(5, 1, false)
+              code ++= address(6, 7, (inputs + out) * t.stride); code += vectorMemory(6, 1, true)
             }
-            assert(t.cycle==expected._1 && t.phaseCycles(1)==expected._2,
-              s"historical frozen draw changed local=$local returned=$returnedCredit quads=$quads clocks=${t.cycle} phases=${t.phaseCycles.toVector}")
-            t.writePhaseAudit(s"${if(local)"resident"else"global"}-${if(returnedCredit)"returned"else"original"}-quads$quads")
+            code += cease; code.zipWithIndex.foreach { case (word, i) => t.put(0x2000 + i * 4, word) }
+            for (mode <- 0 to 2; id <- 0 until (1 << mode); (originX, originY) <- Seq((0, 0), (-4, -6), (18, 22))) {
+              val previous = t.exports.size; t.descriptor(); d.io.draw.bits.version.poke((if (geometry) 7 else 6).U)
+              d.io.draw.bits.sampleMode.poke(mode.U); d.io.draw.bits.shaderPc.poke(0x2000.U); t.submit(); t.input(0)
+              d.io.in.bits.sampleMode.poke(mode.U); d.io.in.bits.values.perSample.poke(true.B);
+              d.io.in.bits.values.sampleId.poke(id.U)
+              for (i <- 0 until 4) {
+                val lane = d.io.in.bits.values.lanes(i); val live = i == 0 || i == 2
+                lane.x.poke((originX + i % 2).S); lane.y.poke((originY + i / 2).S)
+                lane.covered.poke(live.B); lane.coverageMask.poke((if (live) 1 << id else 0).U)
+                lane.sampleLocationValid.poke(true.B); lane.sampleLocation.poke(id.U)
+                val mask = if (i == 0) 15 else 0 // Cannot enable samples outside this invocation.
+                lane.varyings(1)(3).poke((61 | 64 | (mask << 7)).U)
+              }
+              d.io.geometry.foreach { x => x.valid.poke(true.B); x.bits.poke(17.U) }
+              d.io.in.valid.poke(true.B); t.until(d.io.in.ready.peek().litToBoolean); t.tick();
+              d.io.in.valid.poke(false.B); t.end(1)
+              d.io.out.ready.poke(false.B); t.until(d.io.out.valid.peek().litToBoolean)
+              val held = d.io.out.bits.peek().litValue;
+              for (_ <- 0 until 9) {
+                t.tick(); d.io.out.valid.expect(true.B); assert(d.io.out.bits.peek().litValue == held)
+              }
+              d.io.out.ready.poke(true.B); t.complete(0); assert(t.exports.size == previous + 1)
+              val out = t.exports.last
+              for (i <- 0 until 4) {
+                val lane = out.lanes(i)
+                assert(lane.coverage == (if (i == 0) BigInt(1) << id else BigInt(0)))
+                val sampleX = if (mode == 0) 0.5f else if ((id & 1) == 0) 0.25f else 0.75f
+                val sampleY = if (mode == 0) 0.5f else if ((id & (if (mode == 1) 1 else 2)) == 0) 0.25f else 0.75f
+                assert(lane.colors(0) == id && lane.colors(1) == fp(sampleX) && lane.colors(2) == fp(sampleY))
+                assert(lane.colors(3) == (if (i == 0 || i == 2) BigInt(1) << id else BigInt(0)))
+                // These are actual shader loads of the packed FragCoord arrays,
+                // copied by real CUs through output readback. SamplePosition alone
+                // cannot catch a 1x coordinate erroneously packed at pixel+.25.
+                assert(lane.x == originX + i % 2 && lane.y == originY + i / 2)
+                assert(
+                  lane.colors(4) == fp(originX + i % 2 + sampleX),
+                  s"FragCoord.x mode=$mode id=$id origin=($originX,$originY) lane=$i"
+                )
+                assert(
+                  lane.colors(5) == fp(originY + i / 2 + sampleY),
+                  s"FragCoord.y mode=$mode id=$id origin=($originX,$originY) lane=$i"
+                )
+                assert(lane.colors(6) == fp(0.5f) && lane.colors(7) == fp(2f))
+              }
+            }
           }
-          results((returnedCredit,quads))=Measurement(t.cycle,t.phaseCycles(1),t.phaseCycles.toVector,completion,t.exports.toVector,
-            t.stagingAccesses.toVector,t.memory.toMap)
+        }
+    // Full-capacity shader execution is an explicit qualification, separate
+    // from the small ABI/admission RTL fixtures. No GS metadata is provided.
+    if (sys.props.get("opengpu.nativePrimitiveInputQualification").contains("1"))
+      for (local <- Seq(true, false); abi <- Seq(8, 9))
+        it should s"execute no-GS PrimitiveID ABI$abi with16 varyings and4 MRTs on two full CUs local=$local" in {
+          simulate(
+            new FragmentShaderHarness(
+              local = local,
+              lanes = 16,
+              warps = 8,
+              fullInterface = true,
+              nativeProfile = true,
+              scalarFpu = true,
+              primitiveIdInput = true,
+              sampleShading = abi == 9
+            )
+          ) { d =>
+            val t = new Driver(d)
+            val inputs = if (abi == 8) 73 else 76
+            val code = mutable.ArrayBuffer[BigInt](
+              (BigInt(2) << 20) | (BigInt(8) << 15) | (BigInt(1) << 12) | (BigInt(7) << 7) | 0x13,
+              add(7, 1, 7),
+              (BigInt(3) << 30) | (BigInt(0x10) << 20) | (BigInt(16) << 15) | (BigInt(7) << 12) | 0x57
+            )
+            val sourceArrays = Vector(72, 4, 5, 70) ++ (if (abi == 9) Vector(73, 74, 75, 0) else Vector(0, 1, 2, 3)) ++
+              Vector(66, 67, 68, 69, 71, 6, 37, 53)
+            for ((in, out) <- (sourceArrays.zipWithIndex :+ (13 -> 17))) {
+              code ++= address(5, 7, in * t.stride); code += vectorMemory(5, 1, false)
+              code ++= address(6, 7, (inputs + out) * t.stride); code += vectorMemory(6, 1, true)
+            }
+            code += cease; assert(code.size <= 512);
+            code.zipWithIndex.foreach { case (w, i) => t.put(0x2000 + 4 * i, w) }
+            for (mode <- 0 to 2; id <- 0 until (if (abi == 9) 1 << mode else 1)) {
+              val previous = t.exports.size; val primitive = BigInt("fedcba98", 16) - mode * 17 - id
+              t.descriptor(); d.io.draw.bits.version.poke(abi.U); d.io.draw.bits.sampleMode.poke(mode.U)
+              d.io.draw.bits.shaderPc.poke(0x2000.U); t.submit()
+              for (qi <- 0 until 32) {
+                t.input(qi)
+                val r = d.io.in.bits; r.values.primitiveId.poke((primitive - qi * 131).U); r.sampleMode.poke(mode.U)
+                r.frontFacing.poke(true.B); r.values.perSample.poke((abi == 9).B); r.values.sampleId.poke(id.U)
+                for (i <- 0 until 4) {
+                  val lane = r.values.lanes(i); val covered = i == 0 || i == 2
+                  lane.covered.poke(covered.B);
+                  lane.coverageMask.poke((if (!covered) 0 else if (abi == 9) 1 << id else (1 << (1 << mode)) - 1).U)
+                  lane.sampleLocationValid.poke((abi == 9).B); lane.sampleLocation.poke(id.U)
+                  lane.pointCoord(0).poke(fp(.25f).U); lane.pointCoord(1).poke(fp(.75f).U)
+                  // lane0 keeps only this invocation's samples; lane2 kills all.
+                  val mask = if (i == 0) 15 else 0
+                  lane.varyings(1)(3).poke((61 | 64 | (mask << 7)).U)
+                }
+                d.io.in.valid.poke(true.B); t.until(d.io.in.ready.peek().litToBoolean); t.tick();
+                d.io.in.valid.poke(false.B)
+              }
+              t.end(32); t.until(d.io.out.valid.peek().litToBoolean); val held = d.io.out.bits.peek().litValue
+              for (_ <- 0 until 5) {
+                t.tick(); d.io.out.valid.expect(true.B); assert(d.io.out.bits.peek().litValue == held)
+              }
+              d.io.out.ready.poke(true.B); t.complete(0); d.io.out.ready.poke(false.B)
+              assert(t.exports.size == previous + 32)
+              for (qi <- 0 until 32) {
+                val out = t.exports(previous + qi); assert(out.primitive == primitive - qi * 131)
+                for (i <- 0 until 4) {
+                  val lane = out.lanes(i); val covered = i == 0 || i == 2
+                  val expectedCoverage = if (i != 0) 0 else if (abi == 9) 1 << id else (1 << (1 << mode)) - 1
+                  assert(lane.coverage == expectedCoverage)
+                  assert(
+                    lane.colors(0) == primitive - qi * 131 && lane.colors(1) == (5 + (if (covered) 0
+                                                                                      else 2) + (mode << 3))
+                  )
+                  assert(lane.colors(2) == (if (!covered) 0 else if (abi == 9) 1 << id else (1 << (1 << mode)) - 1))
+                  assert(lane.colors(3) == fp(.25f) && lane.colors(12) == fp(.75f))
+                  for ((component, color) <- Seq(60 -> 8, 61 -> 9, 62 -> 10, 63 -> 11, 0 -> 13, 31 -> 14, 47 -> 15))
+                    assert(lane.colors(color) == t.varying(qi, i, component))
+                  if (abi == 9) {
+                    val x = if (mode == 0) .5f else if ((id & 1) == 0) .25f else .75f
+                    val y = if (mode == 0) .5f else if ((id & (if (mode == 1) 1 else 2)) == 0) .25f else .75f
+                    assert(lane.colors(4) == id && lane.colors(5) == fp(x) && lane.colors(6) == fp(y))
+                  } else {
+                    assert(lane.colors(4) == fp(2 * qi + i % 2 + .5f) && lane.colors(5) == fp(-4 + i / 2 + .5f))
+                  }
+                }
+              }
+            }
+          }
+        }
+    it should "deliver captured geometry metadata to a real fragment shader and reject missing metadata" in {
+      simulate(new FragmentShaderHarness(local = false, geometryInput = true)) { d =>
+        val t = new Driver(d); val inputs = 10 + 4 * t.varyingSlots
+        val code = mutable.ArrayBuffer[BigInt](
+          (BigInt(2) << 20) | (BigInt(8) << 15) | (BigInt(1) << 12) | (BigInt(7) << 7) | 0x13,
+          add(7, 1, 7),
+          (BigInt(3) << 30) | (BigInt(0x10) << 20) | (BigInt(d.cfg.lanes) << 15) | (BigInt(7) << 12) | 0x57
+        )
+        for (i <- 0 until 2) {
+          code ++= address(5, 7, (inputs - 2 + i) * t.stride); code += vectorMemory(5, 1, false)
+          code ++= address(6, 7, (inputs + i) * t.stride); code += vectorMemory(6, 1, true)
+        }
+        code += cease; code.zipWithIndex.foreach { case (w, i) => t.put(0x2000 + 4 * i, w) }
+        t.descriptor(); d.io.draw.bits.version.poke(FragmentInputAbi.geometry.U);
+        d.io.draw.bits.shaderPc.poke(0x2000.U); t.submit()
+        d.io.geometry.get.valid.poke(true.B); d.io.geometry.get.bits.poke(17.U); t.send(0)
+        d.io.geometry.get.bits.poke(42.U); t.send(1, true)
+        d.io.geometry.get.valid.poke(false.B); d.io.geometry.get.bits.poke(99.U)
+        d.io.out.ready.poke(true.B); t.until(d.io.completion.valid.peek().litToBoolean)
+        assert(t.exports.size == 2)
+        for ((q, index) <- t.exports.zipWithIndex; l <- q.lanes) {
+          assert(l.colors(0) == 20 + index); assert(l.colors(1) == (if (index == 0) 17 else 42))
+        }
+        t.complete(0)
+        t.descriptor(); d.io.draw.bits.version.poke(FragmentInputAbi.geometry.U);
+        d.io.draw.bits.shaderPc.poke(0x2000.U); t.submit(); t.send(0, true)
+        t.until(d.io.completion.valid.peek().litToBoolean); d.io.completion.bits.faultSource.expect(2.U); t.complete(6)
+      }
+    }
+
+    for (local <- Seq(true, false))
+      it should s"deliver FP32 and typed raw fragment quads through real shared CUs local=$local" in {
+        simulate(new FragmentShaderHarness(local)) { d =>
+          val t = new Driver(d, verifyEvents = true); t.descriptor(); t.submit(); d.io.context.poke(999.U)
+          // Force real reply backpressure to exercise both credits even when the
+          // pool serves cold lines immediately, without waiting for initialization.
+          if (local) d.io.holdPayloadResponses.poke(true.B)
+          // Two input quads fill a batch; retain its first export while the source waits.
+          t.send(0); t.send(1)
+          if (local) {
+            t.until(d.io.stagingOutstanding.peek().litValue == 2)
+            for (_ <- 0 until 7) { d.io.stagingOutstanding.expect(2.U); t.tick() }
+            d.io.holdPayloadResponses.poke(false.B)
+          }
+          t.until(d.io.out.valid.peek().litToBoolean)
+          val held = d.io.out.bits.peek().litValue
+          val blockedOutput = t.outputBlockedCycles
+          for (_ <- 0 until 13) {
+            t.tick(); assert(d.io.out.bits.peek().litValue == held); d.io.idle.expect(false.B)
+            if (local) {
+              d.io.reservedBytes.expect(d.pp.slotBytes.U); d.io.task.valid.expect(true.B);
+              d.io.task.bits.context.expect(101.U)
+            }
+          }
+          assert(t.outputBlockedCycles - blockedOutput == 13, "held native output was not counted")
+          d.io.out.ready.poke(true.B); for (q <- 2 until 5) t.send(q, q == 4)
+          t.until(d.io.completion.valid.peek().litToBoolean); val r = d.io.completion.bits
+          r.inputQuads.expect(5.U); r.outputQuads.expect(5.U); r.batches.expect(3.U); r.maxLocalX.expect(8.U);
+          r.shadedLanes.expect(20.U)
+          r.localBatches.expect((if (local) 3 else 0).U); r.globalBatches.expect((if (local) 0 else 3).U)
+          r.exportedLanes.expect(6.U); r.discardedLanes.expect(3.U); r.helperLanes.expect(11.U);
+          r.coveredSamples.expect(15.U)
+          t.check(5); t.complete(0); assert(t.launches == 3); assert((t.globalStaging == 0) == local)
+          assert(t.phaseCycles.forall(_ > 0) && t.stagingOutstandingCycles > 0 && t.peakOutstanding == 2)
+          assert(t.peakStaging == 2, "native staging did not overlap two real payload or memory transfers")
+          info(
+            s"FRAGMENT_SHADER local=$local CUs=2 quads=5 batches=3 FP32=true rawNaNInteger=true helpers=true discard=true depthOverride=true heldExport=true cycles=${t.cycle} peakStaging=${t.peakStaging}"
+          )
         }
       }
-    }
-    for(quads<-Seq(1,35)){
-      val serial=results((false,quads));val recycled=results((true,quads))
-      assert(serial.completion==recycled.completion && serial.exports==recycled.exports,
-        s"returnedCredit changed completed shader work local=$local quads=$quads")
-      assert(serial.accesses==recycled.accesses && serial.memory==recycled.memory,
-        s"returnedCredit changed accepted staging bytes/masks/order or stored memory local=$local quads=$quads")
-      if(quads==1){
-        assert(recycled.clocks<=serial.clocks && recycled.staging<=serial.staging,
-          s"single-quad control regressed local=$local serial=${serial.clocks}/${serial.staging} recycled=${recycled.clocks}/${recycled.staging}")
-      }else{
-        assert(recycled.clocks<serial.clocks && recycled.staging<serial.staging,
-          s"returnedCredit failed real delayed draw/staging improvement local=$local serial=${serial.clocks}/${serial.staging} recycled=${recycled.clocks}/${recycled.staging}")
-      }
-      info(s"FRAGMENT_INPUT_RETURNED_CREDIT_CU local=$local quads=$quads lanes=128 components=64 colors=4 nativeProfile=true nativeSram=true defaultL2AndPrivateCaches=true scalarFpu=true serialDraw=${serial.clocks} returnedDraw=${recycled.clocks} serialStaging=${serial.staging} returnedStaging=${recycled.staging} exactBytesMasksOrder=true exactExportsAndMemory=true twoOwnedIDs=true")
-      if(sys.props.get("opengpu.fragmentPhaseAudit").contains("1"))
-        info(s"FRAGMENT_NATIVE_PHASE_AUDIT local=$local quads=$quads serialDraw=${serial.clocks} serialPhases=${serial.phases.mkString(",")} returnedDraw=${recycled.clocks} returnedPhases=${recycled.phases.mkString(",")} scope=historical-frozen-DUT")
-    }
-  }
 
-  if(sys.props.get("opengpu.fragmentGuardPipeQualification").contains("1"))
-  it should "compare execution-limited full resident native draws with unchanged shader work" in {
-    val mode=sys.props("opengpu.fragmentGuardPipeMode")
-    require(Set("control","candidate").contains(mode))
-    require(sys.props.get("opengpu.fragmentPhaseAudit").contains("1"))
-    val directory=java.nio.file.Paths.get(sys.props("opengpu.fragmentGuardPipeOutput"))
-    require(!java.nio.file.Files.exists(directory),"guard qualification output must be fresh")
-    java.nio.file.Files.createDirectories(directory)
-    val baseline=if(mode=="control")directory else java.nio.file.Paths.get(sys.props("opengpu.fragmentGuardPipeBaseline"))
-    def write(name: String,bytes: Array[Byte]): Unit=java.nio.file.Files.write(directory.resolve(name),bytes,
-      java.nio.file.StandardOpenOption.CREATE_NEW,java.nio.file.StandardOpenOption.WRITE)
-    def sha(bytes: Array[Byte]): String=java.security.MessageDigest.getInstance("SHA-256")
-      .digest(bytes).map(b=>f"${b & 255}%02x").mkString
-    simulate(new FragmentShaderHarness(true,lanes=16,warps=8,fullInterface=true,
-        scalarFpu=true,nativeProfile=true,inputReturnCredit=true,guardQualification=true)){d=>
-      for(quads<-Seq(1,35)){
-        val t=new Driver(d,verifyEvents=true);t.sampleDepthEnabled=true;t.cycleLimit=250000
-        try{
-          assert(d.guardQualification && d.cfg==GpuConfig() && t.cap==128 && t.varyingSlots==16 && d.vp.colors==4)
-          assert(d.pp==NativeShaderPayloadSizing.pool(owners=3,ports=8))
-          assert(d.pp.capacityBytes==262144 && d.pp.maxPayloadBytes==69632)
-          d.io.modelsPresent.expect(true.B);t.payloadResponseStall=Some(c=>c%13<4)
-          val batches=(quads*4+t.cap-1)/t.cap
-          val inputBytes=quads*4*(8+4*t.varyingSlots)*4
-          val code=program(d.cfg.lanes,d.cfg.warps,t.varyingSlots).toVector
-          assert(code.size==393)
-          for((word,i)<-code.zipWithIndex)assert(t.word(0x1000+4*i)==word)
-          val codeBytes=code.flatMap(w=>(0 until 4).map(b=>((w>>(8*b))&255).toByte)).toArray
-          t.descriptor();t.submit();d.io.out.ready.poke(true.B)
-          for(q<-0 until quads)t.send(q,q==quads-1)
+    if (!routineOnly) {
+      val metadataPackingQualification = sys.props.get("opengpu.fragmentMetadataPackingQualification").contains("1")
+      if (sys.props.get("opengpu.fragmentInputBankQualification").contains("1") || metadataPackingQualification)
+        it should s"measure unchanged product shaders through native ${if (metadataPackingQualification) "metadata word packing"
+          else "input bank packing"}" in {
+          require(
+            !metadataPackingQualification || !sys.props.get("opengpu.fragmentInputBankQualification").contains("1")
+          )
+          val property =
+            if (metadataPackingQualification) "opengpu.fragmentMetadataPacking" else "opengpu.fragmentInputBank"
+          val profile =
+            if (metadataPackingQualification) "native-product-metadata-word-v1" else "native-product-input-bank-v1"
+          val mode = sys.props(property + "Mode")
+          require(Set("control", "candidate")(mode))
+          require(sys.props.get("opengpu.fragmentPhaseAudit").contains("1"))
+          val directory = java.nio.file.Paths.get(sys.props(property + "Output"))
+          val baseline = java.nio.file.Paths.get(sys.props(property + "Baseline"))
+          require(!java.nio.file.Files.exists(directory), "input-bank output must be fresh")
+          java.nio.file.Files.createDirectories(directory)
+          def write(name: String, bytes: Array[Byte]): Unit = java.nio.file.Files.write(
+            directory.resolve(name),
+            bytes,
+            java.nio.file.StandardOpenOption.CREATE_NEW,
+            java.nio.file.StandardOpenOption.WRITE
+          )
+          def sha(bytes: Array[Byte]): String = java.security.MessageDigest
+            .getInstance("SHA-256")
+            .digest(bytes)
+            .map(b => f"${b & 255}%02x")
+            .mkString
+          simulate(
+            new FragmentShaderHarness(
+              local = true,
+              lanes = 16,
+              warps = 8,
+              fullInterface = true,
+              scalarFpu = true,
+              nativeProfile = true,
+              inputBankQualification = true
+            )
+          ) { d =>
+            for (textured <- Seq(false, true); quads <- Seq(1, 35)) {
+              val t = new Driver(d, verifyEvents = true); t.cycleLimit = 400000
+              t.expectedColorSlots = 1; t.expectedColorTypes = Vector.fill(4)(0)
+              t.payloadResponseStall = Some(c => c % 13 < 4)
+              val code = NativeProductShaderPrograms.fragment(16, 8, textured)
+              val name = s"words${code.size}-quads$quads"
+              var completion: Option[BigInt] = None
+              var observedStatus: Option[BigInt] = None
+              var initialMemorySha256 = "unavailable"
+              var drained = false
+              var persisted = false
+              val codeBytes = code.flatMap(w => (0 until 4).map(b => ((w >> (8 * b)) & 255).toByte)).toArray
+              def snapshot(): Unit = {
+                val canonical = Vector(
+                  "draw=" + t.drawPublications.toVector,
+                  "task=" + t.taskPublications.toVector,
+                  "completion=" + completion,
+                  "exports=" + t.exports.toVector,
+                  "staging=" + t.stagingAccesses.toVector,
+                  "memory=" + t.memory.toVector.sortBy(_._1)
+                ).mkString("\n") + "\n"
+                val bytes = canonical.getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                write(name + ".canonical.txt", bytes)
+                write(
+                  name + ".returned-memory.txt",
+                  (t.memory.toVector
+                    .sortBy(_._1)
+                    .map { case (a, b) => s"$a $b" }
+                    .mkString("\n") + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                )
+                val metrics = ujson.Obj(
+                  "profile" -> profile,
+                  "mode" -> mode,
+                  "shaderWords" -> code.size,
+                  "shaderSha256" -> sha(codeBytes),
+                  "quads" -> quads,
+                  "clocks" -> t.cycle,
+                  "phases" -> ujson.Arr.from(t.phaseCycles.map(n => ujson.Num(n.toDouble))),
+                  "canonicalSha256" -> sha(bytes),
+                  "observedStatus" -> ujson.Str(observedStatus.map(_.toString).getOrElse("unavailable")),
+                  "initialMemorySha256" -> initialMemorySha256,
+                  "completionObserved" -> completion.nonEmpty,
+                  "allOwnedTrafficDrained" -> drained,
+                  "externalRequests" -> t.requests,
+                  "externalReadBytes" -> t.externalReadBytes.toString,
+                  "externalWriteBytes" -> t.externalWriteBytes.toString,
+                  "enabledExternalWriteBytes" -> t.enabledExternalWriteBytes.toString,
+                  "capacity" -> 128,
+                  "activeVaryings" -> 2,
+                  "activeColors" -> 1,
+                  "hardwareVaryings" -> 16,
+                  "hardwareColors" -> 4,
+                  "poolBytes" -> 262144,
+                  "maxPayloadBytes" -> 69632,
+                  "nativeSram" -> true,
+                  "nativeGroupedTextures" -> true,
+                  "instructionQuota" -> 1048576,
+                  "launches" -> t.launches,
+                  "peakStaging" -> t.peakStaging,
+                  "drawPublications" -> ujson.Arr.from(t.drawPublications.map(_.toString)),
+                  "taskPublications" -> ujson.Arr.from(t.taskPublications.map { case (event, bits) =>
+                    ujson.Arr(event, bits.toString)
+                  }),
+                  "externalRequestBlocked" -> ujson.Arr.from(t.externalRequestBlocked.map(n => ujson.Num(n.toDouble))),
+                  "externalResponseHeld" -> ujson.Arr.from(t.externalResponseHeld.map(n => ujson.Num(n.toDouble))),
+                  "payloadHoldWithOwned" -> ujson.Arr.from(t.payloadHoldWithOwned.map(n => ujson.Num(n.toDouble))),
+                  "rawMeasurementsPreservedOnFailure" -> true
+                )
+                write(
+                  name + ".metrics.json",
+                  ujson.write(metrics, indent = 2).getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                )
+                t.writeRawPortAudit(directory, name)
+                persisted = true
+              }
+              try {
+                assert(code.size == (if (textured) 67 else 42))
+                assert(t.cap == 128 && d.vp.varyings == 16 && d.vp.colors == 4)
+                assert(d.pp == NativeShaderPayloadSizing.pool(owners = 3, ports = 8))
+                assert(d.cfg == GpuConfig(l2Sets = 512, l2StoreEntries = 8))
+                assert(d.pp.capacityBytes == 262144 && d.pp.maxPayloadBytes == 69632)
+                d.io.modelsPresent.expect(true.B)
+                code.zipWithIndex.foreach { case (w, i) => t.put(0x1000 + 4 * i, w) }
+                val data = NativeTextureFetchTestData; val identity = Seq[BigInt](7, 8, 9)
+                data.roots(t.put, stage = 1, id = identity)
+                data.install(
+                  t.put,
+                  (a, b) => t.memory(a) = BigInt(b),
+                  0,
+                  format = ImageFormatReference.names.indexOf("RGBA8"),
+                  stage = 1,
+                  id = identity
+                )
+                t.put(data.images + 11 * 4, 8); t.put(data.images + 12 * 4, 8)
+                t.put(data.levels + 13 * 4, 8); t.put(data.levels + 14 * 4, 8); t.put(data.levels + 17 * 4, 32)
+                NativeProductWorkloads.textureRgba8.zipWithIndex.foreach { case (w, i) =>
+                  t.put(0x20000 + 60 + 4 * i, BigInt(w.toLong & 0xffffffffL))
+                }
+                val us = Vector(-0.03125f, 0.03125f, 0.28125f, 1.28125f)
+                val vs = Vector(0.03125f, 0.28125f, 0.03125f, -0.03125f)
+                val rgba = Vector(0.5f, 0.75f, 1f, 1f)
+                t.descriptor(); val q = d.io.draw.bits
+                q.varyingSlots.poke(2.U); q.colorSlots.poke(1.U); q.colorMask.poke(1.U)
+                q.allowDepthOverride.poke(false.B); q.colorTypes(0).poke(0.U); q.sampleMode.poke(0.U)
+                if (textured) { q.resources.version.poke(1.U); q.resources.address.poke(data.root.U) }
+                val initialMemory =
+                  (t.memory.toVector.sortBy(_._1).map { case (a, b) => s"$a $b" }.mkString("\n") + "\n")
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                initialMemorySha256 = sha(initialMemory); write(name + ".initial-memory.txt", initialMemory)
+                d.io.out.ready.poke(true.B); t.submit()
+                for (quad <- 0 until quads) {
+                  t.input(quad); val r = d.io.in.bits; r.sampleMode.poke(0.U); r.values.varyingSlots.poke(2.U)
+                  for (l <- 0 until 4) {
+                    val a = r.values.lanes(l); a.covered.poke((l != 3).B); a.coverageMask.poke((if (l == 3) 0 else 1).U)
+                    a.varyings(0)(0).poke(fp(us(l)).U); a.varyings(0)(1).poke(fp(vs(l)).U)
+                    a.varyings(0)(2).poke(0.U); a.varyings(0)(3).poke(fp(1f).U)
+                    for (c <- 0 until 4) a.varyings(1)(c).poke(fp(rgba(c)).U)
+                  }
+                  d.io.in.valid.poke(true.B); t.until(d.io.in.ready.peek().litToBoolean); t.tick();
+                  d.io.in.valid.poke(false.B)
+                }
+                t.end(quads); t.until(d.io.completion.valid.peek().litToBoolean)
+                val result = d.io.completion.bits
+                completion = Some(result.peek().litValue); observedStatus = Some(result.status.peek().litValue)
+                // Read the actual completion fields before consuming the held reply.
+                val completionFields = Vector(
+                  result.inputQuads,
+                  result.outputQuads,
+                  result.batches,
+                  result.shadedLanes,
+                  result.maxLocalX,
+                  result.localBatches,
+                  result.globalBatches,
+                  result.spilledBatches,
+                  result.stagingWriteBytes,
+                  result.stagingReadBytes
+                ).map(_.peek().litValue)
+                val beforeAssertions = ujson.Obj(
+                  "clocks" -> t.cycle,
+                  "status" -> observedStatus.get.toString,
+                  "completion" -> completion.get.toString,
+                  "fields" -> ujson.Arr.from(completionFields.map(_.toString)),
+                  "phases" -> ujson.Arr.from(t.phaseCycles.map(n => ujson.Num(n.toDouble))),
+                  "externalRequests" -> t.requests,
+                  "externalReadBytes" -> t.externalReadBytes.toString,
+                  "externalWriteBytes" -> t.externalWriteBytes.toString,
+                  "enabledExternalWriteBytes" -> t.enabledExternalWriteBytes.toString
+                )
+                write(
+                  name + ".completion-observed.json",
+                  ujson.write(beforeAssertions, indent = 2).getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                )
+                t.complete(0); drained = true
+                snapshot()
+                val batches = (quads * 4 + 127) / 128
+                val expectedFields = Vector[BigInt](
+                  quads,
+                  quads,
+                  batches,
+                  quads * 4,
+                  math.min(128, quads * 4),
+                  batches,
+                  0,
+                  0,
+                  quads * 4 * (8 + 4 * 2) * 4,
+                  quads * 4 * (4 + 2) * 4
+                )
+                assert(completionFields == expectedFields, s"input bank completion fields changed: $completionFields")
+                assert(t.launches == batches && t.globalStaging == 0 && t.phaseCycles.sum == t.cycle)
+                assert(
+                  t.externalWriteBytes == 0 && t.enabledExternalWriteBytes == 0,
+                  "resident product recipes must not write external memory"
+                )
+                assert(t.drawPublications.size == 1 && t.taskPublications.size == 2 * batches && t.publicationDrained)
+                assert(t.stagingIds == Set(BigInt(0), BigInt(1)) && t.peakStaging == 2)
+                assert(
+                  t.exports.size == quads && t.exports.map(_.sequence).toVector == Vector.tabulate(quads)(n =>
+                    BigInt(100 + n)
+                  )
+                )
+                def repeat(v: Float): Int = { val n = math.floor(v.toDouble * 8).toInt; ((n % 8) + 8) % 8 }
+                for ((export, n) <- t.exports.zipWithIndex; (lane, l) <- export.lanes.zipWithIndex) {
+                  assert(
+                    export.primitive == n + 20 && export.instance == n / 2 && export.part == n % 7 && export.front == (n % 2 == 0)
+                  )
+                  assert(lane.x == 2 * n + l % 2 && lane.y == -4 + l / 2 && lane.depth == fp(0.5f))
+                  assert(
+                    lane.helper == (l == 3) && !lane.discard && !lane.overrideDepth && lane.mask == (if (l == 3) 0
+                                                                                                     else 1)
+                  )
+                  val texel =
+                    if (textured)
+                      TypedBlendReference.decode(
+                        "RGBA8",
+                        BigInt(
+                          NativeProductWorkloads.textureRgba8(repeat(vs(l)) * 8 + repeat(us(l))).toLong & 0xffffffffL
+                        )
+                      )
+                    else Vector.fill(4)(fp(1f))
+                  val expected = Vector.tabulate(4)(c =>
+                    Fp32ViewportReference.fp(Fp32ViewportReference.number(texel(c)) * rgba(c).toDouble)
+                  )
+                  assert(
+                    lane.colors.take(4) == expected,
+                    s"product shader oracle differs textured=$textured quad=$n lane=$l"
+                  )
+                }
+                if (mode == "candidate") {
+                  val control = ujson.read(java.nio.file.Files.readString(baseline.resolve(name + ".metrics.json")))
+                  assert(control("profile").str == profile && control("allOwnedTrafficDrained").bool)
+                  assert(control("shaderSha256").str == sha(codeBytes))
+                  assert(
+                    java.util.Arrays.equals(
+                      java.nio.file.Files.readAllBytes(baseline.resolve(name + ".canonical.txt")),
+                      java.nio.file.Files.readAllBytes(directory.resolve(name + ".canonical.txt"))
+                    ),
+                    "input packing changed shader work, completion,metadata,exports,staging byte/mask/order or backing memory"
+                  )
+                  val clocks = control("clocks").num.toLong; val input = control("phases")(1).num.toLong
+                  val totalGate =
+                    if (quads == 1) t.cycle <= clocks else t.cycle.toLong * 100 <= clocks * (if (textured) 98 else 95)
+                  val inputGate =
+                    if (quads == 1) t.phaseCycles(1) <= input
+                    else t.phaseCycles(1) * 100 <= input * (if (metadataPackingQualification) 90 else 85)
+                  val trafficGate = t.externalReadBytes == BigInt(control("externalReadBytes").str) &&
+                    t.externalWriteBytes == BigInt(control("externalWriteBytes").str) &&
+                    t.enabledExternalWriteBytes == BigInt(control("enabledExternalWriteBytes").str)
+                  val rawPhaseDelta =
+                    t.phaseCycles.indices.map(i => t.phaseCycles(i) - control("phases")(i).num.toLong).toVector
+                  val gate = ujson.Obj(
+                    "totalGatePassed" -> totalGate,
+                    "phase1GatePassed" -> inputGate,
+                    "trafficExact" -> trafficGate,
+                    "rawPhaseDeltas" -> ujson.Arr.from(rawPhaseDelta),
+                    "nonTargetCausalReviewRequired" -> Seq(2, 3, 4, 5).exists(i => rawPhaseDelta(i) > 0),
+                    "environmentBudgetDoesNotWaiveNewBubbles" -> true
+                  )
+                  write(
+                    name + ".gates.json",
+                    ujson.write(gate, indent = 2).getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                  )
+                  assert(
+                    totalGate && inputGate && trafficGate,
+                    s"input-bank predeclared benefit/traffic gate failed words=${code.size} quads=$quads clocks=${t.cycle} phases=${t.phaseCycles.toVector}"
+                  )
+                }
+                t.writePhaseAudit(s"input-bank-$mode-$name")
+                info(
+                  s"FRAGMENT_INPUT_BANK mode=$mode words=${code.size} quads=$quads clocks=${t.cycle} phases=${t.phaseCycles.mkString(",")} exactCanonical=true fullCapacity=true nativeSram=true"
+                )
+              } finally { if (!persisted) snapshot() }
+            }
+          }
+        }
+
+      for (local <- Seq(true, false))
+        it should s"shade product recipe colors with native floating texture operands local=$local" in {
+          simulate(
+            new FragmentShaderHarness(
+              local,
+              lanes = 16,
+              warps = 8,
+              fullInterface = true,
+              scalarFpu = true,
+              nativeProfile = true
+            )
+          ) { d =>
+            val t = new Driver(d); t.cycleLimit = 200000
+            t.expectedColorSlots = 1; t.expectedColorTypes = Vector.fill(4)(0)
+            val data = NativeTextureFetchTestData; val id = Seq[BigInt](7, 8, 9)
+            data.roots(t.put, stage = 1, id = id)
+            data.install(
+              t.put,
+              (a, b) => t.memory(a) = BigInt(b),
+              0,
+              format = ImageFormatReference.names.indexOf("RGBA8"),
+              stage = 1,
+              id = id
+            )
+            // Replace the generic tiny pitched view with the actual 8x8 recipe image.
+            val imageBase = BigInt(0x20000) + 60
+            t.put(data.images + 11 * 4, 8); t.put(data.images + 12 * 4, 8)
+            t.put(data.levels + 13 * 4, 8); t.put(data.levels + 14 * 4, 8); t.put(data.levels + 17 * 4, 32)
+            NativeProductWorkloads.textureRgba8.zipWithIndex.foreach { case (w, i) =>
+              t.put(imageBase + 4 * i, BigInt(w.toLong & 0xffffffffL))
+            }
+            for (textured <- Seq(false, true))
+              NativeProductShaderPrograms.fragment(16, 8, textured).zipWithIndex.foreach { case (w, i) =>
+                t.put((if (textured) 0x4000 else 0x1000) + 4 * i, w)
+              }
+            val us = Vector(-0.03125f, 0.03125f, 0.28125f, 1.28125f)
+            val vs = Vector(0.03125f, 0.28125f, 0.03125f, -0.03125f)
+            d.io.out.ready.poke(true.B)
+            var draws = 0
+            val recipes = NativeProductWorkloads.suite(32, 32).flatMap(scene => scene.draws.map(draw => (scene, draw)))
+            var faultReads = 0
+            for (((scene, draw), index) <- (recipes ++ Vector(recipes.last, recipes.last)).zipWithIndex) {
+              // The full eight-warp texture batch needs a separate correctness
+              // guard. This is not a throughput qualification or a frame deadline.
+              t.cycleLimit = if (index == 0) 1000000 else 200000
+              val bad = index == recipes.size
+              t.fault = (a, w) => { val hit = bad && !w && a == data.root; if (hit) faultReads += 1; hit }
+              d.io.out.ready.poke((index != 0).B)
+              t.descriptor(); val q = d.io.draw.bits
+              q.shaderPc.poke((if (draw.textured) 0x4000 else 0x1000).U)
+              q.varyingSlots.poke(2.U); q.colorSlots.poke(1.U); q.colorMask.poke(1.U)
+              q.allowDepthOverride.poke(false.B); q.colorTypes(0).poke(0.U)
+              q.sampleMode.poke((if (scene.samples == 4) 2 else 0).U)
+              if (draw.textured) { q.resources.version.poke(1.U); q.resources.address.poke(data.root.U) }
+              t.exports.clear(); t.submit()
+              q.resources.version.poke(3.U); q.resources.address.poke("hffffffff".U)
+              val quads = if (index == 0) t.cap / 4 else 1
+              for (quad <- 0 until quads) {
+                t.input(quad)
+                val r = d.io.in.bits; r.sampleMode.poke((if (scene.samples == 4) 2 else 0).U)
+                r.values.varyingSlots.poke(2.U)
+                for (l <- 0 until 4) {
+                  val a = r.values.lanes(l)
+                  a.covered.poke((l != 3).B);
+                  a.coverageMask.poke((if (l == 3) 0 else if (scene.samples == 1) 1 else 15).U)
+                  a.varyings(0)(0).poke(fp(us(l)).U); a.varyings(0)(1).poke(fp(vs(l)).U)
+                  a.varyings(0)(2).poke(0.U); a.varyings(0)(3).poke(fp(1f).U)
+                  for (c <- 0 until 4) a.varyings(1)(c).poke(fp(draw.rgba(c)).U)
+                }
+                d.io.in.valid.poke(true.B); t.until(d.io.in.ready.peek().litToBoolean); t.tick();
+                d.io.in.valid.poke(false.B)
+              }
+              t.end(quads)
+              if (index == 0) {
+                t.until(d.io.out.valid.peek().litToBoolean); val held = d.io.out.bits.peek().litValue
+                for (_ <- 0 until 9) {
+                  t.tick(); d.io.out.valid.expect(true.B); assert(d.io.out.bits.peek().litValue == held)
+                }
+                d.io.out.ready.poke(true.B)
+                t.until(d.io.completion.valid.peek().litToBoolean)
+                d.io.completion.bits.maxLocalX.expect(t.cap.U)
+                d.io.completion.bits.shadedLanes.expect(t.cap.U)
+              }
+              withClue(s"${scene.id} draw=$draws bad=$bad: ") { t.complete(if (bad) 3 else 0) }
+              assert(t.exports.size == (if (bad) 0 else quads))
+              t.exports.zipWithIndex.foreach { case (result, n) => assert(result.sequence == 100 + n) }
+              for (result <- t.exports; (lane, l) <- result.lanes.zipWithIndex) {
+                def repeat(x: Float): Int = { val n = math.floor(x.toDouble * 8).toInt; ((n % 8) + 8) % 8 }
+                val texel =
+                  if (draw.textured)
+                    TypedBlendReference.decode(
+                      "RGBA8",
+                      BigInt(
+                        NativeProductWorkloads.textureRgba8(repeat(vs(l)) * 8 + repeat(us(l))).toLong & 0xffffffffL
+                      )
+                    )
+                  else Vector.fill(4)(fp(1f))
+                val expected = Vector.tabulate(4)(c =>
+                  Fp32ViewportReference.fp(Fp32ViewportReference.number(texel(c)) * draw.rgba(c).toDouble)
+                )
+                assert(lane.colors.take(4) == expected, s"${scene.id} lane=$l color differs")
+                assert(lane.helper == (l == 3) && !lane.discard && !lane.overrideDepth)
+                assert(lane.depth == fp(0.5f) && lane.mask == (if (l == 3) 0 else 1))
+                assert(lane.coverage == (if (l == 3) 0 else if (scene.samples == 1) 1 else 15))
+              }
+              draws += 1
+            }
+            assert(draws == 27 && t.launches == draws && faultReads > 0)
+            assert((t.globalStaging == 0) == local)
+          }
+        }
+
+      it should "count held global staging requests without withdrawing offers local=false" in {
+        simulate(new FragmentShaderHarness(false)) { d =>
+          val t = new Driver(d, verifyEvents = true)
+          t.descriptor(); t.submit(); d.io.out.ready.poke(true.B); d.io.blockStaging.poke(true.B); t.send(0, true)
+          t.until(d.io.performance.stagingBlocked.peek().litToBoolean)
+          val blocked = t.stagingBlockedCycles
+          for (_ <- 0 until 11) t.tick()
+          assert(t.stagingBlockedCycles - blocked == 11, "held global staging request was not counted")
+          d.io.blockStaging.poke(false.B); t.complete(0); t.check(1)
+        }
+      }
+
+      it should "reject descriptor, quad and EOF errors before launching younger work and allow reuse" in {
+        simulate(new FragmentShaderHarness()) { d =>
+          val t = new Driver(d); val q = d.io.draw.bits; d.io.out.ready.poke(true.B)
+          val bad = Seq[(Int, () => Unit)](
+            (1, () => q.version.poke(0.U)),
+            (1, () => q.shaderPc.poke(0.U)),
+            (1, () => q.shaderPc.poke(0x1002.U)),
+            (1, () => q.varyingSlots.poke(3.U)),
+            (1, () => q.colorSlots.poke(5.U)),
+            (1, () => q.colorSlots.poke(3.U)),
+            (1, () => q.colorTypes(0).poke(3.U)),
+            (1, () => q.sampleMode.poke(3.U)),
+            (1, () => q.scratch.base.poke((t.scratch + 4).U)),
+            (1, () => q.scratch.allocationLimit.poke((t.scratch + t.prefix + 63).U)),
+            (1, () => q.scratch.limit.poke((t.scratch + t.prefix + 65).U)),
+            (2, () => q.scratch.limit.poke((t.scratch + t.prefix - 1).U)),
+            (
+              1,
+              () => {
+                q.scratch.base.poke(d.cfg.sharedMemoryBase.U); q.scratch.allocationBase.poke(d.cfg.sharedMemoryBase.U)
+                q.scratch.limit.poke((d.cfg.sharedMemoryBase + t.prefix).U);
+                q.scratch.allocationLimit.poke((d.cfg.sharedMemoryBase + t.prefix).U)
+              }
+            )
+          )
+          for ((status, mutate) <- bad) {
+            t.descriptor(); mutate(); val before = t.requests; t.submit(); t.end(0); t.complete(status)
+            assert(t.requests == before && t.launches == 0 && t.exports.isEmpty)
+          }
+          val badInput = Seq[() => Unit](
+            () => d.io.in.bits.values.identity.context.poke(99.U),
+            () => d.io.in.bits.values.varyingSlots.poke(1.U),
+            () => { d.io.in.bits.values.varyingSlots.poke(0.U); d.io.in.bits.values.flatMask.poke(1.U) },
+            () => d.io.in.bits.sampleMode.poke(1.U),
+            () => d.io.in.bits.values.partIndex.poke(7.U),
+            () => d.io.in.bits.values.lanes(0).x.poke(1.S),
+            () => d.io.in.bits.values.lanes(1).x.poke(9.S),
+            () => d.io.in.bits.values.lanes(2).covered.poke(false.B),
+            () => d.io.in.bits.values.lanes(0).perspectiveValid.poke(false.B),
+            () => d.io.in.bits.values.lanes(0).reciprocalW.negative.poke(true.B),
+            () => d.io.in.bits.values.lanes(0).windowDepth.poke(fp(-0.25f).U)
+          )
+          for (mutate <- badInput) {
+            t.descriptor(); t.submit(); t.input(0); mutate(); d.io.in.valid.poke(true.B)
+            t.until(d.io.in.ready.peek().litToBoolean); t.tick(); d.io.in.valid.poke(false.B); t.end(1); t.complete(6)
+            assert(t.requests == 0 && t.launches == 0)
+          }
+          t.descriptor(); t.submit(); t.end(1); t.complete(6)
+          for (badCount <- Seq(BigInt(0), BigInt(2), BigInt(1) << 98)) {
+            t.descriptor(); t.submit(); t.input(0); d.io.in.valid.poke(true.B)
+            t.until(d.io.in.ready.peek().litToBoolean)
+            t.identity(d.io.inputEnd.bits.identity); d.io.inputEnd.bits.quads.poke(badCount.U)
+            d.io.inputEnd.bits.status.poke(0.U); d.io.inputEnd.valid.poke(true.B)
+            t.tick(); d.io.in.valid.poke(false.B); d.io.inputEnd.valid.poke(false.B)
+            t.complete(6); assert(t.requests == 0 && t.launches == 0 && t.exports.isEmpty)
+          }
+          t.descriptor(); t.submit(); t.end(0, 3); t.complete(3)
+          t.descriptor(); t.submit(); t.end(0); t.complete(0)
+          t.descriptor(); t.submit(); t.send(0, true); t.complete(0); t.check(1)
+          info(
+            "FRAGMENT_SHADER descriptorErrors=13 quadErrors=11 EOFErrors=5 simultaneousEOFCountChecks=true noBadInputAccess=true empty=true reuse=true"
+          )
+        }
+      }
+
+      it should "spill under pool pressure and retain offered exports and launches through cancellation" in {
+        simulate(new FragmentShaderHarness()) { d =>
+          val t = new Driver(d); val leases = Vector.fill(d.pp.slots)(t.pressure(ShaderPayloadControl.allocate))
+          t.descriptor(); t.submit(); d.io.out.ready.poke(true.B); for (q <- 0 until 3) t.send(q, q == 2)
+          t.until(d.io.completion.valid.peek().litToBoolean); d.io.completion.bits.spilledBatches.expect(2.U)
+          t.check(3); assert(t.globalStaging > 0)
+          leases.foreach { case (h, g) => t.pressure(ShaderPayloadControl.release, h, g) }; t.complete(0)
+          t.exports.clear(); t.descriptor(); t.submit(); d.io.out.ready.poke(false.B); t.send(0, true)
+          t.until(d.io.out.valid.peek().litToBoolean); val held = d.io.out.bits.peek().litValue
+          d.io.cancel.poke(true.B)
+          for (_ <- 0 until 11) {
+            t.tick(); assert(d.io.out.bits.peek().litValue == held); d.io.completion.valid.expect(false.B);
+            d.io.poolDrained.expect(false.B); d.io.idle.expect(false.B)
+          }
+          d.io.out.ready.poke(true.B); t.complete(4); d.io.cancel.poke(false.B); t.check(1)
+          t.exports.clear(); t.descriptor(); d.io.blockLaunch.poke(true.B); t.submit(); t.send(0, true)
+          t.until(d.io.launchOffered.peek().litToBoolean); d.io.cancel.poke(true.B)
+          for (_ <- 0 until 7) {
+            t.tick(); d.io.launchOffered.expect(true.B); d.io.completion.valid.expect(false.B);
+            d.io.idle.expect(false.B)
+          }
+          d.io.blockLaunch.poke(false.B); t.complete(4); d.io.cancel.poke(false.B); assert(t.exports.isEmpty)
+          t.descriptor(); t.submit(); t.send(0, true); t.complete(0); t.check(1)
+          info(
+            "FRAGMENT_SHADER forcedSpill=true heldExportCancel=true offeredLaunchCancel=true leaseAndVMRetained=true reuse=true"
+          )
+        }
+      }
+
+      it should "attribute a late input write fault while younger staging transfers retire and permit reuse" in {
+        simulate(new FragmentShaderHarness(false, 4, 4)) { d =>
+          val t = new Driver(d, verifyEvents = true)
+          val bad = t.scratch + t.stride
+          d.io.out.ready.poke(true.B); t.descriptor(); t.submit()
+          t.fault = (a, w) => w && a == bad; t.responseDelay = (a, w) => if (w && a == bad) 40 else 0
+          t.send(0, true); t.until(d.io.completion.valid.peek().litToBoolean)
+          d.io.completion.bits.faultSource.expect(3.U); d.io.completion.bits.faultAddress.expect(bad.U)
+          assert(t.peakStaging == 2 && t.exports.isEmpty && t.launches == 0)
+          t.complete(3); t.fault = (_, _) => false; t.responseDelay = (_, _) => 0
+          t.descriptor(); t.submit(); t.send(0, true); t.complete(0); t.check(1)
+        }
+      }
+
+      it should "drain staging, shader and malformed export faults with ordered attribution" in {
+        simulate(new FragmentShaderHarness(false)) { d =>
+          val t = new Driver(d); d.io.out.ready.poke(true.B)
+          for (write <- Seq(true, false)) {
+            t.descriptor(); t.submit();
+            t.fault =
+              (a, w) => a >= t.scratch + (6 + 4 * t.varyingSlots) * t.stride && a < t.scratch + t.prefix && w == write
+            t.send(0, true); t.until(d.io.completion.valid.peek().litToBoolean)
+            d.io.completion.bits.faultSource.expect(3.U); t.complete(3); assert(t.exports.isEmpty);
+            t.fault = (_, _) => false
+          }
+          // A trapped shader retires its accepted work before completion.
+          t.put(0x3000, 0); t.descriptor(); d.io.draw.bits.shaderPc.poke(0x3000.U); t.submit(); t.send(0, true)
+          t.until(d.io.completion.valid.peek().litToBoolean); d.io.completion.bits.faultSource.expect(4.U);
+          t.complete(5)
+          program(d.cfg.lanes, d.cfg.warps).zipWithIndex.foreach { case (w, i) => t.put(0x2000 + 4 * i, w) }
+          for (
+            (badDepth, control) <- Seq(
+              (fp(0.25f), BigInt(64)),
+              (fp(0.25f), BigInt(3 | (15 << 2))),
+              (BigInt("7fc00001", 16), BigInt(3 | (15 << 2)))
+            )
+          ) {
+            t.descriptor(); d.io.draw.bits.shaderPc.poke(0x2000.U)
+            if (badDepth == fp(0.25f) && control.testBit(1)) d.io.draw.bits.allowDepthOverride.poke(false.B)
+            t.submit(); t.input(0); d.io.in.bits.values.lanes(0).varyings(1)(2).poke(badDepth.U)
+            d.io.in.bits.values.lanes(0).varyings(1)(3).poke(control.U); d.io.in.valid.poke(true.B)
+            t.until(d.io.in.ready.peek().litToBoolean); t.tick(); d.io.in.valid.poke(false.B); t.end(1)
+            t.until(d.io.completion.valid.peek().litToBoolean); val r = d.io.completion.bits
+            r.faultSource.expect(6.U); r.faultQuadValid.expect(true.B); r.faultSequence.expect(100.U);
+            r.faultLane.expect(0.U)
+            t.complete(7); assert(t.exports.isEmpty)
+          }
+          t.descriptor(); d.io.draw.bits.shaderPc.poke(0x2000.U); t.submit(); t.send(0, true); t.complete(0); t.check(1)
+          info("FRAGMENT_SHADER stagingFaults=2 shaderTrap=true exportFaults=3 drain=true attribution=true reuse=true")
+        }
+      }
+
+      for (local <- Seq(false, true))
+        it should s"overlap metadata with minimal inputs and drain cancellation before healthy reuse local=$local" in {
+          simulate(new FragmentShaderHarness(local, 4, 4)) { d =>
+            val t = new Driver(d); t.sampleDepthEnabled = true; t.put(0x3000, cease); t.descriptor()
+            val draw = d.io.draw.bits
+            draw.shaderPc.poke(0x3000.U); draw.varyingSlots.poke(0.U); draw.colorSlots.poke(0.U);
+            draw.colorMask.poke(0.U)
+            t.expectedColorSlots = 0; t.expectedColorTypes = Vector.empty; t.submit(); d.io.out.ready.poke(true.B)
+            def sendMinimal(q: Int): Unit = {
+              t.input(q); d.io.in.bits.values.varyingSlots.poke(0.U); d.io.in.valid.poke(true.B)
+              t.until(d.io.in.ready.peek().litToBoolean); t.tick(); d.io.in.valid.poke(false.B)
+            }
+            // Six inputs plus depth/control initialization finish before the nine
+            // metadata rows. Exercise that tail across full and partial batches.
+            for (q <- 0 until 6) sendMinimal(q)
+            t.end(6); t.until(d.io.completion.valid.peek().litToBoolean)
+            d.io.completion.bits.inputQuads.expect(6.U); d.io.completion.bits.outputQuads.expect(6.U)
+            d.io.completion.bits.batches.expect(2.U)
+            val expected = (0 until 6).map { q =>
+              Export(
+                q + 100,
+                q + 20,
+                q / 2,
+                q % 7,
+                q % 2 == 0,
+                Vector.tabulate(4) { l =>
+                  Lane(
+                    2 * q + l % 2,
+                    -4 + l / 2,
+                    fp(0.5f),
+                    t.coverage(q, l),
+                    t.coverage(q, l) == 0,
+                    false,
+                    false,
+                    0,
+                    Vector.fill(16)(BigInt(0)),
+                    true,
+                    Vector.tabulate(4)(s =>
+                      if ((t.coverage(q, l) & (1 << s)) != 0) t.sampleDepth(q, l, s) else BigInt(0)
+                    )
+                  )
+                }
+              )
+            }.toVector
+            assert(t.exports.toVector == expected, "minimal inputs lost ordered per-sample metadata")
+            t.complete(0); t.exports.clear()
+            val readCuts = Vector(0, 4, 8)
+            for (cut <- readCuts) {
+              t.descriptor(); draw.shaderPc.poke(0x3000.U); draw.varyingSlots.poke(0.U)
+              draw.colorSlots.poke(0.U); draw.colorMask.poke(0.U); t.submit(); d.io.out.ready.poke(false.B)
+              for (q <- 0 until 4) sendMinimal(q)
+              t.end(4); t.until(d.io.performance.phaseWorkers(4).peek().litValue == 1)
+              for (_ <- 0 until cut) t.tick()
+              d.io.out.valid.expect(false.B); d.io.cancel.poke(true.B); d.io.out.ready.poke(true.B)
+              t.complete(4); assert(t.exports.isEmpty, "canceled metadata prefetch exported a partial quad")
+              d.io.cancel.poke(false.B)
+              t.descriptor(); draw.shaderPc.poke(0x3000.U); draw.varyingSlots.poke(0.U)
+              draw.colorSlots.poke(0.U); draw.colorMask.poke(0.U); t.submit()
+              for (q <- 0 until 4) sendMinimal(q)
+              t.end(4); t.complete(0)
+              assert(t.exports.toVector == expected.take(4), "healthy reuse consumed canceled metadata rows")
+              t.exports.clear()
+            }
+            t.expectedColorSlots = 4; t.expectedColorTypes = Vector.tabulate(4)(_ % 3)
+            val cuts = Vector(0, 2, 6, 9, 13, 18)
+            for (cut <- cuts) {
+              t.descriptor(); t.submit(); t.send(0); t.send(1)
+              // The second quad reuses its lease. Cuts span input validation,
+              // overlapping metadata writes, and the completed metadata prefix.
+              for (_ <- 0 until cut) t.tick()
+              val launches = t.launches; d.io.cancel.poke(true.B); t.end(2); t.complete(4)
+              assert(
+                t.exports.isEmpty && t.launches == launches,
+                "canceled staging launched or exported a partial batch"
+              )
+              d.io.cancel.poke(false.B)
+              t.descriptor(); t.submit(); t.send(0); t.send(1, true); t.complete(0); t.check(2); t.exports.clear()
+            }
+            info(
+              s"FRAGMENT_METADATA_STAGING local=$local zeroVaryings=true depthOnly=true quads=6 batches=2 sampleDepthsExact=true cancellationCuts=${cuts.mkString(",")} readCancellationCuts=${readCuts.mkString(",")} healthyReuse=true"
+            )
+          }
+        }
+
+      for (local <- Seq(false, true))
+        it should s"coalesce four input quads before launch and preserve a partial following batch local=$local" in {
+          simulate(new FragmentShaderHarness(local, 4, 4)) { d =>
+            val t = new Driver(d, verifyEvents = true); t.sampleDepthEnabled = true; t.descriptor(); t.submit();
+            d.io.out.ready.poke(true.B)
+            for (q <- 0 until 6) t.send(q, q == 5)
+            t.until(d.io.completion.valid.peek().litToBoolean)
+            d.io.completion.bits.batches.expect(2.U); d.io.completion.bits.inputQuads.expect(6.U)
+            d.io.completion.bits.stagingReadBytes.expect((6 * 4 * 18 * 4).U)
+            d.io.completion.bits.outputQuads.expect(6.U); t.check(6); t.complete(0)
+            val fields = 6 + 4 * t.varyingSlots
+            val inputs = t.stagingWrites.filter(_._1 < fields * t.stride)
+            assert(inputs.size == fields * 2, s"input fields used${inputs.size} requests instead of${fields * 2}")
+            for (
+              (writes, mask) <- Seq(
+                inputs.take(fields) -> ((BigInt(1) << 64) - 1),
+                inputs.drop(fields) -> ((BigInt(1) << 32) - 1)
+              )
+            ) {
+              assert(writes.map(_._1).toVector == Vector.tabulate(fields)(f => BigInt(f * t.stride)))
+              assert(writes.forall(_._2 == mask), s"incorrect full/partial input masks: $writes")
+            }
+            assert(inputs.map(_._2.bitCount).sum == 6 * 4 * fields * 4)
+            assert(
+              t.phaseCycles(4) <= (if (local) 380 else 490),
+              s"fragment readback exceeded its clock budget: ${t.phaseCycles.toVector}"
+            )
+            assert(
+              t.phaseCycles(1) <= (if (local) 260 else 970),
+              s"fragment input staging exceeded its clock budget: ${t.phaseCycles.toVector}"
+            )
+            assert(t.cycle <= (if (local) 3320 else 6000), s"fragment draw exceeded its clock budget: ${t.cycle}")
+            info(
+              s"FRAGMENT_INPUT_COALESCING local=$local quads=6 batches=2 inputRequests=${inputs.size} previousQuadRequests=${6 * fields} exactEnabledBytes=${6 * 4 * fields * 4} storedExportsExact=true"
+            )
+            info(
+              s"FRAGMENT_OUTPUT_READBACK local=$local quads=6 colors=4 totalClocks=${t.cycle} readWorkerClocks=${t.phaseCycles(4)}"
+            )
+            info(
+              s"FRAGMENT_METADATA_STAGING_RATE local=$local quads=6 totalClocks=${t.cycle} stagingWorkerClocks=${t.phaseCycles(1)}"
+            )
+          }
+        }
+
+      for (local <- Seq(false, true))
+        it should s"reuse returned input IDs through identical delayed shared-CU traffic and complete draws local=$local" in {
+          case class Measurement(
+              clocks: Int,
+              staging: Long,
+              phases: Vector[Long],
+              completion: BigInt,
+              exports: Vector[Export],
+              accesses: Vector[(BigInt, Boolean, BigInt, BigInt)],
+              memory: Map[BigInt, BigInt]
+          )
+          val results = mutable.Map.empty[(Boolean, Int), Measurement]
+          for (returnedCredit <- Seq(false, true)) {
+            simulate(
+              new FragmentShaderHarness(
+                local,
+                lanes = 16,
+                warps = 8,
+                fullInterface = true,
+                scalarFpu = true,
+                nativeProfile = true,
+                inputReturnCredit = returnedCredit
+              )
+            ) { d =>
+              for (quads <- Seq(1, 35)) {
+                // Each control starts cold after the preceding complete drain. The
+                // workload, instruction bytes and cycle-based service rules match.
+                val t = new Driver(d, verifyEvents = true); t.sampleDepthEnabled = true; t.cycleLimit = 250000
+                assert(d.cfg == GpuConfig() && t.cap == 128 && t.varyingSlots == 16 && d.vp.colors == 4)
+                d.io.modelsPresent.expect(true.B)
+                val batches = (quads * 4 + t.cap - 1) / t.cap
+                val fields = 6 + 4 * t.varyingSlots
+                val inputBytes = quads * 4 * (fields + 2) * 4
+                val clearBytes = if (local) 0 else batches * d.vp.maxOutputWords * t.stride
+                if (local) t.payloadResponseStall = Some(c => c % 13 < 4)
+                t.descriptor(); t.submit(); d.io.out.ready.poke(true.B)
+                for (q <- 0 until quads) t.send(q, q == quads - 1)
+                t.until(d.io.completion.valid.peek().litToBoolean)
+                d.io.completion.bits.inputQuads.expect(quads.U); d.io.completion.bits.outputQuads.expect(quads.U)
+                d.io.completion.bits.batches.expect(batches.U); d.io.completion.bits.shadedLanes.expect((quads * 4).U)
+                d.io.completion.bits.maxLocalX.expect(math.min(t.cap, quads * 4).U)
+                d.io.completion.bits.localBatches.expect((if (local) batches else 0).U)
+                d.io.completion.bits.globalBatches.expect((if (local) 0 else batches).U)
+                d.io.completion.bits.spilledBatches.expect(0.U)
+                d.io.completion.bits.stagingWriteBytes.expect((inputBytes + clearBytes).U)
+                d.io.completion.bits.stagingReadBytes.expect((quads * 4 * d.vp.maxOutputWords * 4).U)
+                val completion = d.io.completion.bits.peek().litValue
+                t.check(quads); t.complete(0)
+                assert(t.launches == batches && t.peakStaging == 2 && t.stagingIds == Set(BigInt(0), BigInt(1)))
+                if (sys.props.get("opengpu.fragmentPhaseAudit").contains("1")) {
+                  val expected = (local, returnedCredit, quads) match {
+                    case (false, false, 1)  => (10330, 2934L); case (false, true, 1)   => (10288, 2893L)
+                    case (false, false, 35) => (38465, 12487L); case (false, true, 35) => (38129, 12153L)
+                    case (true, false, 1)   => (6402, 400L); case (true, true, 1)      => (6402, 399L)
+                    case (true, false, 35)  => (19827, 5417L); case (true, true, 35)   => (19823, 5411L)
+                    case other              => throw new IllegalArgumentException(s"unexpected historical draw $other")
+                  }
+                  assert(
+                    t.cycle == expected._1 && t.phaseCycles(1) == expected._2,
+                    s"historical frozen draw changed local=$local returned=$returnedCredit quads=$quads clocks=${t.cycle} phases=${t.phaseCycles.toVector}"
+                  )
+                  t.writePhaseAudit(
+                    s"${if (local) "resident" else "global"}-${if (returnedCredit) "returned" else "original"}-quads$quads"
+                  )
+                }
+                results((returnedCredit, quads)) = Measurement(
+                  t.cycle,
+                  t.phaseCycles(1),
+                  t.phaseCycles.toVector,
+                  completion,
+                  t.exports.toVector,
+                  t.stagingAccesses.toVector,
+                  t.memory.toMap
+                )
+              }
+            }
+          }
+          for (quads <- Seq(1, 35)) {
+            val serial = results((false, quads)); val recycled = results((true, quads))
+            assert(
+              serial.completion == recycled.completion && serial.exports == recycled.exports,
+              s"returnedCredit changed completed shader work local=$local quads=$quads"
+            )
+            assert(
+              serial.accesses == recycled.accesses && serial.memory == recycled.memory,
+              s"returnedCredit changed accepted staging bytes/masks/order or stored memory local=$local quads=$quads"
+            )
+            if (quads == 1) {
+              assert(
+                recycled.clocks <= serial.clocks && recycled.staging <= serial.staging,
+                s"single-quad control regressed local=$local serial=${serial.clocks}/${serial.staging} recycled=${recycled.clocks}/${recycled.staging}"
+              )
+            } else {
+              assert(
+                recycled.clocks < serial.clocks && recycled.staging < serial.staging,
+                s"returnedCredit failed real delayed draw/staging improvement local=$local serial=${serial.clocks}/${serial.staging} recycled=${recycled.clocks}/${recycled.staging}"
+              )
+            }
+            info(
+              s"FRAGMENT_INPUT_RETURNED_CREDIT_CU local=$local quads=$quads lanes=128 components=64 colors=4 nativeProfile=true nativeSram=true defaultL2AndPrivateCaches=true scalarFpu=true serialDraw=${serial.clocks} returnedDraw=${recycled.clocks} serialStaging=${serial.staging} returnedStaging=${recycled.staging} exactBytesMasksOrder=true exactExportsAndMemory=true twoOwnedIDs=true"
+            )
+            if (sys.props.get("opengpu.fragmentPhaseAudit").contains("1"))
+              info(
+                s"FRAGMENT_NATIVE_PHASE_AUDIT local=$local quads=$quads serialDraw=${serial.clocks} serialPhases=${serial.phases.mkString(",")} returnedDraw=${recycled.clocks} returnedPhases=${recycled.phases.mkString(",")} scope=historical-frozen-DUT"
+              )
+          }
+        }
+
+      if (sys.props.get("opengpu.fragmentGuardPipeQualification").contains("1"))
+        it should "compare execution-limited full resident native draws with unchanged shader work" in {
+          val mode = sys.props("opengpu.fragmentGuardPipeMode")
+          require(Set("control", "candidate").contains(mode))
+          require(sys.props.get("opengpu.fragmentPhaseAudit").contains("1"))
+          val directory = java.nio.file.Paths.get(sys.props("opengpu.fragmentGuardPipeOutput"))
+          require(!java.nio.file.Files.exists(directory), "guard qualification output must be fresh")
+          java.nio.file.Files.createDirectories(directory)
+          val baseline =
+            if (mode == "control") directory
+            else java.nio.file.Paths.get(sys.props("opengpu.fragmentGuardPipeBaseline"))
+          def write(name: String, bytes: Array[Byte]): Unit = java.nio.file.Files.write(
+            directory.resolve(name),
+            bytes,
+            java.nio.file.StandardOpenOption.CREATE_NEW,
+            java.nio.file.StandardOpenOption.WRITE
+          )
+          def sha(bytes: Array[Byte]): String = java.security.MessageDigest
+            .getInstance("SHA-256")
+            .digest(bytes)
+            .map(b => f"${b & 255}%02x")
+            .mkString
+          simulate(
+            new FragmentShaderHarness(
+              true,
+              lanes = 16,
+              warps = 8,
+              fullInterface = true,
+              scalarFpu = true,
+              nativeProfile = true,
+              inputReturnCredit = true,
+              guardQualification = true
+            )
+          ) { d =>
+            for (quads <- Seq(1, 35)) {
+              val t = new Driver(d, verifyEvents = true); t.sampleDepthEnabled = true; t.cycleLimit = 250000
+              try {
+                assert(
+                  d.guardQualification && d.cfg == GpuConfig() && t.cap == 128 && t.varyingSlots == 16 && d.vp.colors == 4
+                )
+                assert(d.pp == NativeShaderPayloadSizing.pool(owners = 3, ports = 8))
+                assert(d.pp.capacityBytes == 262144 && d.pp.maxPayloadBytes == 69632)
+                d.io.modelsPresent.expect(true.B); t.payloadResponseStall = Some(c => c % 13 < 4)
+                val batches = (quads * 4 + t.cap - 1) / t.cap
+                val inputBytes = quads * 4 * (8 + 4 * t.varyingSlots) * 4
+                val code = program(d.cfg.lanes, d.cfg.warps, t.varyingSlots).toVector
+                assert(code.size == 393)
+                for ((word, i) <- code.zipWithIndex) assert(t.word(0x1000 + 4 * i) == word)
+                val codeBytes = code.flatMap(w => (0 until 4).map(b => ((w >> (8 * b)) & 255).toByte)).toArray
+                t.descriptor(); t.submit(); d.io.out.ready.poke(true.B)
+                for (q <- 0 until quads) t.send(q, q == quads - 1)
+                t.until(d.io.completion.valid.peek().litToBoolean)
+                val result = d.io.completion.bits
+                result.inputQuads.expect(quads.U); result.outputQuads.expect(quads.U)
+                result.batches.expect(batches.U); result.shadedLanes.expect((quads * 4).U)
+                result.maxLocalX.expect(math.min(t.cap, quads * 4).U)
+                result.localBatches.expect(batches.U); result.globalBatches.expect(0.U);
+                result.spilledBatches.expect(0.U)
+                result.stagingWriteBytes.expect(inputBytes.U)
+                result.stagingReadBytes.expect((quads * 4 * d.vp.maxOutputWords * 4).U)
+                val completion = result.peek().litValue
+                t.check(quads); t.complete(0)
+                assert(t.launches == batches && t.peakStaging == 2 && t.stagingIds == Set(BigInt(0), BigInt(1)))
+                assert(t.globalStaging == 0 && t.phaseCycles.sum == t.cycle)
+                val canonical = Vector(
+                  "completion=" + completion,
+                  "exports=" + t.exports.toVector,
+                  "accesses=" + t.stagingAccesses.toVector,
+                  "memory=" + t.memory.toVector.sortBy(_._1)
+                ).mkString("\n") + "\n"
+                val bytes = canonical.getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                val canonicalName = s"quads$quads.canonical.txt"
+                var totalPass = true; var kernelPass = true
+                if (mode == "candidate") {
+                  assert(
+                    java.util.Arrays.equals(java.nio.file.Files.readAllBytes(baseline.resolve(canonicalName)), bytes),
+                    s"guard pipe changed actual work, accepted byte/mask/order, exports or memory quads=$quads"
+                  )
+                  val control =
+                    ujson.read(java.nio.file.Files.readString(baseline.resolve(s"quads$quads.metrics.json")))
+                  assert(
+                    control("profile").str == "native-guard-default-full-pool-v1" && control(
+                      "shaderWords"
+                    ).num.toInt == 393
+                  )
+                  assert(control("shaderSha256").str == sha(codeBytes) && control("canonicalSha256").str == sha(bytes))
+                  val clocks = control("clocks").num.toLong; val kernel = control("phases")(3).num.toLong
+                  require(clocks > 0 && kernel > 0)
+                  totalPass = if (quads == 1) t.cycle <= clocks else t.cycle.toLong * 100 <= clocks * 99
+                  kernelPass = if (quads == 1) t.phaseCycles(3) <= kernel else t.phaseCycles(3) * 100 <= kernel * 98
+                }
+                write(canonicalName, bytes)
+                val metrics = ujson.Obj(
+                  "profile" -> "native-guard-default-full-pool-v1",
+                  "mode" -> mode,
+                  "quads" -> quads,
+                  "clocks" -> t.cycle,
+                  "phases" -> ujson.Arr.from(t.phaseCycles.map(n => ujson.Num(n.toDouble))),
+                  "shaderWords" -> code.size,
+                  "shaderSha256" -> sha(codeBytes),
+                  "canonicalSha256" -> sha(bytes),
+                  "shaderExecutionLimits" -> true,
+                  "instructionQuota" -> opengpu.system.NativeShaderExecutionCapabilities.defaultQuota,
+                  "nativeSram" -> true,
+                  "capacity" -> t.cap,
+                  "components" -> 64,
+                  "colors" -> 4,
+                  "poolBytes" -> d.pp.capacityBytes,
+                  "maxPayloadBytes" -> d.pp.maxPayloadBytes,
+                  "defaultCaches" -> true,
+                  "exactCanonicalWork" -> true,
+                  "allOwnedTrafficDrained" -> true,
+                  "totalGatePassed" -> totalPass,
+                  "waitKernelGatePassed" -> kernelPass
+                )
+                write(
+                  s"quads$quads.metrics.json",
+                  ujson.write(metrics, indent = 2).getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                )
+                t.writePhaseAudit(s"resident-guard-pipe-$mode-quads$quads")
+                info(
+                  s"FRAGMENT_GUARD_PIPE_NATIVE mode=$mode quads=$quads clocks=${t.cycle} phases=${t.phaseCycles.mkString(",")} shaderWords=393 executionLimits=true quota=1048576 pool262144=true payload69632=true capacity128=true components64=true colors4=true nativeSram=true defaultCaches=true exactCanonicalWork=true totalGate=$totalPass waitKernelGate=$kernelPass"
+                )
+                assert(
+                  totalPass && kernelPass,
+                  s"guard pipe failed predeclared native draw/waitKernel gates quads=$quads clocks=${t.cycle} phases=${t.phaseCycles.toVector}"
+                )
+              } finally {
+                val memory = t.memory.toVector.sortBy(_._1).map { case (a, b) => s"$a $b" }.mkString("\n") + "\n"
+                write(s"quads$quads.returned-memory.txt", memory.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+              }
+            }
+          }
+        }
+
+      if (sys.props.get("opengpu.fragmentResumeFallbackQualification").contains("1"))
+        it should "compare the full resident native warp-resume candidate with unchanged cold shader work" in {
+          val mode = sys.props("opengpu.fragmentResumeFallbackMode")
+          require(Set("baseline", "candidate").contains(mode))
+          require(sys.props.get("opengpu.fragmentPhaseAudit").contains("1"))
+          val baselineDirectory = java.nio.file.Paths.get(sys.props("opengpu.fragmentResumeBaselineDir"))
+          simulate(
+            new FragmentShaderHarness(
+              true,
+              lanes = 16,
+              warps = 8,
+              fullInterface = true,
+              scalarFpu = true,
+              nativeProfile = true,
+              inputReturnCredit = true
+            )
+          ) { d =>
+            for (quads <- Seq(1, 35)) {
+              val t = new Driver(d, verifyEvents = true); t.sampleDepthEnabled = true; t.cycleLimit = 250000
+              assert(d.cfg == GpuConfig() && t.cap == 128 && t.varyingSlots == 16 && d.vp.colors == 4)
+              d.io.modelsPresent.expect(true.B)
+              t.payloadResponseStall = Some(c => c % 13 < 4)
+              val batches = (quads * 4 + t.cap - 1) / t.cap
+              val inputBytes = quads * 4 * (8 + 4 * t.varyingSlots) * 4
+              t.descriptor(); t.submit(); d.io.out.ready.poke(true.B)
+              for (q <- 0 until quads) t.send(q, q == quads - 1)
+              t.until(d.io.completion.valid.peek().litToBoolean)
+              val result = d.io.completion.bits
+              result.inputQuads.expect(quads.U); result.outputQuads.expect(quads.U)
+              result.batches.expect(batches.U); result.shadedLanes.expect((quads * 4).U)
+              result.maxLocalX.expect(math.min(t.cap, quads * 4).U)
+              result.localBatches.expect(batches.U); result.globalBatches.expect(0.U); result.spilledBatches.expect(0.U)
+              result.stagingWriteBytes.expect(inputBytes.U)
+              result.stagingReadBytes.expect((quads * 4 * d.vp.maxOutputWords * 4).U)
+              val completion = result.peek().litValue
+              t.check(quads); t.complete(0)
+              assert(t.launches == batches && t.peakStaging == 2 && t.stagingIds == Set(BigInt(0), BigInt(1)))
+              val code = program(d.cfg.lanes, d.cfg.warps, t.varyingSlots).toVector
+              assert(code.size == 393)
+              for ((word, i) <- code.zipWithIndex) assert(t.word(0x1000 + 4 * i) == word)
+              // Compare every completion/export field, accepted staging mask/data
+              // and backing-memory byte, independently of timing and process IDs.
+              val canonical = Vector(
+                "completion=" + completion,
+                "exports=" + t.exports.toVector,
+                "accesses=" + t.stagingAccesses.toVector,
+                "memory=" + t.memory.toVector.sortBy(_._1)
+              ).mkString("\n") + "\n"
+              val bytes = canonical.getBytes(java.nio.charset.StandardCharsets.UTF_8)
+              val baseline = baselineDirectory.resolve(s"quads$quads.canonical.txt")
+              val expected =
+                if (quads == 1) (6402, Vector(20L, 399L, 6L, 5821L, 149L, 7L))
+                else (19823, Vector(97L, 5411L, 12L, 12397L, 1859L, 47L))
+              if (mode == "baseline") {
+                assert(
+                  t.cycle == expected._1 && t.phaseCycles.toVector == expected._2,
+                  s"historical native baseline changed quads=$quads clocks=${t.cycle} phases=${t.phaseCycles.toVector}"
+                )
+                java.nio.file.Files.createDirectories(baselineDirectory)
+                java.nio.file.Files.write(
+                  baseline,
+                  bytes,
+                  java.nio.file.StandardOpenOption.CREATE_NEW,
+                  java.nio.file.StandardOpenOption.WRITE
+                )
+              } else {
+                assert(
+                  java.util.Arrays.equals(java.nio.file.Files.readAllBytes(baseline), bytes),
+                  s"warp resume changed completed work, accepted byte/mask/order or backing memory quads=$quads"
+                )
+                if (quads == 1)
+                  assert(
+                    t.cycle <= expected._1 && t.phaseCycles(3) <= expected._2(3),
+                    s"single-quad warp resume regressed clocks=${t.cycle} phases=${t.phaseCycles.toVector}"
+                  )
+                else
+                  assert(
+                    t.cycle < expected._1 && t.phaseCycles(3) < expected._2(3),
+                    s"warp resume did not improve full draw and waitKernel clocks=${t.cycle} phases=${t.phaseCycles.toVector}"
+                  )
+              }
+              t.writePhaseAudit(s"resident-resume-$mode-quads$quads")
+              info(
+                s"FRAGMENT_WARP_RESUME_NATIVE mode=$mode quads=$quads clocks=${t.cycle} phases=${t.phaseCycles.mkString(",")} programWords=393 nativeSram=true defaultCaches=true capacity=128 components=64 colors=4 exactCanonicalWork=true noInstructionReduction=true"
+              )
+            }
+          }
+        }
+
+      for (local <- Seq(false, true))
+        it should s"drain both fragment readback credits before releasing a canceled batch local=$local" in {
+          simulate(new FragmentShaderHarness(local, 4, 4)) { d =>
+            val t = new Driver(d); t.descriptor(); d.io.out.ready.poke(true.B)
+            val output = t.scratch + (6 + 4 * t.varyingSlots) * t.stride
+            if (!local) t.responseDelay = (a, w) => if (!w && a >= output && a < t.scratch + t.prefix) 80 else 0
+            t.submit(); t.send(0, true)
+            t.until(d.io.performance.phaseWorkers(4).peek().litValue == 1)
+            if (local) d.io.holdPayloadResponses.poke(true.B)
+            t.until(d.io.stagingOutstanding.peek().litValue == 2)
+            d.io.cancel.poke(true.B)
+            for (_ <- 0 until 9) {
+              t.tick(); d.io.completion.valid.expect(false.B)
+              if (local) { d.io.reservedBytes.expect(t.prefix.U); d.io.poolDrained.expect(false.B) }
+            }
+            d.io.cancel.poke(false.B); d.io.holdPayloadResponses.poke(false.B); t.responseDelay = (_, _) => 0
+            t.complete(4); assert(t.exports.isEmpty)
+            t.descriptor(); t.submit(); t.send(0, true); t.complete(0); t.check(1)
+            info(
+              s"FRAGMENT_OUTPUT_READBACK_CANCEL local=$local credits=2 leaseRetainedUntilDrain=true noCanceledExports=true healthyReuse=true"
+            )
+          }
+        }
+
+      it should "attribute a younger fragment readback fault and drain the older accepted line before reuse" in {
+        simulate(new FragmentShaderHarness(false, 4, 4)) { d =>
+          val t = new Driver(d); t.descriptor(); d.io.out.ready.poke(true.B)
+          val first = t.scratch + (6 + 4 * t.varyingSlots) * t.stride; val bad = first + t.stride
+          t.responseDelay = (a, w) => if (!w && a == first) 100 else 0; t.fault = (a, w) => !w && a == bad
+          t.submit(); t.send(0, true); t.until(d.io.completion.valid.peek().litToBoolean)
+          d.io.completion.bits.faultSource.expect(3.U); d.io.completion.bits.faultAddress.expect(bad.U)
+          assert(t.peakStaging == 2 && t.exports.isEmpty); t.complete(3)
+          t.responseDelay = (_, _) => 0; t.fault = (_, _) => false
+          t.descriptor(); t.submit(); t.send(0, true); t.complete(0); t.check(1)
+          info(
+            "FRAGMENT_OUTPUT_READBACK_FAULT youngerAddress=true acceptedReadsDrained=true noFaultedExports=true healthyReuse=true"
+          )
+        }
+      }
+
+      for (oversize <- Seq(false, true))
+        it should s"carry all64 varying components and128 physical lanes with oversizeSpill=$oversize" in {
+          simulate(new FragmentShaderHarness(true, 16, 8, true, oversize)) { d =>
+            val t = new Driver(d); t.sampleDepthEnabled = true; assert(t.prefix == 45056); t.descriptor(); t.submit()
+            for (q <- 0 until 32) t.send(q)
+            t.until(d.io.out.valid.peek().litToBoolean); val held = d.io.out.bits.peek().litValue
+            for (_ <- 0 until 9) {
+              t.tick(); assert(d.io.out.bits.peek().litValue == held); d.io.idle.expect(false.B)
+              if (!oversize) d.io.reservedBytes.expect(45056.U)
+            }
+            d.io.out.ready.poke(true.B); for (q <- 32 until 35) t.send(q, q == 34)
+            t.until(d.io.completion.valid.peek().litToBoolean); val r = d.io.completion.bits
+            r.inputQuads.expect(35.U); r.outputQuads.expect(35.U); r.shadedLanes.expect(140.U); r.batches.expect(2.U);
+            r.maxLocalX.expect(128.U)
+            r.localBatches.expect((if (oversize) 0 else 2).U); r.spilledBatches.expect((if (oversize) 2 else 0).U)
+            t.check(35); t.complete(0); assert(t.launches == 2); assert((t.globalStaging > 0) == oversize)
+            val gaps = t.preparedExportGaps;
+            assert(gaps.size == 26 && gaps.forall(_ <= 22), s"prepared four-color quad exports exceed22clocks: $gaps")
+            info(
+              s"FRAGMENT_EXPORT_RATE lanes=128 colors=4 sampleMetadata=4 intervals=${gaps.size} maxGap=${gaps.max} budget=22 oversizeSpill=$oversize"
+            )
+            info(
+              s"FRAGMENT_SHADER fullInterface=true components=64 colors=4 lanes=128 prefix=45056 quads=35 batches=2 oversizeSpill=$oversize rawAllInputs=true bankedMetadata=true transposeWindows=true perSampleDepthMetadata=true"
+            )
+          }
+        }
+
+      for (local <- Seq(false, true))
+        it should s"transpose a non-power-of-two12lane batch across staging line boundaries local=$local" in {
+          simulate(new FragmentShaderHarness(local, 4, 3)) { d =>
+            val t = new Driver(d); t.sampleDepthEnabled = true; t.descriptor(); t.submit(); d.io.out.ready.poke(true.B)
+            for (q <- 0 until 3) t.send(q, q == 2)
+            t.until(d.io.completion.valid.peek().litToBoolean); d.io.completion.bits.batches.expect(1.U)
+            d.io.completion.bits.maxLocalX.expect(12.U); t.check(3); t.complete(0)
+            val gaps = t.preparedExportGaps;
+            assert(gaps.size == 2 && gaps.forall(_ <= 22), s"prepared four-color quad exports exceed22clocks: $gaps")
+            info(
+              s"FRAGMENT_EXPORT_RATE lanes=12 colors=4 sampleMetadata=4 intervals=${gaps.size} maxGap=${gaps.max} budget=22 local=$local"
+            )
+            info(
+              s"FRAGMENT_SHADER nonPowerOfTwoCapacity=12 splitCacheLines=true perSampleDepthMetadata=true local=$local"
+            )
+          }
+        }
+
+      it should "initialize depth-only exports without shader stores and require EOF while canceling an accepted staging offer" in {
+        simulate(new FragmentShaderHarness(false, 4, 1)) { d =>
+          val t = new Driver(d); t.put(0x3000, cease); t.descriptor()
+          val q = d.io.draw.bits; q.shaderPc.poke(0x3000.U); q.varyingSlots.poke(0.U); q.colorSlots.poke(0.U);
+          q.colorMask.poke(0.U)
+          t.submit(); t.input(0); d.io.in.bits.values.varyingSlots.poke(0.U); d.io.in.valid.poke(true.B)
+          t.until(d.io.in.ready.peek().litToBoolean); t.tick(); d.io.in.valid.poke(false.B); t.end(1)
+          t.until(d.io.out.valid.peek().litToBoolean); d.io.out.bits.colorSlots.expect(0.U)
+          for (l <- 0 until 4) {
+            val r = d.io.out.bits.lanes(l); r.depth.expect(fp(0.5f).U); r.colorMask.expect(0.U)
+            r.coverageMask.expect(t.coverage(0, l).U); r.discarded.expect(false.B); r.depthOverride.expect(false.B)
+            r.colors.flatten.foreach(_.expect(0.U))
+          }
+          // Bypass the four-color capture helper for this depth-only result.
+          d.io.out.ready.poke(true.B); d.clock.step(); t.cycle += 1; d.io.out.ready.poke(false.B); t.complete(0)
+          t.descriptor(); t.submit(); t.blockMemory = true; t.send(0)
+          t.until(d.io.memoryRequest.valid.peek().litToBoolean); val offered = d.io.memoryRequest.bits.peek().litValue
+          d.io.cancel.poke(true.B)
+          for (_ <- 0 until 9) {
+            t.tick(); d.io.memoryRequest.valid.expect(true.B);
+            assert(d.io.memoryRequest.bits.peek().litValue == offered); d.io.completion.valid.expect(false.B)
+          }
+          t.blockMemory = false;
+          t.until(t.pending.isEmpty && t.offered.isEmpty && !d.io.memoryRequest.valid.peek().litToBoolean)
+          for (_ <- 0 until 5) { t.tick(); d.io.completion.valid.expect(false.B); d.io.cancelSource.expect(true.B) }
+          t.end(1); t.complete(4); d.io.cancel.poke(false.B)
+          info("FRAGMENT_SHADER depthOnly=true noShaderStores=true capacity=4 heldStagingCancel=true explicitEOF=true")
+        }
+      }
+
+      it should "sample fragment textures for complete quads and drain texture faults before reuse" in {
+        simulate(new FragmentShaderHarness()) { d =>
+          val t = new Driver(d)
+          val broadcast = (BigInt(0x17) << 26) | (BigInt(1) << 25) | (BigInt(4) << 12)
+          val sample =
+            (BigInt(1) << 26) | (BigInt(1) << 25) | (BigInt(6) << 20) | (BigInt(5) << 15) | (BigInt(7) << 7) | 0x2b
+          val code = program(4, 2)
+            .dropRight(1) ++ Seq(broadcast | (BigInt(5) << 7) | 0x57, broadcast | (BigInt(6) << 7) | 0x57, sample) ++
+            address(6, 7, (6 + 4 * t.varyingSlots + 15) * t.stride) ++ Seq(vectorMemory(6, 7, true), cease)
+          code.zipWithIndex.foreach { case (w, i) => t.put(0x3000 + 4 * i, w) }
+          def draw(texture: Int): Unit = {
+            t.descriptor(); d.io.draw.bits.shaderPc.poke(0x3000.U)
+            d.io.draw.bits.sampler.base.poke(texture.U); d.io.draw.bits.sampler.format.poke(PixelFormat.native.U)
+            t.submit(); t.send(0); t.send(1, true)
+          }
+          d.io.out.ready.poke(true.B); t.put(0x8000, BigInt("123456ff", 16)); draw(0x8000)
           t.until(d.io.completion.valid.peek().litToBoolean)
-          val result=d.io.completion.bits
-          result.inputQuads.expect(quads.U);result.outputQuads.expect(quads.U)
-          result.batches.expect(batches.U);result.shadedLanes.expect((quads*4).U)
-          result.maxLocalX.expect(math.min(t.cap,quads*4).U)
-          result.localBatches.expect(batches.U);result.globalBatches.expect(0.U);result.spilledBatches.expect(0.U)
-          result.stagingWriteBytes.expect(inputBytes.U)
-          result.stagingReadBytes.expect((quads*4*d.vp.maxOutputWords*4).U)
-          val completion=result.peek().litValue
-          t.check(quads);t.complete(0)
-          assert(t.launches==batches && t.peakStaging==2 && t.stagingIds==Set(BigInt(0),BigInt(1)))
-          assert(t.globalStaging==0 && t.phaseCycles.sum==t.cycle)
-          val canonical=Vector("completion="+completion,"exports="+t.exports.toVector,
-            "accesses="+t.stagingAccesses.toVector,"memory="+t.memory.toVector.sortBy(_._1)).mkString("\n")+"\n"
-          val bytes=canonical.getBytes(java.nio.charset.StandardCharsets.UTF_8)
-          val canonicalName=s"quads$quads.canonical.txt"
-          var totalPass=true;var kernelPass=true
-          if(mode=="candidate"){
-            assert(java.util.Arrays.equals(java.nio.file.Files.readAllBytes(baseline.resolve(canonicalName)),bytes),
-              s"guard pipe changed actual work, accepted byte/mask/order, exports or memory quads=$quads")
-            val control=ujson.read(java.nio.file.Files.readString(baseline.resolve(s"quads$quads.metrics.json")))
-            assert(control("profile").str=="native-guard-default-full-pool-v1" && control("shaderWords").num.toInt==393)
-            assert(control("shaderSha256").str==sha(codeBytes) && control("canonicalSha256").str==sha(bytes))
-            val clocks=control("clocks").num.toLong;val kernel=control("phases")(3).num.toLong
-            require(clocks>0 && kernel>0)
-            totalPass=if(quads==1)t.cycle<=clocks else t.cycle.toLong*100<=clocks*99
-            kernelPass=if(quads==1)t.phaseCycles(3)<=kernel else t.phaseCycles(3)*100<=kernel*98
+          assert(t.exports.size == 2 && t.exports.forall(_.lanes.forall(_.colors(15) == BigInt("123456ff", 16))));
+          t.complete(0)
+          t.exports.clear(); t.fault = (addr, write) => addr == 0x9000 && !write; draw(0x9000)
+          t.until(d.io.completion.valid.peek().litToBoolean); d.io.completion.bits.faultSource.expect(5.U);
+          t.complete(3); assert(t.exports.isEmpty)
+          t.fault = (_, _) => false; t.put(0xa000, BigInt("abcdef12", 16)); draw(0xa000)
+          t.until(d.io.completion.valid.peek().litToBoolean)
+          assert(t.exports.size == 2 && t.exports.forall(_.lanes.forall(_.colors(15) == BigInt("abcdef12", 16))));
+          t.complete(0)
+          info(
+            "FRAGMENT_SHADER fragmentTexture=true allHelperQuad=true textureFault=true noFaultedExports=true freshTextureReuse=true"
+          )
+        }
+      }
+      for (local <- Seq(true, false))
+        it should s"retain protected per-sample raster depths through actual shader discard overrides and held exports local=$local" in {
+          simulate(new FragmentShaderHarness(local)) { d =>
+            val t = new Driver(d); t.sampleDepthEnabled = true; t.descriptor(); t.submit()
+            t.send(0); t.send(1); t.until(d.io.out.valid.peek().litToBoolean); val held = d.io.out.bits.peek().litValue
+            for (_ <- 0 until 11) { t.tick(); assert(d.io.out.bits.peek().litValue == held); d.io.idle.expect(false.B) }
+            d.io.out.ready.poke(true.B); for (q <- 2 until 5) t.send(q, q == 4)
+            t.until(d.io.completion.valid.peek().litToBoolean); t.check(5); t.complete(0)
+            assert((t.globalStaging == 0) == local)
+            info(
+              s"FRAGMENT_SAMPLE_DEPTH local=$local CUs=2 quads=5 samples=4 distinctRasterDepths=true protectedMetadata=true discardCoverage=true overrideKeepsProvenance=true heldExport=true shaderABIUnchanged=true VMDrain=true"
+            )
           }
-          write(canonicalName,bytes)
-          val metrics=ujson.Obj("profile"->"native-guard-default-full-pool-v1","mode"->mode,
-            "quads"->quads,"clocks"->t.cycle,"phases"->ujson.Arr.from(t.phaseCycles.map(n=>ujson.Num(n.toDouble))),
-            "shaderWords"->code.size,"shaderSha256"->sha(codeBytes),"canonicalSha256"->sha(bytes),
-            "shaderExecutionLimits"->true,"instructionQuota"->opengpu.system.NativeShaderExecutionCapabilities.defaultQuota,
-            "nativeSram"->true,"capacity"->t.cap,"components"->64,"colors"->4,
-            "poolBytes"->d.pp.capacityBytes,"maxPayloadBytes"->d.pp.maxPayloadBytes,
-            "defaultCaches"->true,"exactCanonicalWork"->true,"allOwnedTrafficDrained"->true,
-            "totalGatePassed"->totalPass,"waitKernelGatePassed"->kernelPass)
-          write(s"quads$quads.metrics.json",ujson.write(metrics,indent=2).getBytes(java.nio.charset.StandardCharsets.UTF_8))
-          t.writePhaseAudit(s"resident-guard-pipe-$mode-quads$quads")
-          info(s"FRAGMENT_GUARD_PIPE_NATIVE mode=$mode quads=$quads clocks=${t.cycle} phases=${t.phaseCycles.mkString(",")} shaderWords=393 executionLimits=true quota=1048576 pool262144=true payload69632=true capacity128=true components64=true colors4=true nativeSram=true defaultCaches=true exactCanonicalWork=true totalGate=$totalPass waitKernelGate=$kernelPass")
-          assert(totalPass && kernelPass,
-            s"guard pipe failed predeclared native draw/waitKernel gates quads=$quads clocks=${t.cycle} phases=${t.phaseCycles.toVector}")
-        }finally{
-          val memory=t.memory.toVector.sortBy(_._1).map{case(a,b)=>s"$a $b"}.mkString("\n")+"\n"
-          write(s"quads$quads.returned-memory.txt",memory.getBytes(java.nio.charset.StandardCharsets.UTF_8))
         }
-      }
-    }
-  }
-
-  if(sys.props.get("opengpu.fragmentResumeFallbackQualification").contains("1"))
-  it should "compare the full resident native warp-resume candidate with unchanged cold shader work" in {
-    val mode=sys.props("opengpu.fragmentResumeFallbackMode")
-    require(Set("baseline","candidate").contains(mode))
-    require(sys.props.get("opengpu.fragmentPhaseAudit").contains("1"))
-    val baselineDirectory=java.nio.file.Paths.get(sys.props("opengpu.fragmentResumeBaselineDir"))
-    simulate(new FragmentShaderHarness(true,lanes=16,warps=8,fullInterface=true,
-        scalarFpu=true,nativeProfile=true,inputReturnCredit=true)){d=>
-      for(quads<-Seq(1,35)){
-        val t=new Driver(d,verifyEvents=true);t.sampleDepthEnabled=true;t.cycleLimit=250000
-        assert(d.cfg==GpuConfig() && t.cap==128 && t.varyingSlots==16 && d.vp.colors==4)
-        d.io.modelsPresent.expect(true.B)
-        t.payloadResponseStall=Some(c=>c%13<4)
-        val batches=(quads*4+t.cap-1)/t.cap
-        val inputBytes=quads*4*(8+4*t.varyingSlots)*4
-        t.descriptor();t.submit();d.io.out.ready.poke(true.B)
-        for(q<-0 until quads)t.send(q,q==quads-1)
-        t.until(d.io.completion.valid.peek().litToBoolean)
-        val result=d.io.completion.bits
-        result.inputQuads.expect(quads.U);result.outputQuads.expect(quads.U)
-        result.batches.expect(batches.U);result.shadedLanes.expect((quads*4).U)
-        result.maxLocalX.expect(math.min(t.cap,quads*4).U)
-        result.localBatches.expect(batches.U);result.globalBatches.expect(0.U);result.spilledBatches.expect(0.U)
-        result.stagingWriteBytes.expect(inputBytes.U)
-        result.stagingReadBytes.expect((quads*4*d.vp.maxOutputWords*4).U)
-        val completion=result.peek().litValue
-        t.check(quads);t.complete(0)
-        assert(t.launches==batches && t.peakStaging==2 && t.stagingIds==Set(BigInt(0),BigInt(1)))
-        val code=program(d.cfg.lanes,d.cfg.warps,t.varyingSlots).toVector
-        assert(code.size==393)
-        for((word,i)<-code.zipWithIndex)assert(t.word(0x1000+4*i)==word)
-        // Compare every completion/export field, accepted staging mask/data
-        // and backing-memory byte, independently of timing and process IDs.
-        val canonical=Vector("completion="+completion,"exports="+t.exports.toVector,
-          "accesses="+t.stagingAccesses.toVector,"memory="+t.memory.toVector.sortBy(_._1)).mkString("\n")+"\n"
-        val bytes=canonical.getBytes(java.nio.charset.StandardCharsets.UTF_8)
-        val baseline=baselineDirectory.resolve(s"quads$quads.canonical.txt")
-        val expected=if(quads==1)(6402,Vector(20L,399L,6L,5821L,149L,7L))
-          else(19823,Vector(97L,5411L,12L,12397L,1859L,47L))
-        if(mode=="baseline"){
-          assert(t.cycle==expected._1 && t.phaseCycles.toVector==expected._2,
-            s"historical native baseline changed quads=$quads clocks=${t.cycle} phases=${t.phaseCycles.toVector}")
-          java.nio.file.Files.createDirectories(baselineDirectory)
-          java.nio.file.Files.write(baseline,bytes,java.nio.file.StandardOpenOption.CREATE_NEW,
-            java.nio.file.StandardOpenOption.WRITE)
-        }else{
-          assert(java.util.Arrays.equals(java.nio.file.Files.readAllBytes(baseline),bytes),
-            s"warp resume changed completed work, accepted byte/mask/order or backing memory quads=$quads")
-          if(quads==1)assert(t.cycle<=expected._1 && t.phaseCycles(3)<=expected._2(3),
-            s"single-quad warp resume regressed clocks=${t.cycle} phases=${t.phaseCycles.toVector}")
-          else assert(t.cycle<expected._1 && t.phaseCycles(3)<expected._2(3),
-            s"warp resume did not improve full draw and waitKernel clocks=${t.cycle} phases=${t.phaseCycles.toVector}")
-        }
-        t.writePhaseAudit(s"resident-resume-$mode-quads$quads")
-        info(s"FRAGMENT_WARP_RESUME_NATIVE mode=$mode quads=$quads clocks=${t.cycle} phases=${t.phaseCycles.mkString(",")} programWords=393 nativeSram=true defaultCaches=true capacity=128 components=64 colors=4 exactCanonicalWork=true noInstructionReduction=true")
-      }
-    }
-  }
-
-  for(local<-Seq(false,true))
-  it should s"drain both fragment readback credits before releasing a canceled batch local=$local" in {
-    simulate(new FragmentShaderHarness(local,4,4)){d=>
-      val t=new Driver(d);t.descriptor();d.io.out.ready.poke(true.B)
-      val output=t.scratch+(6+4*t.varyingSlots)*t.stride
-      if(!local)t.responseDelay=(a,w)=>if(!w && a>=output && a<t.scratch+t.prefix)80 else 0
-      t.submit();t.send(0,true)
-      t.until(d.io.performance.phaseWorkers(4).peek().litValue==1)
-      if(local)d.io.holdPayloadResponses.poke(true.B)
-      t.until(d.io.stagingOutstanding.peek().litValue==2)
-      d.io.cancel.poke(true.B)
-      for(_<-0 until 9){t.tick();d.io.completion.valid.expect(false.B)
-        if(local){d.io.reservedBytes.expect(t.prefix.U);d.io.poolDrained.expect(false.B)}}
-      d.io.cancel.poke(false.B);d.io.holdPayloadResponses.poke(false.B);t.responseDelay=(_,_)=>0
-      t.complete(4);assert(t.exports.isEmpty)
-      t.descriptor();t.submit();t.send(0,true);t.complete(0);t.check(1)
-      info(s"FRAGMENT_OUTPUT_READBACK_CANCEL local=$local credits=2 leaseRetainedUntilDrain=true noCanceledExports=true healthyReuse=true")
-    }
-  }
-
-  it should "attribute a younger fragment readback fault and drain the older accepted line before reuse" in {
-    simulate(new FragmentShaderHarness(false,4,4)){d=>
-      val t=new Driver(d);t.descriptor();d.io.out.ready.poke(true.B)
-      val first=t.scratch+(6+4*t.varyingSlots)*t.stride;val bad=first+t.stride
-      t.responseDelay=(a,w)=>if(!w && a==first)100 else 0;t.fault=(a,w)=> !w && a==bad
-      t.submit();t.send(0,true);t.until(d.io.completion.valid.peek().litToBoolean)
-      d.io.completion.bits.faultSource.expect(3.U);d.io.completion.bits.faultAddress.expect(bad.U)
-      assert(t.peakStaging==2 && t.exports.isEmpty);t.complete(3)
-      t.responseDelay=(_,_)=>0;t.fault=(_,_)=>false
-      t.descriptor();t.submit();t.send(0,true);t.complete(0);t.check(1)
-      info("FRAGMENT_OUTPUT_READBACK_FAULT youngerAddress=true acceptedReadsDrained=true noFaultedExports=true healthyReuse=true")
-    }
-  }
-
-  for(oversize<-Seq(false,true))
-  it should s"carry all64 varying components and128 physical lanes with oversizeSpill=$oversize" in {
-    simulate(new FragmentShaderHarness(true,16,8,true,oversize)) {d=>
-      val t=new Driver(d);t.sampleDepthEnabled=true;assert(t.prefix==45056);t.descriptor();t.submit()
-      for(q<-0 until 32)t.send(q)
-      t.until(d.io.out.valid.peek().litToBoolean);val held=d.io.out.bits.peek().litValue
-      for(_<-0 until 9){t.tick();assert(d.io.out.bits.peek().litValue==held);d.io.idle.expect(false.B)
-        if(!oversize)d.io.reservedBytes.expect(45056.U)}
-      d.io.out.ready.poke(true.B);for(q<-32 until 35)t.send(q,q==34)
-      t.until(d.io.completion.valid.peek().litToBoolean);val r=d.io.completion.bits
-      r.inputQuads.expect(35.U);r.outputQuads.expect(35.U);r.shadedLanes.expect(140.U);r.batches.expect(2.U);r.maxLocalX.expect(128.U)
-      r.localBatches.expect((if(oversize)0 else 2).U);r.spilledBatches.expect((if(oversize)2 else 0).U)
-      t.check(35);t.complete(0);assert(t.launches==2);assert((t.globalStaging>0)==oversize)
-      val gaps=t.preparedExportGaps;assert(gaps.size==26 && gaps.forall(_<=22),s"prepared four-color quad exports exceed22clocks: $gaps")
-      info(s"FRAGMENT_EXPORT_RATE lanes=128 colors=4 sampleMetadata=4 intervals=${gaps.size} maxGap=${gaps.max} budget=22 oversizeSpill=$oversize")
-      info(s"FRAGMENT_SHADER fullInterface=true components=64 colors=4 lanes=128 prefix=45056 quads=35 batches=2 oversizeSpill=$oversize rawAllInputs=true bankedMetadata=true transposeWindows=true perSampleDepthMetadata=true")
-    }
-  }
-
-  for(local<-Seq(false,true))
-  it should s"transpose a non-power-of-two12lane batch across staging line boundaries local=$local" in {
-    simulate(new FragmentShaderHarness(local,4,3)) {d=>
-      val t=new Driver(d);t.sampleDepthEnabled=true;t.descriptor();t.submit();d.io.out.ready.poke(true.B)
-      for(q<-0 until 3)t.send(q,q==2)
-      t.until(d.io.completion.valid.peek().litToBoolean);d.io.completion.bits.batches.expect(1.U)
-      d.io.completion.bits.maxLocalX.expect(12.U);t.check(3);t.complete(0)
-      val gaps=t.preparedExportGaps;assert(gaps.size==2 && gaps.forall(_<=22),s"prepared four-color quad exports exceed22clocks: $gaps")
-      info(s"FRAGMENT_EXPORT_RATE lanes=12 colors=4 sampleMetadata=4 intervals=${gaps.size} maxGap=${gaps.max} budget=22 local=$local")
-      info(s"FRAGMENT_SHADER nonPowerOfTwoCapacity=12 splitCacheLines=true perSampleDepthMetadata=true local=$local")
-    }
-  }
-
-  it should "initialize depth-only exports without shader stores and require EOF while canceling an accepted staging offer" in {
-    simulate(new FragmentShaderHarness(false,4,1)) {d=>
-      val t=new Driver(d);t.put(0x3000,cease);t.descriptor()
-      val q=d.io.draw.bits;q.shaderPc.poke(0x3000.U);q.varyingSlots.poke(0.U);q.colorSlots.poke(0.U);q.colorMask.poke(0.U)
-      t.submit();t.input(0);d.io.in.bits.values.varyingSlots.poke(0.U);d.io.in.valid.poke(true.B)
-      t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B);t.end(1)
-      t.until(d.io.out.valid.peek().litToBoolean);d.io.out.bits.colorSlots.expect(0.U)
-      for(l<-0 until 4){val r=d.io.out.bits.lanes(l);r.depth.expect(fp(0.5f).U);r.colorMask.expect(0.U)
-        r.coverageMask.expect(t.coverage(0,l).U);r.discarded.expect(false.B);r.depthOverride.expect(false.B)
-        r.colors.flatten.foreach(_.expect(0.U))}
-      // Bypass the four-color capture helper for this depth-only result.
-      d.io.out.ready.poke(true.B);d.clock.step();t.cycle+=1;d.io.out.ready.poke(false.B);t.complete(0)
-      t.descriptor();t.submit();t.blockMemory=true;t.send(0)
-      t.until(d.io.memoryRequest.valid.peek().litToBoolean);val offered=d.io.memoryRequest.bits.peek().litValue
-      d.io.cancel.poke(true.B)
-      for(_<-0 until 9){t.tick();d.io.memoryRequest.valid.expect(true.B);assert(d.io.memoryRequest.bits.peek().litValue==offered);d.io.completion.valid.expect(false.B)}
-      t.blockMemory=false;t.until(t.pending.isEmpty && t.offered.isEmpty && !d.io.memoryRequest.valid.peek().litToBoolean)
-      for(_<-0 until 5){t.tick();d.io.completion.valid.expect(false.B);d.io.cancelSource.expect(true.B)}
-      t.end(1);t.complete(4);d.io.cancel.poke(false.B)
-      info("FRAGMENT_SHADER depthOnly=true noShaderStores=true capacity=4 heldStagingCancel=true explicitEOF=true")
-    }
-  }
-
-  it should "sample fragment textures for complete quads and drain texture faults before reuse" in {
-    simulate(new FragmentShaderHarness()) {d=>
-      val t=new Driver(d)
-      val broadcast=(BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(4)<<12)
-      val sample=(BigInt(1)<<26)|(BigInt(1)<<25)|(BigInt(6)<<20)|(BigInt(5)<<15)|(BigInt(7)<<7)|0x2b
-      val code=program(4,2).dropRight(1)++Seq(broadcast|(BigInt(5)<<7)|0x57,broadcast|(BigInt(6)<<7)|0x57,sample)++
-        address(6,7,(6+4*t.varyingSlots+15)*t.stride)++Seq(vectorMemory(6,7,true),cease)
-      code.zipWithIndex.foreach{case(w,i)=>t.put(0x3000+4*i,w)}
-      def draw(texture: Int): Unit={t.descriptor();d.io.draw.bits.shaderPc.poke(0x3000.U)
-        d.io.draw.bits.sampler.base.poke(texture.U);d.io.draw.bits.sampler.format.poke(PixelFormat.native.U)
-        t.submit();t.send(0);t.send(1,true)}
-      d.io.out.ready.poke(true.B);t.put(0x8000,BigInt("123456ff",16));draw(0x8000)
-      t.until(d.io.completion.valid.peek().litToBoolean)
-      assert(t.exports.size==2 && t.exports.forall(_.lanes.forall(_.colors(15)==BigInt("123456ff",16))));t.complete(0)
-      t.exports.clear();t.fault=(addr,write)=>addr==0x9000 && !write;draw(0x9000)
-      t.until(d.io.completion.valid.peek().litToBoolean);d.io.completion.bits.faultSource.expect(5.U);t.complete(3);assert(t.exports.isEmpty)
-      t.fault=(_,_)=>false;t.put(0xa000,BigInt("abcdef12",16));draw(0xa000)
-      t.until(d.io.completion.valid.peek().litToBoolean)
-      assert(t.exports.size==2 && t.exports.forall(_.lanes.forall(_.colors(15)==BigInt("abcdef12",16))));t.complete(0)
-      info("FRAGMENT_SHADER fragmentTexture=true allHelperQuad=true textureFault=true noFaultedExports=true freshTextureReuse=true")
-    }
-  }
-  for(local<-Seq(true,false))
-  it should s"retain protected per-sample raster depths through actual shader discard overrides and held exports local=$local" in {
-    simulate(new FragmentShaderHarness(local)){d=>val t=new Driver(d);t.sampleDepthEnabled=true;t.descriptor();t.submit()
-      t.send(0);t.send(1);t.until(d.io.out.valid.peek().litToBoolean);val held=d.io.out.bits.peek().litValue
-      for(_<-0 until 11){t.tick();assert(d.io.out.bits.peek().litValue==held);d.io.idle.expect(false.B)}
-      d.io.out.ready.poke(true.B);for(q<-2 until 5)t.send(q,q==4)
-      t.until(d.io.completion.valid.peek().litToBoolean);t.check(5);t.complete(0)
-      assert((t.globalStaging==0)==local)
-      info(s"FRAGMENT_SAMPLE_DEPTH local=$local CUs=2 quads=5 samples=4 distinctRasterDepths=true protectedMetadata=true discardCoverage=true overrideKeepsProvenance=true heldExport=true shaderABIUnchanged=true VMDrain=true")
-    }
-  }
-  it should "reject invalid active sample depths before shader access and ignore inactive or unavailable metadata" in {
-    simulate(new FragmentShaderHarness()){d=>val t=new Driver(d);t.sampleDepthEnabled=true;d.io.out.ready.poke(true.B)
-      for(value<-Seq(BigInt("7fc00001",16),BigInt("7f800000",16),fp(-0.25f),fp(1.25f))){
-        t.descriptor();val before=t.requests;t.submit();t.input(0);d.io.in.bits.values.lanes(0).sampleDepth(0).poke(value.U)
-        d.io.in.valid.poke(true.B);t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B);t.end(1);t.complete(6)
-        assert(t.requests==before && t.launches==0 && t.exports.isEmpty)
-      }
-      t.descriptor();t.submit();t.input(0);val nan=BigInt("7fc00001",16)
-      d.io.in.bits.values.lanes(1).sampleDepth(0).poke(nan.U);for(s<-0 until 4)d.io.in.bits.values.lanes(3).sampleDepth(s).poke(nan.U)
-      d.io.in.valid.poke(true.B);t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B);t.end(1);t.complete(0);t.check(1)
-      t.exports.clear();t.sampleDepthEnabled=false;t.descriptor();t.submit();t.input(0)
-      for(s<-0 until 4)d.io.in.bits.values.lanes(0).sampleDepth(s).poke(nan.U)
-      d.io.in.valid.poke(true.B);t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B);t.end(1);t.complete(0);t.check(1)
-      info("FRAGMENT_SAMPLE_DEPTH invalidActiveValues=4 noInvalidShaderAccess=true inactiveNaNIgnored=true legacyMetadataIgnored=true noMetadataLeak=true healthyReuse=true")
-    }
-  }
-
-  for(local<-Seq(true,false))
-  it should s"carry coherent covered sample locations through real shared CUs local=$local" in {
-    simulate(new FragmentShaderHarness(local)){d=>val t=new Driver(d);t.sampleDepthEnabled=true
-      // Bad sample-location metadata is rejected before any shader/staging access.
-      for(bad<-0 until 3){
-        t.descriptor();t.submit();t.input(0)
-        val a=d.io.in.bits.values.lanes(if(bad==2)3 else 0)
-        a.sampleLocationValid.poke(true.B);a.sampleLocation.poke((if(bad==0)2 else if(bad==1)3 else 0).U)
-        if(bad==0){d.io.draw.bits.sampleMode.poke(1.U);d.io.in.bits.sampleMode.poke(1.U)}
-        if(bad==1)a.coverageMask.poke(1.U)
-        val before=t.requests;val launches=t.launches
-        d.io.in.valid.poke(true.B);t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B)
-        t.end(1);t.complete(6);assert(t.requests==before && t.launches==launches && t.exports.isEmpty)
-      }
-      for(mode<-1 to 2;sample<-0 until (1<<mode)){
-        t.descriptor();d.io.draw.bits.sampleMode.poke(mode.U);t.submit();t.input(0)
-        d.io.in.bits.sampleMode.poke(mode.U)
-        val a=d.io.in.bits.values.lanes(0);val depth=t.sampleDepth(0,0,sample)
-        a.coverageMask.poke(((1<<(1<<mode))-1).U);a.sampleLocationValid.poke(true.B);a.sampleLocation.poke(sample.U)
-        a.windowDepth.poke(depth.U);a.fragCoordW.poke(fp(0.5f).U);a.reciprocalW.exponent.poke((-1).S)
-        for(i<-1 until 4){val l=d.io.in.bits.values.lanes(i);l.covered.poke(false.B);l.coverageMask.poke(0.U)}
-        d.io.in.valid.poke(true.B);t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B);t.end(1)
-        t.until(d.io.out.valid.peek().litToBoolean);val held=d.io.out.bits.peek().litValue
-        for(_<-0 until 7){t.tick();assert(d.io.out.bits.peek().litValue==held)}
-        d.io.out.ready.poke(true.B);t.complete(0);d.io.out.ready.poke(false.B)
-        assert(t.exports.size==1);val exported=t.exports.head.lanes.head
-        val x=if((sample&1)==0)0.25f else 0.75f
-        val row=if(mode==1)sample else sample>>1
-        val y= -4f+(if((row&1)==0)0.25f else 0.75f)
-        assert(exported.colors.take(4)==Vector(fp(x),fp(y),depth,fp(0.5f)))
-        assert(exported.depth==depth && exported.sampleDepthValid)
-        assert(exported.sampleDepths==Vector.tabulate(4)(s=>if(s<(1<<mode))t.sampleDepth(0,0,s)else BigInt(0)))
-        assert(t.word(t.scratch+t.prefix)==BigInt("bead1234",16));t.exports.clear()
-      }
-      info(s"FRAGMENT_SAMPLE_LOCATION local=$local CUs=2 modes=2 sampleChoices=6 coherentXYZW=true protectedSampleDepths=true invalidLocations=3 noInvalidShaderAccess=true heldExports=true exactHealthyReuse=true uniformGuard=true")
-    }
-  }
-
-
-  for(local<-Seq(true,false))
-  it should s"execute captured native texture policies and trap coordinate faults before reuse local=$local" in {
-    simulate(new FragmentShaderHarness(local)){d=>val t=new Driver(d)
-      val broadcast=(BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(4)<<12)
-      val vectorSample=(BigInt(1)<<26)|(BigInt(1)<<25)|(BigInt(6)<<20)|(BigInt(5)<<15)|(BigInt(7)<<7)|0x2b
-      val scalarSample=(BigInt(1)<<25)|(BigInt(13)<<20)|(BigInt(12)<<15)|(BigInt(15)<<7)|0x0b
-      def code(scalar: Boolean): Seq[BigInt]={
-        val constants=Seq((BigInt(0xffffc)<<12)|(BigInt(12)<<7)|0x37,(BigInt(0x14)<<12)|(BigInt(13)<<7)|0x37)
-        val sample=if(scalar)Seq(scalarSample,broadcast|(BigInt(15)<<15)|(BigInt(7)<<7)|0x57)
-          else Seq(broadcast|(BigInt(12)<<15)|(BigInt(5)<<7)|0x57,broadcast|(BigInt(13)<<15)|(BigInt(6)<<7)|0x57,vectorSample)
-        program(4,2).dropRight(1)++constants++sample++address(6,7,(6+4*t.varyingSlots+15)*t.stride)++Seq(vectorMemory(6,7,true),cease)
-      }
-      for(scalar<-Seq(false,true)){val pc=if(scalar)0x7000 else 0x3000
-        code(scalar).zipWithIndex.foreach{case(w,i)=>t.put(pc+4*i,w)}}
-      d.io.out.ready.poke(true.B)
-      var draws=0;var faults=0
-      def run(u: Int,v: Int,signed: Boolean,scalar: Boolean=false,bad: Boolean=false): Unit={
-        val base=0x8000+draws*0x1000
-        for(y<-0 until 5;x<-0 until 3)t.put(base+(y*3+x)*4,NativeTexturePolicyReference.word(x,y))
-        t.descriptor();val q=d.io.draw.bits;q.shaderPc.poke((if(scalar)0x7000 else 0x3000).U)
-        q.sampler.base.poke(base.U);q.sampler.texWidth.poke((if(bad)0 else 3).U);q.sampler.texHeight.poke(5.U)
-        q.sampler.policyVersion.poke(1.U);q.sampler.wrapU.poke(u.U);q.sampler.wrapV.poke(v.U);q.sampler.signedCoordinates.poke(signed.B)
-        t.exports.clear();var textureReads=0
-        t.fault=(a,write)=>{if(!write && a>=base && a<base+128)textureReads+=1;false}
-        t.submit();t.send(0);t.send(1,true)
-        q.sampler.base.poke("he0000000".U);q.sampler.policyVersion.poke(3.U);q.sampler.wrapU.poke(3.U);q.sampler.wrapV.poke(3.U)
-        q.sampler.texWidth.poke(0.U);q.sampler.texHeight.poke(0.U)
-        t.until(d.io.completion.valid.peek().litToBoolean)
-        if(bad){d.io.completion.bits.faultAddress.expect(base.U);d.io.completion.bits.faultSource.expect(5.U);
-          assert(t.exports.isEmpty && textureReads==0);t.complete(3);faults+=1
-        }else{
-          val expected=NativeTexturePolicyReference.sample(3,5,0xffffc000L,0x14000L,u,v,signed)
-          assert(t.exports.size==2 && t.exports.forall(_.lanes.forall(_.colors(15)==expected)),s"actual shader texture mismatch u=$u v=$v signed=$signed scalar=$scalar")
-          assert(textureReads>0);t.complete(0)
-        }
-        draws+=1
-      }
-      for(signed<-Seq(false,true);u<-0 to 2;v<-0 to 2)run(u,v,signed)
-      run(2,1,true,bad=true);run(1,2,false,scalar=true,bad=true)
-      run(2,0,true,scalar=true)
-      assert(draws==21 && faults==2)
-      info(s"STAGE_TEXTURE_POLICY stage=fragment local=$local CUs=2 draws=$draws valid=19 coordinateFaults=$faults mixedAxes=9 signedAndUnsigned=true scalarAndVector=true noFaultedTexelWrites=true noInvalidTextureReads=true heldCompletionPinsVM=true poolDrained=true healthyReuse=true")
-    }
-  }
-  }
-  }
-  if(nativeTextureMatrixOnly){
-  for(local<-Seq(true,false))
-  it should s"execute native typed component fetches through real shared CUs and preserve fault drain local=$local" in {
-    simulate(new FragmentShaderHarness(local)){d=>val t=new Driver(d)
-      val id=Seq[BigInt](7,8,9);val texData=NativeTextureFetchTestData
-      t.expectedColorTypes=Vector(0,1,2,1)
-      texData.roots(t.put,stage=1,id=id)
-      val format=TypedColorReference.names.indexOf("RGBA32UI")
-      var outputKind=1
-      var views=(0 until 4).map(u=>texData.install(t.put,(a,b)=>t.memory(a)=BigInt(b),u,format,u,1,id,
-        raw=BigInt("fedcba98765432100123456789abcdef",16)+u))
-      for(u<-0 until 4)texData.coordinates(t.put,target=u,id=id,address=texData.packet+u*64)
-      var queryMode=false;var sizeDims=Vector.fill(4)(Vector.fill(3)(BigInt(0)));var integerMode=false;var nativeMode=false;var skipParameters=false;var nativeControl=1
-      val broadcast=(BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(4)<<12)
-      def code(c: Int,scalar: Boolean): Seq[BigInt]={
-        val fetch=if(scalar)Seq((BigInt(0x80)<<12)|(BigInt(12)<<7)|0x37,addi(12,12,3*64),addi(13,0,3),
-          texData.scalar(c,15,12,13),broadcast|(BigInt(15)<<15)|(BigInt(7)<<7)|0x57)
-        else address(5,7,6*t.stride)++Seq(vectorMemory(5,5,false))++address(5,7,7*t.stride)++
-          Seq(vectorMemory(5,6,false),texData.vector(c,7,5,6))
-        program(4,2).dropRight(1)++fetch++address(6,7,(6+4*t.varyingSlots+15)*t.stride)++Seq(vectorMemory(6,7,true),cease)
-      }
-      val sizeOnly=java.lang.Boolean.getBoolean("opengpu.nativeTextureSizeOnly")
-      val lifetimeOnly=java.lang.Boolean.getBoolean("opengpu.nativeIntegerLifetimeOnly")
-      val availabilityOnly=java.lang.Boolean.getBoolean("opengpu.nativeResourceAvailabilityOnly")
-      require(!availabilityOnly || !sizeOnly && !lifetimeOnly,"resource availability is a separate bounded profile")
-      val reproduceScratchAlias=java.lang.Boolean.getBoolean("opengpu.nativeIntegerScratchAlias")
-      require(!reproduceScratchAlias || lifetimeOnly,"scratch alias is only an explicit negative fixture control")
-      def floatPc(c: Int,scalar: Boolean,missing: Boolean,mode: Int): Int={
-        val offset=if(reproduceScratchAlias)0x40000 else 0x100000
-        val pc=0xa0000+(if(queryMode)0x200000 else if(integerMode)offset else 0)+(if(scalar)0x10000 else 0)+(if(missing)0x20000 else 0)+mode*0x4000+c*0x1000
-        if(!reproduceScratchAlias)require(BigInt(pc)+4096<=t.scratch || BigInt(pc)>=t.scratch+t.prefix+64,"shader fixture code overlaps native spill scratch")
-        pc
-      }
-      def floatingCode(c: Int,scalar: Boolean,missing: Boolean,mode: Int): Seq[BigInt]={
-        def param(pair: Int,x: Int,y: Int): BigInt=(BigInt(3)<<(if(scalar)25 else 26))|
-          (if(scalar)BigInt(0)else BigInt(1)<<25)|(BigInt(y)<<20)|(BigInt(x)<<15)|(BigInt(pair)<<12)|(if(scalar)0x0b else 0x2b)
-        val initialize=Seq((BigInt(0x3f400)<<12)|(BigInt(12)<<7)|0x37,
-          broadcast|(BigInt(12)<<15)|(BigInt(10)<<7)|0x57,broadcast|(BigInt(11)<<7)|0x57,
-          broadcast|(BigInt(12)<<15)|0x57)++(if(integerMode)Seq(addi(12,0,1),broadcast|(BigInt(12)<<15)|(BigInt(10)<<7)|0x57)else Seq.empty)
-        val first=if(missing || queryMode)Seq.empty else Seq(param(0,if(scalar)12 else 10,if(scalar)12 else 10))
-        val rest=if(missing || queryMode)Seq.empty else (1 until 8).map(p=>param(p,if(scalar)0 else 11,if(scalar)0 else 11))
-        val sample=if(scalar)Seq(addi(13,0,3),addi(14,0,mode),
-          (BigInt(if(queryMode)6 else if(integerMode)5 else 4)<<25)|(BigInt(14)<<20)|(BigInt(13)<<15)|(BigInt(c)<<12)|(BigInt(15)<<7)|0x0b,
-          broadcast|(BigInt(15)<<15)|(BigInt(7)<<7)|0x57)
-        else address(5,7,7*t.stride)++Seq(vectorMemory(5,6,false),addi(13,0,mode),
-          broadcast|(BigInt(13)<<15)|(BigInt(5)<<7)|0x57,
-          (BigInt(if(queryMode)6 else if(integerMode)5 else 4)<<26)|(BigInt(1)<<25)|(BigInt(5)<<20)|(BigInt(6)<<15)|(BigInt(c)<<12)|(BigInt(7)<<7)|0x2b)
-        program(4,2).dropRight(1)++initialize++first++address(6,7,(6+4*t.varyingSlots+14)*t.stride)++
-          Seq(vectorMemory(6,0,true))++rest++sample++address(6,7,(6+4*t.varyingSlots+15)*t.stride)++Seq(vectorMemory(6,7,true),cease)
-      }
-      for(scalar<-Seq(false,true);c<-0 until 4;missing<-Seq(false,true);mode<-0 to 2){
-        floatingCode(c,scalar,missing,mode).zipWithIndex.foreach{case(w,n)=>t.put(floatPc(c,scalar,missing,mode)+n*4,w)}}
-      integerMode=true
-      for(scalar<-Seq(false,true);c<-0 until 4;missing<-Seq(false,true)){
-        floatingCode(c,scalar,missing,0).zipWithIndex.foreach{case(w,n)=>t.put(floatPc(c,scalar,missing,0)+n*4,w)}}
-      integerMode=false;queryMode=true
-      for(scalar<-Seq(false,true);c<-0 until 3;mode<-0 to 1){
-        floatingCode(c,scalar,false,mode).zipWithIndex.foreach{case(w,n)=>t.put(floatPc(c,scalar,false,mode)+n*4,w)}}
-      queryMode=false
-      for(scalar<-Seq(false,true);c<-0 until 4){val pc=0x60000+(if(scalar)0x10000 else 0)+c*0x1000
-        code(c,scalar).zipWithIndex.foreach{case(w,n)=>t.put(pc+n*4,w)}}
-      d.io.out.ready.poke(true.B)
-      def run(c: Int,scalar: Boolean,bad: Boolean=false,cancelled: Boolean=false): Unit={
-        t.exports.clear();t.descriptor();d.io.draw.bits.shaderPc.poke((if(nativeMode)floatPc(c,scalar,skipParameters,nativeControl)else 0x60000+(if(scalar)0x10000 else 0)+c*0x1000).U)
-        d.io.draw.bits.resources.version.poke(1.U);d.io.draw.bits.resources.address.poke(texData.root.U)
-        t.expectedColorTypes=Vector(0,1,2,outputKind);d.io.draw.bits.colorTypes(3).poke(outputKind.U)
-        var rootRead=false;val faultLine=if(queryMode)texData.root+64 else views(3).address& ~BigInt(63)
-        t.fault=(a,w)=>{if(!w && a==texData.root)rootRead=true;bad && !w && a==faultLine}
-        t.submit();d.io.draw.bits.resources.version.poke(3.U);d.io.draw.bits.resources.address.poke("hffffffff".U)
-        t.input(0)
-        for(l<-0 until 4){val a=d.io.in.bits.values.lanes(l);a.varyings(0)(0).poke((texData.packet+l*64).U);a.varyings(0)(1).poke(l.U)}
-        d.io.in.valid.poke(true.B);t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B);t.end(1)
-        if(cancelled){t.until(rootRead);d.io.cancel.poke(true.B)}
-        t.until(d.io.completion.valid.peek().litToBoolean)
-        withClue(s"native=$nativeMode integer=$integerMode missing=$skipParameters scalar=$scalar component=$c bad=$bad cancelled=$cancelled pc=${d.io.draw.bits.shaderPc.peek().litValue.toString(16)} faultAddress=${d.io.completion.bits.faultAddress.peek().litValue.toString(16)} "){
-          t.complete(if(cancelled)4 else if(bad || nativeMode && skipParameters || queryMode && nativeControl!=0)3 else 0)}
-        if(cancelled)d.io.cancel.poke(false.B)
-        if(bad || cancelled || nativeMode && skipParameters || queryMode && nativeControl!=0)assert(t.exports.isEmpty)else{
-          assert(t.exports.size==1)
-          for((l,n)<-t.exports.head.lanes.zipWithIndex){val unit=if(scalar)3 else n;assert(l.colors(15)==(if(queryMode)sizeDims(unit)(c)else views(unit).expected(c)),s"typed fragment export differs c=$c scalar=$scalar lane=$n")}
-          if(nativeMode)assert(t.exports.forall(_.lanes.forall(_.colors(14)==fp(0.75f))),"parameter ack corrupted v0")
-        }
-        if(nativeMode && skipParameters)assert(!rootRead,"new task reused stale operand validity")
-      }
-      if(availabilityOnly){
-        run(0,false);run(3,true)
-        nativeMode=true;integerMode=false;nativeControl=1
-        outputKind=0
-        views=(0 until 4).map(u=>texData.install(t.put,(a,b)=>t.memory(a)=BigInt(b),u,3,0,1,id))
-        run(0,false);run(3,true)
-        skipParameters=true;run(0,false);run(0,true);skipParameters=false
-        run(0,false,bad=true);run(1,false,cancelled=true);run(3,true)
-        integerMode=true;nativeControl=0;run(0,false);run(3,true)
-        queryMode=true;integerMode=false;nativeControl=0
-        outputKind=1
-        sizeDims=Vector.fill(4)(Vector[BigInt](2,2,0));run(0,false);run(2,true)
-        run(0,false,bad=true);run(0,false,cancelled=true);run(1,true)
-        info(s"NATIVE_RESOURCE_PERMISSION_CU stage=1 local=$local draws16=true nativeFamilies2Through6=true scalarVector=true immutableRoot=true noStaleParameters=true parameterAckPreservesV0=true faultAndCancellationDrain=true healthyReuse=true")
-      }else if(sizeOnly){}else if(lifetimeOnly){
-        nativeMode=true;integerMode=true;nativeControl=0
-        outputKind=0
-        views=(0 until 4).map(u=>texData.install(t.put,(a,b)=>t.memory(a)=BigInt(b),u,3,0,1,id))
-        run(0,false)
-        skipParameters=true;run(0,false);run(0,true);skipParameters=false
-        run(0,false,bad=true);run(1,false,cancelled=true);run(3,true)
-        info(s"NATIVE_INTEGER_LIFETIME_CU stage=fragment local=$local directedOnly=true calls6=true shaderCodeOutsideScratch=${!reproduceScratchAlias} v0Preserved=true taskResetAndFaultDrain=true healthyReuse=true")
-      }else{
-      for(scalar<-Seq(false,true);c<-0 until 4)run(c,scalar)
-      run(0,false,bad=true);run(2,false,cancelled=true);run(3,true)
-      var addedDraws=0
-      for(kind<-0 to 2;group<-(0 until 64).filter(n=>(if(n>=54)0 else ImageFormatReference.format(ImageFormatReference.names(n)).kind)==kind).grouped(4)){
-        outputKind=kind;val ids=group.padTo(4,group.head)
-        views=(0 until 4).map{u=>val target=if(u==3 && (ids(u)>=54 || ImageFormatReference.format(ImageFormatReference.names(ids(u))).depth))0 else u
-          texData.coordinates(t.put,target=target,id=id,address=texData.packet+u*64)
-          texData.install(t.put,(a,b)=>t.memory(a)=BigInt(b),u,ids(u),target,1,id,swizzle=Seq(Seq(3,2,1,0),Seq(5,4,0,5),Seq(0,0,0,0),Seq(0,1,2,3))(u))}
-        for(scalar<-Seq(false,true);c<-0 until 4){run(c,scalar);addedDraws+=1}
-      }
-      nativeMode=true;var floatingDraws=0
-      for(kind<-0 to 2;group<-(0 until 64).filter(n=>(if(n>=54)0 else ImageFormatReference.format(ImageFormatReference.names(n)).kind)==kind).grouped(4)){
-        outputKind=kind;val ids=group.padTo(4,group.head)
-        views=(0 until 4).map{u=>val v=texData.install(t.put,(a,b)=>t.memory(a)=BigInt(b),u,ids(u),0,1,id,
-          swizzle=Seq(Seq(3,2,1,0),Seq(5,4,0,5),Seq(0,0,0,0),Seq(0,1,2,3))(u))
-          if(ids(u)>=54){t.put(texData.images+u*128+11*4,2);t.put(texData.images+u*128+12*4,2)
-            t.put(texData.levels+u*128+13*4,2);t.put(texData.levels+u*128+14*4,2)};v}
-        for(scalar<-Seq(false,true);c<-0 until 4){run(c,scalar);floatingDraws+=1}
-      }
-      for(mode<-Seq(0,2)){nativeControl=mode;run(0,false);run(3,true);floatingDraws+=2}
-      nativeControl=1;skipParameters=true;run(0,false);run(0,true);skipParameters=false
-      run(0,false,bad=true);run(1,false,cancelled=true);run(3,true)
-      integerMode=true;nativeControl=0;var integerDraws=0
-      for(kind<-0 to 2;group<-(0 until 64).filter(n=>(if(n>=54)0 else ImageFormatReference.format(ImageFormatReference.names(n)).kind)==kind).grouped(4)){
-        outputKind=kind;val ids=group.padTo(4,group.head)
-        views=(0 until 4).map{u=>val v=texData.install(t.put,(a,b)=>t.memory(a)=BigInt(b),u,ids(u),0,1,id,
-          swizzle=Seq(Seq(3,2,1,0),Seq(5,4,0,5),Seq(0,0,0,0),Seq(0,1,2,3))(u))
-          if(ids(u)>=54){t.put(texData.images+u*128+11*4,2);t.put(texData.images+u*128+12*4,2)
-            t.put(texData.levels+u*128+13*4,2);t.put(texData.levels+u*128+14*4,2)};v}
-        for(scalar<-Seq(false,true);c<-0 until 4){run(c,scalar);integerDraws+=1}
-      }
-      for(base<-Seq(1,2)){
-        for(u<-0 until 4){
-          val from=texData.levels+u*128;val table=BigInt(0x18000+u*1024);val to=table+base*128
-          val words=(0 until 32).map(w=>(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(t.memory.getOrElse(from+w*4+b,BigInt(0))<<(8*b))))
-          words.zipWithIndex.foreach{case(v,w)=>t.put(to+w*4,v)};t.put(to+6*4,base);t.put(to+8*4,base)
-          t.put(texData.images+u*128+9*4,base);t.put(texData.images+u*128+10*4,base)
-          t.put(texData.images+u*128+11*4,2<<base);t.put(texData.images+u*128+12*4,2<<base)
-          t.put(texData.images+u*128+19*4,table);t.put(texData.images+u*128+20*4,table+(base+1)*128)
-        }
-        run(0,false);run(3,true);integerDraws+=2
-      }
-      skipParameters=true;run(0,false);run(0,true);skipParameters=false
-      run(0,false,bad=true);run(1,false,cancelled=true);run(3,true)
-      info(s"NATIVE_INTEGER_FETCH_CU stage=fragment local=$local formats64=true scalarVector=true components4=true successfulDraws=$integerDraws imageBaseLevels0And1And2=true v0Preserved=true noCoordinatePacketTransport=true taskResetRejectsStaleTuple=true faultAndCancelDrain=true healthyReuse=true")
-      info(s"NATIVE_FLOAT_SAMPLE_CU stage=fragment local=$local formats64=true scalarVectorParameterInstructions=true scalarVectorSampleInstructions=true successfulDraws=$floatingDraws automaticAndGradient=true v0Preserved=true taskResetRejectsStaleTuple=true faultAndCancelDrain=true healthyReuse=true onChipParameterBank=true")
-      info(s"NATIVE_IMAGE_FORMAT_CU stage=fragment local=$local formats64=true imageSwizzle=true scalarVector=true addedDraws=$addedDraws")
-      info(s"NATIVE_TYPED_FETCH_CU stage=fragment local=$local CUs=2 draws=11 scalarVector=true components4=true targets4=true integerRawTypes=true helperInputs=true descriptorSnapshot=true faultAndCancelDrain=true healthyReuse=true")
-      }
-      if(!lifetimeOnly && !availabilityOnly){
-        queryMode=true;integerMode=false;nativeMode=true;nativeControl=0
-        outputKind=1
-        var sizeDraws=0
-        for(group<-(0 until 64).grouped(4)){
-          val ids=group.padTo(4,group.head)
-          val targets=(0 until 4).map(u=>if(u==3 && (ids(u)>=54 || ImageFormatReference.format(ImageFormatReference.names(ids(u))).depth))0 else u)
-          views=(0 until 4).map(u=>texData.install(t.put,(a,b)=>t.memory(a)=BigInt(b),u,ids(u),targets(u),1,id))
-          sizeDims=(0 until 4).map{u=>Vector[BigInt](if(ids(u)>=54)7 else 2,if(ids(u)>=54){if(targets(u)==2)7 else 5}else 2,
-            if(targets(u)==1)3 else if(targets(u)==3)2 else 0)}.toVector
-          for(scalar<-Seq(false,true);c<-0 until 3){run(c,scalar);sizeDraws+=1}
-        }
-        // Query LOD0 with image bases1/2 from independent fresh level records.
-        for(base<-Seq(1,2)){
-          views=(0 until 4).map(u=>texData.install(t.put,(a,b)=>t.memory(a)=BigInt(b),u,3,0,1,id))
-          sizeDims=Vector.fill(4)(Vector[BigInt](2,2,0))
-          for(u<-0 until 4){val from=texData.levels+u*128;val table=BigInt(0x18000+u*1024);val to=table+base*128
-            val saved=(0 until 32).map(w=>(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(t.memory.getOrElse(from+w*4+b,BigInt(0))<<(8*b))))
-            saved.zipWithIndex.foreach{case(v,w)=>t.put(to+w*4,v)};t.put(to+6*4,base);t.put(to+8*4,base)
-            t.put(texData.images+u*128+9*4,base);t.put(texData.images+u*128+10*4,base)
-            t.put(texData.images+u*128+11*4,2<<base);t.put(texData.images+u*128+12*4,2<<base)
-            t.put(texData.images+u*128+19*4,table);t.put(texData.images+u*128+20*4,table+(base+1)*128)
+      it should "reject invalid active sample depths before shader access and ignore inactive or unavailable metadata" in {
+        simulate(new FragmentShaderHarness()) { d =>
+          val t = new Driver(d); t.sampleDepthEnabled = true; d.io.out.ready.poke(true.B)
+          for (value <- Seq(BigInt("7fc00001", 16), BigInt("7f800000", 16), fp(-0.25f), fp(1.25f))) {
+            t.descriptor(); val before = t.requests; t.submit(); t.input(0);
+            d.io.in.bits.values.lanes(0).sampleDepth(0).poke(value.U)
+            d.io.in.valid.poke(true.B); t.until(d.io.in.ready.peek().litToBoolean); t.tick();
+            d.io.in.valid.poke(false.B); t.end(1); t.complete(6)
+            assert(t.requests == before && t.launches == 0 && t.exports.isEmpty)
           }
-          for(scalar<-Seq(false,true);c<-0 until 3){run(c,scalar);sizeDraws+=1}
+          t.descriptor(); t.submit(); t.input(0); val nan = BigInt("7fc00001", 16)
+          d.io.in.bits.values.lanes(1).sampleDepth(0).poke(nan.U);
+          for (s <- 0 until 4) d.io.in.bits.values.lanes(3).sampleDepth(s).poke(nan.U)
+          d.io.in.valid.poke(true.B); t.until(d.io.in.ready.peek().litToBoolean); t.tick(); d.io.in.valid.poke(false.B);
+          t.end(1); t.complete(0); t.check(1)
+          t.exports.clear(); t.sampleDepthEnabled = false; t.descriptor(); t.submit(); t.input(0)
+          for (s <- 0 until 4) d.io.in.bits.values.lanes(0).sampleDepth(s).poke(nan.U)
+          d.io.in.valid.poke(true.B); t.until(d.io.in.ready.peek().litToBoolean); t.tick(); d.io.in.valid.poke(false.B);
+          t.end(1); t.complete(0); t.check(1)
+          info(
+            "FRAGMENT_SAMPLE_DEPTH invalidActiveValues=4 noInvalidShaderAccess=true inactiveNaNIgnored=true legacyMetadataIgnored=true noMetadataLeak=true healthyReuse=true"
+          )
         }
-        nativeControl=1;run(0,false);run(0,true);nativeControl=0
-        run(0,false,bad=true);run(1,true,bad=true);run(0,false,cancelled=true);run(2,true);sizeDraws+=1
-        info(s"NATIVE_TEXTURE_SIZE_CU stage=fragment local=$local successfulDraws=$sizeDraws formats64=true targets4=true scalarVector=true components3=true noParameterInstructions=true imageBaseLevels0And1And2=true v0Preserved=true metadataFaultDrain=true cancelAndHealthyReuse=true")
+      }
+
+      for (local <- Seq(true, false))
+        it should s"carry coherent covered sample locations through real shared CUs local=$local" in {
+          simulate(new FragmentShaderHarness(local)) { d =>
+            val t = new Driver(d); t.sampleDepthEnabled = true
+            // Bad sample-location metadata is rejected before any shader/staging access.
+            for (bad <- 0 until 3) {
+              t.descriptor(); t.submit(); t.input(0)
+              val a = d.io.in.bits.values.lanes(if (bad == 2) 3 else 0)
+              a.sampleLocationValid.poke(true.B); a.sampleLocation.poke((if (bad == 0) 2 else if (bad == 1) 3 else 0).U)
+              if (bad == 0) { d.io.draw.bits.sampleMode.poke(1.U); d.io.in.bits.sampleMode.poke(1.U) }
+              if (bad == 1) a.coverageMask.poke(1.U)
+              val before = t.requests; val launches = t.launches
+              d.io.in.valid.poke(true.B); t.until(d.io.in.ready.peek().litToBoolean); t.tick();
+              d.io.in.valid.poke(false.B)
+              t.end(1); t.complete(6); assert(t.requests == before && t.launches == launches && t.exports.isEmpty)
+            }
+            for (mode <- 1 to 2; sample <- 0 until (1 << mode)) {
+              t.descriptor(); d.io.draw.bits.sampleMode.poke(mode.U); t.submit(); t.input(0)
+              d.io.in.bits.sampleMode.poke(mode.U)
+              val a = d.io.in.bits.values.lanes(0); val depth = t.sampleDepth(0, 0, sample)
+              a.coverageMask.poke(((1 << (1 << mode)) - 1).U); a.sampleLocationValid.poke(true.B);
+              a.sampleLocation.poke(sample.U)
+              a.windowDepth.poke(depth.U); a.fragCoordW.poke(fp(0.5f).U); a.reciprocalW.exponent.poke((-1).S)
+              for (i <- 1 until 4) {
+                val l = d.io.in.bits.values.lanes(i); l.covered.poke(false.B); l.coverageMask.poke(0.U)
+              }
+              d.io.in.valid.poke(true.B); t.until(d.io.in.ready.peek().litToBoolean); t.tick();
+              d.io.in.valid.poke(false.B); t.end(1)
+              t.until(d.io.out.valid.peek().litToBoolean); val held = d.io.out.bits.peek().litValue
+              for (_ <- 0 until 7) { t.tick(); assert(d.io.out.bits.peek().litValue == held) }
+              d.io.out.ready.poke(true.B); t.complete(0); d.io.out.ready.poke(false.B)
+              assert(t.exports.size == 1); val exported = t.exports.head.lanes.head
+              val x = if ((sample & 1) == 0) 0.25f else 0.75f
+              val row = if (mode == 1) sample else sample >> 1
+              val y = -4f + (if ((row & 1) == 0) 0.25f else 0.75f)
+              assert(exported.colors.take(4) == Vector(fp(x), fp(y), depth, fp(0.5f)))
+              assert(exported.depth == depth && exported.sampleDepthValid)
+              assert(
+                exported.sampleDepths == Vector.tabulate(4)(s =>
+                  if (s < (1 << mode)) t.sampleDepth(0, 0, s) else BigInt(0)
+                )
+              )
+              assert(t.word(t.scratch + t.prefix) == BigInt("bead1234", 16)); t.exports.clear()
+            }
+            info(
+              s"FRAGMENT_SAMPLE_LOCATION local=$local CUs=2 modes=2 sampleChoices=6 coherentXYZW=true protectedSampleDepths=true invalidLocations=3 noInvalidShaderAccess=true heldExports=true exactHealthyReuse=true uniformGuard=true"
+            )
+          }
+        }
+
+      for (local <- Seq(true, false))
+        it should s"execute captured native texture policies and trap coordinate faults before reuse local=$local" in {
+          simulate(new FragmentShaderHarness(local)) { d =>
+            val t = new Driver(d)
+            val broadcast = (BigInt(0x17) << 26) | (BigInt(1) << 25) | (BigInt(4) << 12)
+            val vectorSample =
+              (BigInt(1) << 26) | (BigInt(1) << 25) | (BigInt(6) << 20) | (BigInt(5) << 15) | (BigInt(7) << 7) | 0x2b
+            val scalarSample = (BigInt(1) << 25) | (BigInt(13) << 20) | (BigInt(12) << 15) | (BigInt(15) << 7) | 0x0b
+            def code(scalar: Boolean): Seq[BigInt] = {
+              val constants =
+                Seq((BigInt(0xffffc) << 12) | (BigInt(12) << 7) | 0x37, (BigInt(0x14) << 12) | (BigInt(13) << 7) | 0x37)
+              val sample =
+                if (scalar) Seq(scalarSample, broadcast | (BigInt(15) << 15) | (BigInt(7) << 7) | 0x57)
+                else
+                  Seq(
+                    broadcast | (BigInt(12) << 15) | (BigInt(5) << 7) | 0x57,
+                    broadcast | (BigInt(13) << 15) | (BigInt(6) << 7) | 0x57,
+                    vectorSample
+                  )
+              program(4, 2).dropRight(1) ++ constants ++ sample ++ address(
+                6,
+                7,
+                (6 + 4 * t.varyingSlots + 15) * t.stride
+              ) ++ Seq(vectorMemory(6, 7, true), cease)
+            }
+            for (scalar <- Seq(false, true)) {
+              val pc = if (scalar) 0x7000 else 0x3000
+              code(scalar).zipWithIndex.foreach { case (w, i) => t.put(pc + 4 * i, w) }
+            }
+            d.io.out.ready.poke(true.B)
+            var draws = 0; var faults = 0
+            def run(u: Int, v: Int, signed: Boolean, scalar: Boolean = false, bad: Boolean = false): Unit = {
+              val base = 0x8000 + draws * 0x1000
+              for (y <- 0 until 5; x <- 0 until 3)
+                t.put(base + (y * 3 + x) * 4, NativeTexturePolicyReference.word(x, y))
+              t.descriptor(); val q = d.io.draw.bits; q.shaderPc.poke((if (scalar) 0x7000 else 0x3000).U)
+              q.sampler.base.poke(base.U); q.sampler.texWidth.poke((if (bad) 0 else 3).U); q.sampler.texHeight.poke(5.U)
+              q.sampler.policyVersion.poke(1.U); q.sampler.wrapU.poke(u.U); q.sampler.wrapV.poke(v.U);
+              q.sampler.signedCoordinates.poke(signed.B)
+              t.exports.clear(); var textureReads = 0
+              t.fault = (a, write) => { if (!write && a >= base && a < base + 128) textureReads += 1; false }
+              t.submit(); t.send(0); t.send(1, true)
+              q.sampler.base.poke("he0000000".U); q.sampler.policyVersion.poke(3.U); q.sampler.wrapU.poke(3.U);
+              q.sampler.wrapV.poke(3.U)
+              q.sampler.texWidth.poke(0.U); q.sampler.texHeight.poke(0.U)
+              t.until(d.io.completion.valid.peek().litToBoolean)
+              if (bad) {
+                d.io.completion.bits.faultAddress.expect(base.U); d.io.completion.bits.faultSource.expect(5.U);
+                assert(t.exports.isEmpty && textureReads == 0); t.complete(3); faults += 1
+              } else {
+                val expected = NativeTexturePolicyReference.sample(3, 5, 0xffffc000L, 0x14000L, u, v, signed)
+                assert(
+                  t.exports.size == 2 && t.exports.forall(_.lanes.forall(_.colors(15) == expected)),
+                  s"actual shader texture mismatch u=$u v=$v signed=$signed scalar=$scalar"
+                )
+                assert(textureReads > 0); t.complete(0)
+              }
+              draws += 1
+            }
+            for (signed <- Seq(false, true); u <- 0 to 2; v <- 0 to 2) run(u, v, signed)
+            run(2, 1, true, bad = true); run(1, 2, false, scalar = true, bad = true)
+            run(2, 0, true, scalar = true)
+            assert(draws == 21 && faults == 2)
+            info(
+              s"STAGE_TEXTURE_POLICY stage=fragment local=$local CUs=2 draws=$draws valid=19 coordinateFaults=$faults mixedAxes=9 signedAndUnsigned=true scalarAndVector=true noFaultedTexelWrites=true noInvalidTextureReads=true heldCompletionPinsVM=true poolDrained=true healthyReuse=true"
+            )
+          }
+        }
+    }
+  }
+  if (nativeTextureMatrixOnly) {
+    for (local <- Seq(true, false))
+      it should s"execute native typed component fetches through real shared CUs and preserve fault drain local=$local" in {
+        simulate(new FragmentShaderHarness(local)) { d =>
+          val t = new Driver(d)
+          val id = Seq[BigInt](7, 8, 9); val texData = NativeTextureFetchTestData
+          t.expectedColorTypes = Vector(0, 1, 2, 1)
+          texData.roots(t.put, stage = 1, id = id)
+          val format = TypedColorReference.names.indexOf("RGBA32UI")
+          var outputKind = 1
+          var views = (0 until 4).map(u =>
+            texData.install(
+              t.put,
+              (a, b) => t.memory(a) = BigInt(b),
+              u,
+              format,
+              u,
+              1,
+              id,
+              raw = BigInt("fedcba98765432100123456789abcdef", 16) + u
+            )
+          )
+          for (u <- 0 until 4) texData.coordinates(t.put, target = u, id = id, address = texData.packet + u * 64)
+          var queryMode = false; var sizeDims = Vector.fill(4)(Vector.fill(3)(BigInt(0))); var integerMode = false;
+          var nativeMode = false; var skipParameters = false; var nativeControl = 1
+          val broadcast = (BigInt(0x17) << 26) | (BigInt(1) << 25) | (BigInt(4) << 12)
+          def code(c: Int, scalar: Boolean): Seq[BigInt] = {
+            val fetch =
+              if (scalar)
+                Seq(
+                  (BigInt(0x80) << 12) | (BigInt(12) << 7) | 0x37,
+                  addi(12, 12, 3 * 64),
+                  addi(13, 0, 3),
+                  texData.scalar(c, 15, 12, 13),
+                  broadcast | (BigInt(15) << 15) | (BigInt(7) << 7) | 0x57
+                )
+              else
+                address(5, 7, 6 * t.stride) ++ Seq(vectorMemory(5, 5, false)) ++ address(5, 7, 7 * t.stride) ++
+                  Seq(vectorMemory(5, 6, false), texData.vector(c, 7, 5, 6))
+            program(4, 2).dropRight(1) ++ fetch ++ address(6, 7, (6 + 4 * t.varyingSlots + 15) * t.stride) ++ Seq(
+              vectorMemory(6, 7, true),
+              cease
+            )
+          }
+          val sizeOnly = java.lang.Boolean.getBoolean("opengpu.nativeTextureSizeOnly")
+          val lifetimeOnly = java.lang.Boolean.getBoolean("opengpu.nativeIntegerLifetimeOnly")
+          val availabilityOnly = java.lang.Boolean.getBoolean("opengpu.nativeResourceAvailabilityOnly")
+          require(
+            !availabilityOnly || !sizeOnly && !lifetimeOnly,
+            "resource availability is a separate bounded profile"
+          )
+          val reproduceScratchAlias = java.lang.Boolean.getBoolean("opengpu.nativeIntegerScratchAlias")
+          require(!reproduceScratchAlias || lifetimeOnly, "scratch alias is only an explicit negative fixture control")
+          def floatPc(c: Int, scalar: Boolean, missing: Boolean, mode: Int): Int = {
+            val offset = if (reproduceScratchAlias) 0x40000 else 0x100000
+            val pc = 0xa0000 + (if (queryMode) 0x200000
+                                else if (integerMode) offset
+                                else 0) + (if (scalar) 0x10000 else 0) + (if (missing) 0x20000
+                                                                          else 0) + mode * 0x4000 + c * 0x1000
+            if (!reproduceScratchAlias)
+              require(
+                BigInt(pc) + 4096 <= t.scratch || BigInt(pc) >= t.scratch + t.prefix + 64,
+                "shader fixture code overlaps native spill scratch"
+              )
+            pc
+          }
+          def floatingCode(c: Int, scalar: Boolean, missing: Boolean, mode: Int): Seq[BigInt] = {
+            def param(pair: Int, x: Int, y: Int): BigInt = (BigInt(3) << (if (scalar) 25 else 26)) |
+              (if (scalar) BigInt(0) else BigInt(1) << 25) | (BigInt(y) << 20) | (BigInt(x) << 15) | (BigInt(
+                pair
+              ) << 12) | (if (scalar) 0x0b else 0x2b)
+            val initialize = Seq(
+              (BigInt(0x3f400) << 12) | (BigInt(12) << 7) | 0x37,
+              broadcast | (BigInt(12) << 15) | (BigInt(10) << 7) | 0x57,
+              broadcast | (BigInt(11) << 7) | 0x57,
+              broadcast | (BigInt(12) << 15) | 0x57
+            ) ++ (if (integerMode) Seq(addi(12, 0, 1), broadcast | (BigInt(12) << 15) | (BigInt(10) << 7) | 0x57)
+                  else Seq.empty)
+            val first =
+              if (missing || queryMode) Seq.empty else Seq(param(0, if (scalar) 12 else 10, if (scalar) 12 else 10))
+            val rest =
+              if (missing || queryMode) Seq.empty
+              else (1 until 8).map(p => param(p, if (scalar) 0 else 11, if (scalar) 0 else 11))
+            val sample =
+              if (scalar)
+                Seq(
+                  addi(13, 0, 3),
+                  addi(14, 0, mode),
+                  (BigInt(if (queryMode) 6 else if (integerMode) 5 else 4) << 25) | (BigInt(14) << 20) | (BigInt(
+                    13
+                  ) << 15) | (BigInt(c) << 12) | (BigInt(15) << 7) | 0x0b,
+                  broadcast | (BigInt(15) << 15) | (BigInt(7) << 7) | 0x57
+                )
+              else
+                address(5, 7, 7 * t.stride) ++ Seq(
+                  vectorMemory(5, 6, false),
+                  addi(13, 0, mode),
+                  broadcast | (BigInt(13) << 15) | (BigInt(5) << 7) | 0x57,
+                  (BigInt(if (queryMode) 6 else if (integerMode) 5 else 4) << 26) | (BigInt(1) << 25) | (BigInt(
+                    5
+                  ) << 20) | (BigInt(6) << 15) | (BigInt(c) << 12) | (BigInt(7) << 7) | 0x2b
+                )
+            program(4, 2)
+              .dropRight(1) ++ initialize ++ first ++ address(6, 7, (6 + 4 * t.varyingSlots + 14) * t.stride) ++
+              Seq(vectorMemory(6, 0, true)) ++ rest ++ sample ++ address(
+                6,
+                7,
+                (6 + 4 * t.varyingSlots + 15) * t.stride
+              ) ++ Seq(vectorMemory(6, 7, true), cease)
+          }
+          for (scalar <- Seq(false, true); c <- 0 until 4; missing <- Seq(false, true); mode <- 0 to 2) {
+            floatingCode(c, scalar, missing, mode).zipWithIndex.foreach { case (w, n) =>
+              t.put(floatPc(c, scalar, missing, mode) + n * 4, w)
+            }
+          }
+          integerMode = true
+          for (scalar <- Seq(false, true); c <- 0 until 4; missing <- Seq(false, true)) {
+            floatingCode(c, scalar, missing, 0).zipWithIndex.foreach { case (w, n) =>
+              t.put(floatPc(c, scalar, missing, 0) + n * 4, w)
+            }
+          }
+          integerMode = false; queryMode = true
+          for (scalar <- Seq(false, true); c <- 0 until 3; mode <- 0 to 1) {
+            floatingCode(c, scalar, false, mode).zipWithIndex.foreach { case (w, n) =>
+              t.put(floatPc(c, scalar, false, mode) + n * 4, w)
+            }
+          }
+          queryMode = false
+          for (scalar <- Seq(false, true); c <- 0 until 4) {
+            val pc = 0x60000 + (if (scalar) 0x10000 else 0) + c * 0x1000
+            code(c, scalar).zipWithIndex.foreach { case (w, n) => t.put(pc + n * 4, w) }
+          }
+          d.io.out.ready.poke(true.B)
+          def run(c: Int, scalar: Boolean, bad: Boolean = false, cancelled: Boolean = false): Unit = {
+            t.exports.clear(); t.descriptor();
+            d.io.draw.bits.shaderPc.poke(
+              (if (nativeMode) floatPc(c, scalar, skipParameters, nativeControl)
+               else 0x60000 + (if (scalar) 0x10000 else 0) + c * 0x1000).U
+            )
+            d.io.draw.bits.resources.version.poke(1.U); d.io.draw.bits.resources.address.poke(texData.root.U)
+            t.expectedColorTypes = Vector(0, 1, 2, outputKind); d.io.draw.bits.colorTypes(3).poke(outputKind.U)
+            var rootRead = false; val faultLine = if (queryMode) texData.root + 64 else views(3).address & ~BigInt(63)
+            t.fault = (a, w) => { if (!w && a == texData.root) rootRead = true; bad && !w && a == faultLine }
+            t.submit(); d.io.draw.bits.resources.version.poke(3.U); d.io.draw.bits.resources.address.poke("hffffffff".U)
+            t.input(0)
+            for (l <- 0 until 4) {
+              val a = d.io.in.bits.values.lanes(l); a.varyings(0)(0).poke((texData.packet + l * 64).U);
+              a.varyings(0)(1).poke(l.U)
+            }
+            d.io.in.valid.poke(true.B); t.until(d.io.in.ready.peek().litToBoolean); t.tick();
+            d.io.in.valid.poke(false.B); t.end(1)
+            if (cancelled) { t.until(rootRead); d.io.cancel.poke(true.B) }
+            t.until(d.io.completion.valid.peek().litToBoolean)
+            withClue(
+              s"native=$nativeMode integer=$integerMode missing=$skipParameters scalar=$scalar component=$c bad=$bad cancelled=$cancelled pc=${d.io.draw.bits.shaderPc.peek().litValue.toString(16)} faultAddress=${d.io.completion.bits.faultAddress.peek().litValue.toString(16)} "
+            ) {
+              t.complete(
+                if (cancelled) 4
+                else if (bad || nativeMode && skipParameters || queryMode && nativeControl != 0) 3
+                else 0
+              )
+            }
+            if (cancelled) d.io.cancel.poke(false.B)
+            if (bad || cancelled || nativeMode && skipParameters || queryMode && nativeControl != 0)
+              assert(t.exports.isEmpty)
+            else {
+              assert(t.exports.size == 1)
+              for ((l, n) <- t.exports.head.lanes.zipWithIndex) {
+                val unit = if (scalar) 3 else n;
+                assert(
+                  l.colors(15) == (if (queryMode) sizeDims(unit)(c) else views(unit).expected(c)),
+                  s"typed fragment export differs c=$c scalar=$scalar lane=$n"
+                )
+              }
+              if (nativeMode)
+                assert(t.exports.forall(_.lanes.forall(_.colors(14) == fp(0.75f))), "parameter ack corrupted v0")
+            }
+            if (nativeMode && skipParameters) assert(!rootRead, "new task reused stale operand validity")
+          }
+          if (availabilityOnly) {
+            run(0, false); run(3, true)
+            nativeMode = true; integerMode = false; nativeControl = 1
+            outputKind = 0
+            views = (0 until 4).map(u => texData.install(t.put, (a, b) => t.memory(a) = BigInt(b), u, 3, 0, 1, id))
+            run(0, false); run(3, true)
+            skipParameters = true; run(0, false); run(0, true); skipParameters = false
+            run(0, false, bad = true); run(1, false, cancelled = true); run(3, true)
+            integerMode = true; nativeControl = 0; run(0, false); run(3, true)
+            queryMode = true; integerMode = false; nativeControl = 0
+            outputKind = 1
+            sizeDims = Vector.fill(4)(Vector[BigInt](2, 2, 0)); run(0, false); run(2, true)
+            run(0, false, bad = true); run(0, false, cancelled = true); run(1, true)
+            info(
+              s"NATIVE_RESOURCE_PERMISSION_CU stage=1 local=$local draws16=true nativeFamilies2Through6=true scalarVector=true immutableRoot=true noStaleParameters=true parameterAckPreservesV0=true faultAndCancellationDrain=true healthyReuse=true"
+            )
+          } else if (sizeOnly) {}
+          else if (lifetimeOnly) {
+            nativeMode = true; integerMode = true; nativeControl = 0
+            outputKind = 0
+            views = (0 until 4).map(u => texData.install(t.put, (a, b) => t.memory(a) = BigInt(b), u, 3, 0, 1, id))
+            run(0, false)
+            skipParameters = true; run(0, false); run(0, true); skipParameters = false
+            run(0, false, bad = true); run(1, false, cancelled = true); run(3, true)
+            info(
+              s"NATIVE_INTEGER_LIFETIME_CU stage=fragment local=$local directedOnly=true calls6=true shaderCodeOutsideScratch=${!reproduceScratchAlias} v0Preserved=true taskResetAndFaultDrain=true healthyReuse=true"
+            )
+          } else {
+            for (scalar <- Seq(false, true); c <- 0 until 4) run(c, scalar)
+            run(0, false, bad = true); run(2, false, cancelled = true); run(3, true)
+            var addedDraws = 0
+            for (
+              kind <- 0 to 2;
+              group <- (0 until 64)
+                .filter(n =>
+                  (if (n >= 54) 0 else ImageFormatReference.format(ImageFormatReference.names(n)).kind) == kind
+                )
+                .grouped(4)
+            ) {
+              outputKind = kind; val ids = group.padTo(4, group.head)
+              views = (0 until 4).map { u =>
+                val target =
+                  if (u == 3 && (ids(u) >= 54 || ImageFormatReference.format(ImageFormatReference.names(ids(u))).depth))
+                    0
+                  else u
+                texData.coordinates(t.put, target = target, id = id, address = texData.packet + u * 64)
+                texData.install(
+                  t.put,
+                  (a, b) => t.memory(a) = BigInt(b),
+                  u,
+                  ids(u),
+                  target,
+                  1,
+                  id,
+                  swizzle = Seq(Seq(3, 2, 1, 0), Seq(5, 4, 0, 5), Seq(0, 0, 0, 0), Seq(0, 1, 2, 3))(u)
+                )
+              }
+              for (scalar <- Seq(false, true); c <- 0 until 4) { run(c, scalar); addedDraws += 1 }
+            }
+            nativeMode = true; var floatingDraws = 0
+            for (
+              kind <- 0 to 2;
+              group <- (0 until 64)
+                .filter(n =>
+                  (if (n >= 54) 0 else ImageFormatReference.format(ImageFormatReference.names(n)).kind) == kind
+                )
+                .grouped(4)
+            ) {
+              outputKind = kind; val ids = group.padTo(4, group.head)
+              views = (0 until 4).map { u =>
+                val v = texData.install(
+                  t.put,
+                  (a, b) => t.memory(a) = BigInt(b),
+                  u,
+                  ids(u),
+                  0,
+                  1,
+                  id,
+                  swizzle = Seq(Seq(3, 2, 1, 0), Seq(5, 4, 0, 5), Seq(0, 0, 0, 0), Seq(0, 1, 2, 3))(u)
+                )
+                if (ids(u) >= 54) {
+                  t.put(texData.images + u * 128 + 11 * 4, 2); t.put(texData.images + u * 128 + 12 * 4, 2)
+                  t.put(texData.levels + u * 128 + 13 * 4, 2); t.put(texData.levels + u * 128 + 14 * 4, 2)
+                };
+                v
+              }
+              for (scalar <- Seq(false, true); c <- 0 until 4) { run(c, scalar); floatingDraws += 1 }
+            }
+            for (mode <- Seq(0, 2)) { nativeControl = mode; run(0, false); run(3, true); floatingDraws += 2 }
+            nativeControl = 1; skipParameters = true; run(0, false); run(0, true); skipParameters = false
+            run(0, false, bad = true); run(1, false, cancelled = true); run(3, true)
+            integerMode = true; nativeControl = 0; var integerDraws = 0
+            for (
+              kind <- 0 to 2;
+              group <- (0 until 64)
+                .filter(n =>
+                  (if (n >= 54) 0 else ImageFormatReference.format(ImageFormatReference.names(n)).kind) == kind
+                )
+                .grouped(4)
+            ) {
+              outputKind = kind; val ids = group.padTo(4, group.head)
+              views = (0 until 4).map { u =>
+                val v = texData.install(
+                  t.put,
+                  (a, b) => t.memory(a) = BigInt(b),
+                  u,
+                  ids(u),
+                  0,
+                  1,
+                  id,
+                  swizzle = Seq(Seq(3, 2, 1, 0), Seq(5, 4, 0, 5), Seq(0, 0, 0, 0), Seq(0, 1, 2, 3))(u)
+                )
+                if (ids(u) >= 54) {
+                  t.put(texData.images + u * 128 + 11 * 4, 2); t.put(texData.images + u * 128 + 12 * 4, 2)
+                  t.put(texData.levels + u * 128 + 13 * 4, 2); t.put(texData.levels + u * 128 + 14 * 4, 2)
+                };
+                v
+              }
+              for (scalar <- Seq(false, true); c <- 0 until 4) { run(c, scalar); integerDraws += 1 }
+            }
+            for (base <- Seq(1, 2)) {
+              for (u <- 0 until 4) {
+                val from = texData.levels + u * 128; val table = BigInt(0x18000 + u * 1024); val to = table + base * 128
+                val words = (0 until 32).map(w =>
+                  (0 until 4).foldLeft(BigInt(0))((v, b) =>
+                    v | (t.memory.getOrElse(from + w * 4 + b, BigInt(0)) << (8 * b))
+                  )
+                )
+                words.zipWithIndex.foreach { case (v, w) => t.put(to + w * 4, v) }; t.put(to + 6 * 4, base);
+                t.put(to + 8 * 4, base)
+                t.put(texData.images + u * 128 + 9 * 4, base); t.put(texData.images + u * 128 + 10 * 4, base)
+                t.put(texData.images + u * 128 + 11 * 4, 2 << base); t.put(texData.images + u * 128 + 12 * 4, 2 << base)
+                t.put(texData.images + u * 128 + 19 * 4, table);
+                t.put(texData.images + u * 128 + 20 * 4, table + (base + 1) * 128)
+              }
+              run(0, false); run(3, true); integerDraws += 2
+            }
+            skipParameters = true; run(0, false); run(0, true); skipParameters = false
+            run(0, false, bad = true); run(1, false, cancelled = true); run(3, true)
+            info(
+              s"NATIVE_INTEGER_FETCH_CU stage=fragment local=$local formats64=true scalarVector=true components4=true successfulDraws=$integerDraws imageBaseLevels0And1And2=true v0Preserved=true noCoordinatePacketTransport=true taskResetRejectsStaleTuple=true faultAndCancelDrain=true healthyReuse=true"
+            )
+            info(
+              s"NATIVE_FLOAT_SAMPLE_CU stage=fragment local=$local formats64=true scalarVectorParameterInstructions=true scalarVectorSampleInstructions=true successfulDraws=$floatingDraws automaticAndGradient=true v0Preserved=true taskResetRejectsStaleTuple=true faultAndCancelDrain=true healthyReuse=true onChipParameterBank=true"
+            )
+            info(
+              s"NATIVE_IMAGE_FORMAT_CU stage=fragment local=$local formats64=true imageSwizzle=true scalarVector=true addedDraws=$addedDraws"
+            )
+            info(
+              s"NATIVE_TYPED_FETCH_CU stage=fragment local=$local CUs=2 draws=11 scalarVector=true components4=true targets4=true integerRawTypes=true helperInputs=true descriptorSnapshot=true faultAndCancelDrain=true healthyReuse=true"
+            )
+          }
+          if (!lifetimeOnly && !availabilityOnly) {
+            queryMode = true; integerMode = false; nativeMode = true; nativeControl = 0
+            outputKind = 1
+            var sizeDraws = 0
+            for (group <- (0 until 64).grouped(4)) {
+              val ids = group.padTo(4, group.head)
+              val targets = (0 until 4).map(u =>
+                if (u == 3 && (ids(u) >= 54 || ImageFormatReference.format(ImageFormatReference.names(ids(u))).depth)) 0
+                else u
+              )
+              views = (0 until 4)
+                .map(u => texData.install(t.put, (a, b) => t.memory(a) = BigInt(b), u, ids(u), targets(u), 1, id))
+              sizeDims = (0 until 4).map { u =>
+                Vector[BigInt](
+                  if (ids(u) >= 54) 7 else 2,
+                  if (ids(u) >= 54) { if (targets(u) == 2) 7 else 5 }
+                  else 2,
+                  if (targets(u) == 1) 3 else if (targets(u) == 3) 2 else 0
+                )
+              }.toVector
+              for (scalar <- Seq(false, true); c <- 0 until 3) { run(c, scalar); sizeDraws += 1 }
+            }
+            // Query LOD0 with image bases1/2 from independent fresh level records.
+            for (base <- Seq(1, 2)) {
+              views = (0 until 4).map(u => texData.install(t.put, (a, b) => t.memory(a) = BigInt(b), u, 3, 0, 1, id))
+              sizeDims = Vector.fill(4)(Vector[BigInt](2, 2, 0))
+              for (u <- 0 until 4) {
+                val from = texData.levels + u * 128; val table = BigInt(0x18000 + u * 1024); val to = table + base * 128
+                val saved = (0 until 32).map(w =>
+                  (0 until 4).foldLeft(BigInt(0))((v, b) =>
+                    v | (t.memory.getOrElse(from + w * 4 + b, BigInt(0)) << (8 * b))
+                  )
+                )
+                saved.zipWithIndex.foreach { case (v, w) => t.put(to + w * 4, v) }; t.put(to + 6 * 4, base);
+                t.put(to + 8 * 4, base)
+                t.put(texData.images + u * 128 + 9 * 4, base); t.put(texData.images + u * 128 + 10 * 4, base)
+                t.put(texData.images + u * 128 + 11 * 4, 2 << base); t.put(texData.images + u * 128 + 12 * 4, 2 << base)
+                t.put(texData.images + u * 128 + 19 * 4, table);
+                t.put(texData.images + u * 128 + 20 * 4, table + (base + 1) * 128)
+              }
+              for (scalar <- Seq(false, true); c <- 0 until 3) { run(c, scalar); sizeDraws += 1 }
+            }
+            nativeControl = 1; run(0, false); run(0, true); nativeControl = 0
+            run(0, false, bad = true); run(1, true, bad = true); run(0, false, cancelled = true); run(2, true);
+            sizeDraws += 1
+            info(
+              s"NATIVE_TEXTURE_SIZE_CU stage=fragment local=$local successfulDraws=$sizeDraws formats64=true targets4=true scalarVector=true components3=true noParameterInstructions=true imageBaseLevels0And1And2=true v0Preserved=true metadataFaultDrain=true cancelAndHealthyReuse=true"
+            )
+          }
+        }
+      }
+
+  }
+  if (!nativeTextureMatrixOnly && !routineOnly) {
+    for (local <- Seq(true, false))
+      it should s"execute projective samples after CU division and retain uncovered helper gradients local=$local" in {
+        simulate(new FragmentShaderHarness(local, scalarFpu = true)) { d =>
+          val t = new Driver(d); val tex = NativeTextureFetchTestData; val id = Seq[BigInt](7, 8, 9)
+          tex.roots(t.put, stage = 1, id = id); d.io.out.ready.poke(true.B)
+          var draws = 0; var traffic = Vector.empty[BigInt]
+          val badData = scala.collection.mutable.Set.empty[BigInt]
+          t.fault = (a, w) => { if (!w) traffic = traffic :+ a; !w && badData.contains(a) }
+          val cases =
+            for (scalar <- Seq(false, true); target <- Seq(0, 3, 4); mode <- 0 to 2; step <- Seq(0.25f, 0.75f))
+              yield (scalar, target, mode, step)
+          def run(
+              scalar: Boolean,
+              target: Int,
+              mode: Int,
+              step: Float,
+              offset: Int = 0,
+              bad: Boolean = false,
+              cancelled: Boolean = false
+          ): Unit = {
+            val volume = target == 3; val shadow = target == 4
+            // Every case starts with one populated texel. Reusing the same4KiB
+            // allocation must not retain the previous2D texel in volume slice0.
+            t.memory.keysIterator.filter(a => a >= 0x20000 && a < 0x21000).toVector.foreach(t.memory.remove)
+            val view = tex.install(
+              t.put,
+              (a, b) => t.memory(a) = BigInt(b),
+              0,
+              if (shadow) 49 else 3,
+              if (volume) 3 else 0,
+              1,
+              id,
+              raw = if (shadow) BigInt(0x7fff) else BigInt(0xff0000ffL)
+            )
+            t.put(tex.samplers + 7 * 4, 1); if (shadow) t.put(tex.samplers + 14 * 4, 1)
+            val pc = BigInt(0x380000) + draws * 4096
+            require(pc + 4096 <= t.scratch || pc >= t.scratch + t.prefix + 64)
+            def load(i: Int, v: Int): Seq[BigInt] = address(5, 7, (6 + i) * t.stride) ++ Seq(vectorMemory(5, v, false))
+            val code = program(4, 2)
+              .dropRight(1) ++ NativeProjectiveShaderTestData.operandCode(scalar, volume, shadow, mode, offset, load) ++
+              address(6, 7, (6 + 4 * t.varyingSlots + 14) * t.stride) ++ Seq(vectorMemory(6, 10, true)) ++ address(
+                6,
+                7,
+                (6 + 4 * t.varyingSlots + 15) * t.stride
+              ) ++ Seq(vectorMemory(6, 7, true), cease)
+            require(code.length <= 512); code.zipWithIndex.foreach { case (word, n) => t.put(pc + n * 4, word) }
+            val coords = NativeProjectiveShaderTestData.coordinates(scalar, step, shadow, volume)
+            t.exports.clear(); traffic = Vector.empty; badData.clear(); if (bad) badData += view.address & ~BigInt(63)
+            t.descriptor(); d.io.draw.bits.shaderPc.poke(pc.U)
+            d.io.draw.bits.resources.version.poke(1.U); d.io.draw.bits.resources.address.poke(tex.root.U); t.submit();
+            t.input(0)
+            for (l <- 0 until 4) {
+              val a = d.io.in.bits.values.lanes(l)
+              a.covered.poke((l == 3).B); a.coverageMask.poke((if (l == 3) 8 else 0).U)
+              for (c <- 0 until 4) a.varyings(0)(c).poke(fp(coords(l)(c)).U)
+            }
+            d.io.in.valid.poke(true.B); t.until(d.io.in.ready.peek().litToBoolean); t.tick();
+            d.io.in.valid.poke(false.B); t.end(1)
+            if (cancelled) { t.until(traffic.contains(tex.root)); d.io.cancel.poke(true.B) }
+            t.complete(if (cancelled) 4 else if (bad) 3 else 0)
+            if (cancelled) d.io.cancel.poke(false.B)
+            if (bad || cancelled) assert(t.exports.isEmpty)
+            else {
+              assert(t.exports.size == 1); val lanes = t.exports.head.lanes
+              for (l <- 0 until 4) {
+                assert(lanes(l).helper == (l != 3)); assert(lanes(l).coverage == (if (l == 3) 8 else 0))
+              }
+              val projected = if (scalar) 0.75f else 0.5f
+              assert(lanes(3).colors(14) == fp(projected), s"projected fragment X differs scalar=$scalar")
+              val expected =
+                NativeProjectiveShaderTestData.expected(scalar, step, volume, shadow, mode, offset, 3, true)
+              assert(
+                lanes(3).colors(15) == fp(expected),
+                s"projective fragment sample differs scalar=$scalar target=$target mode=$mode step=$step expected=$expected got=${lanes(3).colors(15).toString(16)}"
+              )
+            }
+            assert(
+              !traffic.exists(a => a >= tex.packet && a < tex.packet + 64),
+              "projective operands read a GPU packet"
+            )
+            if (local) assert(t.globalStaging == 0)
+            draws += 1
+          }
+          for ((scalar, target, mode, step) <- cases) run(scalar, target, mode, step)
+          run(true, 0, 0, 0.25f, offset = 15); run(false, 0, 1, 0.75f, bad = true);
+          run(false, 3, 2, 0.75f, cancelled = true); run(false, 4, 0, 0.75f)
+          assert(draws == 40)
+          info(
+            s"NATIVE_PROJECTIVE_CU stage=fragment local=$local draws=$draws scalarVectorFP32Division=true scalarFpuExplicitlyEnabled=true targets2D3DShadow=true modesImplicitLodGradient=true projectedReference=true gradientsAlreadyProjected=true varyingQPerHelper=true uncoveredHelpers3=true privateCodeDisjoint=true signedOffsetAfterProjection=true faultCancelDrain=true healthyReuse=true noOperandPackets=true"
+          )
+        }
+      }
+
+    it should "execute native uniform blocks on all 128 fragment invocations with local payload and controlled spill" in {
+      simulate(
+        new FragmentShaderHarness(local = true, lanes = 16, warps = 8, fullInterface = true, nativeProfile = true)
+      ) { d =>
+        val t = new Driver(d); t.cycleLimit = 250000; d.io.out.ready.poke(true.B)
+        for (spill <- Seq(false, true)) {
+          val leases = if (spill) Vector.fill(d.pp.slots)(t.pressure(ShaderPayloadControl.allocate)) else Vector.empty
+          val defaultBase = t.scratch + t.prefix; val pc = if (spill) 0x10000 else 0x1000
+          NativeUniformTestData.fixture(1, defaultBase, t.put)
+          val code =
+            program(16, 8, 16).dropRight(1) ++ NativeUniformTestData.instructions(1, t.stride, 6 + 4 * 16) ++ Seq(cease)
+          code.zipWithIndex.foreach { case (word, i) => t.put(pc + 4 * i, word) }
+          t.descriptor(); val q = d.io.draw.bits; q.shaderPc.poke(pc.U); q.uniforms.version.poke(1.U);
+          q.uniforms.address.poke(NativeUniformTestData.root.U)
+          q.scratch.limit.poke((defaultBase + 3584).U);
+          q.scratch.allocationLimit.poke(((defaultBase + 3584 + 63) & ~BigInt(63)).U)
+          t.exports.clear(); t.submit(); q.uniforms.version.poke(0.U); q.uniforms.address.poke(0.U);
+          d.io.context.poke(999.U)
+          for (quad <- 0 until 32) {
+            t.input(quad)
+            for (lane <- 0 until 4) {
+              d.io.in.bits.values.lanes(lane).covered.poke(true.B);
+              d.io.in.bits.values.lanes(lane).coverageMask.poke(1.U)
+            }
+            d.io.in.valid.poke(true.B); t.until(d.io.in.ready.peek().litToBoolean); t.tick();
+            d.io.in.valid.poke(false.B)
+          }
+          t.end(32); t.until(d.io.completion.valid.peek().litToBoolean)
+          d.io.completion.bits.maxLocalX.expect(128.U);
+          d.io.completion.bits.localBatches.expect((if (spill) 0 else 1).U)
+          d.io.completion.bits.spilledBatches.expect((if (spill) 1 else 0).U)
+          leases.foreach { case (h, g) => t.pressure(ShaderPayloadControl.release, h, g) }; t.complete(0)
+          assert(t.exports.size == 32)
+          for ((r, i) <- t.exports.zipWithIndex) {
+            assert(r.sequence == i + 100)
+            for (lane <- r.lanes) assert(lane.colors.take(14) == NativeUniformTestData.expected(1))
+          }
+          assert(t.word(defaultBase) == NativeUniformTestData.value(31, 0));
+          assert(t.word(defaultBase + 3580) == NativeUniformTestData.value(31, 3580))
+          info(
+            s"NATIVE_UNIFORM_CU stage=1 threads128=true blocks12=true blockLastWord16380=true defaultLastWord3580=true scalarVector=true spill=$spill privatePrefix=${t.prefix} exactExports=true"
+          )
+        }
       }
     }
-  }
 
-
-  }
-  if(!nativeTextureMatrixOnly && !routineOnly){
-  for(local<-Seq(true,false))it should s"execute projective samples after CU division and retain uncovered helper gradients local=$local" in {
-    simulate(new FragmentShaderHarness(local,scalarFpu=true)){d=>val t=new Driver(d);val tex=NativeTextureFetchTestData;val id=Seq[BigInt](7,8,9)
-      tex.roots(t.put,stage=1,id=id);d.io.out.ready.poke(true.B)
-      var draws=0;var traffic=Vector.empty[BigInt]
-      val badData=scala.collection.mutable.Set.empty[BigInt]
-      t.fault=(a,w)=>{if(!w)traffic=traffic:+a; !w && badData.contains(a)}
-      val cases=for(scalar<-Seq(false,true);target<-Seq(0,3,4);mode<-0 to 2;step<-Seq(0.25f,0.75f))yield(scalar,target,mode,step)
-      def run(scalar: Boolean,target: Int,mode: Int,step: Float,offset: Int=0,bad: Boolean=false,cancelled: Boolean=false): Unit={
-        val volume=target==3;val shadow=target==4
-        // Every case starts with one populated texel. Reusing the same4KiB
-        // allocation must not retain the previous2D texel in volume slice0.
-        t.memory.keysIterator.filter(a=>a>=0x20000 && a<0x21000).toVector.foreach(t.memory.remove)
-        val view=tex.install(t.put,(a,b)=>t.memory(a)=BigInt(b),0,if(shadow)49 else 3,if(volume)3 else 0,1,id,
-          raw=if(shadow)BigInt(0x7fff)else BigInt(0xff0000ffL))
-        t.put(tex.samplers+7*4,1);if(shadow)t.put(tex.samplers+14*4,1)
-        val pc=BigInt(0x380000)+draws*4096
-        require(pc+4096<=t.scratch || pc>=t.scratch+t.prefix+64)
-        def load(i: Int,v: Int): Seq[BigInt]=address(5,7,(6+i)*t.stride)++Seq(vectorMemory(5,v,false))
-        val code=program(4,2).dropRight(1)++NativeProjectiveShaderTestData.operandCode(scalar,volume,shadow,mode,offset,load)++
-          address(6,7,(6+4*t.varyingSlots+14)*t.stride)++Seq(vectorMemory(6,10,true))++address(6,7,(6+4*t.varyingSlots+15)*t.stride)++Seq(vectorMemory(6,7,true),cease)
-        require(code.length<=512);code.zipWithIndex.foreach{case(word,n)=>t.put(pc+n*4,word)}
-        val coords=NativeProjectiveShaderTestData.coordinates(scalar,step,shadow,volume)
-        t.exports.clear();traffic=Vector.empty;badData.clear();if(bad)badData+=view.address& ~BigInt(63)
-        t.descriptor();d.io.draw.bits.shaderPc.poke(pc.U)
-        d.io.draw.bits.resources.version.poke(1.U);d.io.draw.bits.resources.address.poke(tex.root.U);t.submit();t.input(0)
-        for(l<-0 until 4){val a=d.io.in.bits.values.lanes(l)
-          a.covered.poke((l==3).B);a.coverageMask.poke((if(l==3)8 else 0).U)
-          for(c<-0 until 4)a.varyings(0)(c).poke(fp(coords(l)(c)).U)
+    it should "drain native uniform failures and cancellation without partial exports before healthy reuse stage=1" in {
+      simulate(new FragmentShaderHarness(local = true, nativeProfile = true)) { d =>
+        val t = new Driver(d); d.io.out.ready.poke(true.B)
+        for (
+          (mode, frame) <- Seq(
+            "healthy",
+            "invalid-block",
+            "private-view",
+            "memory-fault",
+            "missing-root",
+            "root-identity",
+            "cancel",
+            "healthy"
+          ).zipWithIndex
+        ) {
+          t.fault = (_, _) => false; d.io.cancel.poke(false.B)
+          NativeUniformTestData.fixture(1, t.scratch + t.prefix, t.put)
+          val queries =
+            if (mode == "invalid-block") Seq(0 -> 0, 12 -> 0)
+            else if (mode == "healthy") Seq(0 -> 0, 31 -> 0)
+            else Seq(0 -> 0)
+          val code = program(d.cfg.lanes, d.cfg.warps)
+            .dropRight(1) ++ NativeUniformTestData.instructions(1, t.stride, 14, Some(queries)) ++ Seq(cease);
+          val pc = 0x10000 + frame * 0x1000
+          code.zipWithIndex.foreach { case (word, i) => t.put(pc + 4 * i, word) }
+          t.descriptor(); val q = d.io.draw.bits
+          q.scratch.limit.poke((t.scratch + t.prefix + 3584).U);
+          q.scratch.allocationLimit.poke(((t.scratch + t.prefix + 3584 + 63) & ~BigInt(63)).U)
+          q.shaderPc.poke(pc.U); q.uniforms.version.poke((if (mode == "missing-root") 0 else 1).U)
+          q.uniforms.address.poke((if (mode == "missing-root") BigInt(0) else NativeUniformTestData.root).U)
+          if (mode == "root-identity") t.put(NativeUniformTestData.root + 12, 99)
+          if (mode == "private-view") {
+            val record = NativeUniformTestData.table + 12 * 64
+            t.put(record + 8 * 4, t.scratch); t.put(record + 9 * 4, t.scratch + 256); t.put(record + 10 * 4, 0)
+            t.put(record + 11 * 4, t.scratch); t.put(record + 12 * 4, t.scratch + 256); t.put(record + 13 * 4, 0)
+          }
+          if (mode == "memory-fault") t.fault = (address, write) => !write && address == NativeUniformTestData.base(12)
+          t.exports.clear(); t.submit(); t.send(0); t.end(1)
+          if (mode == "cancel") {
+            t.until(
+              d.io.memoryRequest.valid
+                .peek()
+                .litToBoolean && d.io.memoryRequest.bits.address.peek().litValue == NativeUniformTestData.root
+            )
+            t.blockMemory = true; val held = d.io.memoryRequest.bits.peek().litValue; d.io.cancel.poke(true.B)
+            for (_ <- 0 until 5) {
+              t.tick(); d.io.memoryRequest.valid.expect(true.B);
+              assert(d.io.memoryRequest.bits.peek().litValue == held); d.io.completion.valid.expect(false.B)
+            }
+            t.blockMemory = false
+          }
+          withClue(s"uniform recovery mode=$mode: ") {
+            t.complete(if (mode == "healthy") 0 else if (mode == "cancel") 4 else 3)
+          }
+          if (mode == "healthy") {
+            assert(
+              t.exports.size == 1 && t.exports.head.lanes.forall(
+                _.colors.take(2) == Vector(NativeUniformTestData.value(12, 0), NativeUniformTestData.value(31, 0))
+              )
+            )
+          } else assert(t.exports.isEmpty)
         }
-        d.io.in.valid.poke(true.B);t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B);t.end(1)
-        if(cancelled){t.until(traffic.contains(tex.root));d.io.cancel.poke(true.B)}
-        t.complete(if(cancelled)4 else if(bad)3 else 0)
-        if(cancelled)d.io.cancel.poke(false.B)
-        if(bad || cancelled)assert(t.exports.isEmpty)else{
-          assert(t.exports.size==1);val lanes=t.exports.head.lanes
-          for(l<-0 until 4){assert(lanes(l).helper==(l!=3));assert(lanes(l).coverage==(if(l==3)8 else 0))}
-          val projected=if(scalar)0.75f else 0.5f
-          assert(lanes(3).colors(14)==fp(projected),s"projected fragment X differs scalar=$scalar")
-          val expected=NativeProjectiveShaderTestData.expected(scalar,step,volume,shadow,mode,offset,3,true)
-          assert(lanes(3).colors(15)==fp(expected),s"projective fragment sample differs scalar=$scalar target=$target mode=$mode step=$step expected=$expected got=${lanes(3).colors(15).toString(16)}")
-        }
-        assert(!traffic.exists(a=>a>=tex.packet && a<tex.packet+64),"projective operands read a GPU packet")
-        if(local)assert(t.globalStaging==0)
-        draws+=1
-      }
-      for((scalar,target,mode,step)<-cases)run(scalar,target,mode,step)
-      run(true,0,0,0.25f,offset=15);run(false,0,1,0.75f,bad=true);run(false,3,2,0.75f,cancelled=true);run(false,4,0,0.75f)
-      assert(draws==40)
-      info(s"NATIVE_PROJECTIVE_CU stage=fragment local=$local draws=$draws scalarVectorFP32Division=true scalarFpuExplicitlyEnabled=true targets2D3DShadow=true modesImplicitLodGradient=true projectedReference=true gradientsAlreadyProjected=true varyingQPerHelper=true uncoveredHelpers3=true privateCodeDisjoint=true signedOffsetAfterProjection=true faultCancelDrain=true healthyReuse=true noOperandPackets=true")
-    }
-  }
-
-
-  it should "execute native uniform blocks on all 128 fragment invocations with local payload and controlled spill" in {
-    simulate(new FragmentShaderHarness(local=true,lanes=16,warps=8,fullInterface=true,nativeProfile=true)){d=>
-      val t=new Driver(d);t.cycleLimit=250000;d.io.out.ready.poke(true.B)
-      for(spill<-Seq(false,true)){
-        val leases=if(spill)Vector.fill(d.pp.slots)(t.pressure(ShaderPayloadControl.allocate))else Vector.empty
-        val defaultBase=t.scratch+t.prefix;val pc=if(spill)0x10000 else 0x1000
-        NativeUniformTestData.fixture(1,defaultBase,t.put)
-        val code=program(16,8,16).dropRight(1)++NativeUniformTestData.instructions(1,t.stride,6+4*16)++Seq(cease)
-        code.zipWithIndex.foreach{case(word,i)=>t.put(pc+4*i,word)}
-        t.descriptor();val q=d.io.draw.bits;q.shaderPc.poke(pc.U);q.uniforms.version.poke(1.U);q.uniforms.address.poke(NativeUniformTestData.root.U)
-        q.scratch.limit.poke((defaultBase+3584).U);q.scratch.allocationLimit.poke(((defaultBase+3584+63)& ~BigInt(63)).U)
-        t.exports.clear();t.submit();q.uniforms.version.poke(0.U);q.uniforms.address.poke(0.U);d.io.context.poke(999.U)
-        for(quad<-0 until 32){t.input(quad)
-          for(lane<-0 until 4){d.io.in.bits.values.lanes(lane).covered.poke(true.B);d.io.in.bits.values.lanes(lane).coverageMask.poke(1.U)}
-          d.io.in.valid.poke(true.B);t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B)
-        }
-        t.end(32);t.until(d.io.completion.valid.peek().litToBoolean)
-        d.io.completion.bits.maxLocalX.expect(128.U);d.io.completion.bits.localBatches.expect((if(spill)0 else 1).U)
-        d.io.completion.bits.spilledBatches.expect((if(spill)1 else 0).U)
-        leases.foreach{case(h,g)=>t.pressure(ShaderPayloadControl.release,h,g)};t.complete(0)
-        assert(t.exports.size==32)
-        for((r,i)<-t.exports.zipWithIndex){assert(r.sequence==i+100)
-          for(lane<-r.lanes)assert(lane.colors.take(14)==NativeUniformTestData.expected(1))}
-        assert(t.word(defaultBase)==NativeUniformTestData.value(31,0));assert(t.word(defaultBase+3580)==NativeUniformTestData.value(31,3580))
-        info(s"NATIVE_UNIFORM_CU stage=1 threads128=true blocks12=true blockLastWord16380=true defaultLastWord3580=true scalarVector=true spill=$spill privatePrefix=${t.prefix} exactExports=true")
+        info(
+          "NATIVE_UNIFORM_RECOVERY stage=1 scalarThenInvalidVector=true privateAliasRejected=true dataFault=true missingRoot=true identityFault=true heldRequestCancel=true noPartialExports=true healthyReuse=true"
+        )
       }
     }
-  }
 
-  it should "drain native uniform failures and cancellation without partial exports before healthy reuse stage=1" in {
-    simulate(new FragmentShaderHarness(local=true,nativeProfile=true)){d=>val t=new Driver(d);d.io.out.ready.poke(true.B)
-      for((mode,frame)<-Seq("healthy","invalid-block","private-view","memory-fault","missing-root","root-identity","cancel","healthy").zipWithIndex){
-        t.fault=(_,_)=>false;d.io.cancel.poke(false.B)
-        NativeUniformTestData.fixture(1,t.scratch+t.prefix,t.put)
-        val queries=if(mode=="invalid-block")Seq(0->0,12->0)else if(mode=="healthy")Seq(0->0,31->0)else Seq(0->0)
-        val code=program(d.cfg.lanes,d.cfg.warps).dropRight(1)++NativeUniformTestData.instructions(1,t.stride,14,Some(queries))++Seq(cease);val pc=0x10000+frame*0x1000
-        code.zipWithIndex.foreach{case(word,i)=>t.put(pc+4*i,word)}
-        t.descriptor();val q=d.io.draw.bits
-        q.scratch.limit.poke((t.scratch+t.prefix+3584).U);q.scratch.allocationLimit.poke(((t.scratch+t.prefix+3584+63)& ~BigInt(63)).U)
-        q.shaderPc.poke(pc.U);q.uniforms.version.poke((if(mode=="missing-root")0 else 1).U)
-        q.uniforms.address.poke((if(mode=="missing-root")BigInt(0)else NativeUniformTestData.root).U)
-        if(mode=="root-identity")t.put(NativeUniformTestData.root+12,99)
-        if(mode=="private-view"){val record=NativeUniformTestData.table+12*64
-          t.put(record+8*4,t.scratch);t.put(record+9*4,t.scratch+256);t.put(record+10*4,0)
-          t.put(record+11*4,t.scratch);t.put(record+12*4,t.scratch+256);t.put(record+13*4,0)}
-        if(mode=="memory-fault")t.fault=(address,write)=> !write && address==NativeUniformTestData.base(12)
-        t.exports.clear();t.submit();t.send(0);t.end(1)
-        if(mode=="cancel"){
-          t.until(d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.bits.address.peek().litValue==NativeUniformTestData.root)
-          t.blockMemory=true;val held=d.io.memoryRequest.bits.peek().litValue;d.io.cancel.poke(true.B)
-          for(_<-0 until 5){t.tick();d.io.memoryRequest.valid.expect(true.B);assert(d.io.memoryRequest.bits.peek().litValue==held);d.io.completion.valid.expect(false.B)}
-          t.blockMemory=false
-        }
-        withClue(s"uniform recovery mode=$mode: "){t.complete(if(mode=="healthy")0 else if(mode=="cancel")4 else 3)}
-        if(mode=="healthy"){assert(t.exports.size==1 && t.exports.head.lanes.forall(_.colors.take(2)==Vector(NativeUniformTestData.value(12,0),NativeUniformTestData.value(31,0))))}else assert(t.exports.isEmpty)
+    it should "read native uniform defaults sharing the final private-prefix line after a controlled spill" in {
+      simulate(new FragmentShaderHarness(local = true, lanes = 4, warps = 1, nativeProfile = true)) { d =>
+        val t = new Driver(d)
+        val inputs = 6 + 4 * 2 + 2; val prefix = d.vp.prefixBytes(t.cap, 2, 4, version = 2);
+        val defaultBase = t.scratch + prefix
+        assert(prefix == 544 && defaultBase % 64 == 32)
+        NativeUniformTestData.fixture(1, defaultBase, t.put)
+        val control = Seq(
+          addi(14, 0, 61),
+          (BigInt(0x17) << 26) | (BigInt(1) << 25) | (BigInt(14) << 15) | (BigInt(4) << 12) | (BigInt(5) << 7) | 0x57
+        ) ++
+          address(6, 7, (inputs + 17) * t.stride) ++ Seq(vectorMemory(6, 5, true))
+        val code = program(4, 1).take(3) ++ control ++ NativeUniformTestData.instructions(
+          1,
+          t.stride,
+          inputs,
+          Some(Seq(31 -> 0, 31 -> 3580))
+        ) ++ Seq(cease)
+        code.zipWithIndex.foreach { case (word, i) => t.put(0x1000 + 4 * i, word) }
+        t.descriptor(); val q = d.io.draw.bits; q.version.poke(2.U); q.uniforms.version.poke(1.U);
+        q.uniforms.address.poke(NativeUniformTestData.root.U)
+        q.scratch.limit.poke((defaultBase + 3584).U);
+        q.scratch.allocationLimit.poke(((defaultBase + 3584 + 63) & ~BigInt(63)).U)
+        d.io.out.ready.poke(true.B); t.submit(); t.send(0); t.end(1)
+        t.until(d.io.completion.valid.peek().litToBoolean); d.io.completion.bits.spilledBatches.expect(1.U);
+        t.complete(0)
+        assert(t.exports.size == 1)
+        for (lane <- t.exports.head.lanes)
+          assert(
+            lane.colors.take(2) == Vector(NativeUniformTestData.value(31, 0), NativeUniformTestData.value(31, 3580))
+          )
+        assert(t.word(defaultBase) == NativeUniformTestData.value(31, 0));
+        assert(t.word(defaultBase + 3580) == NativeUniformTestData.value(31, 3580))
+        info(
+          "NATIVE_UNIFORM_DEFAULT_TAIL stage=1 privatePrefix544=true sharedPadding32=true activeInvocations4=true controlledSpill=true defaultFirstLast=true privateControlStores=true"
+        )
       }
-      info("NATIVE_UNIFORM_RECOVERY stage=1 scalarThenInvalidVector=true privateAliasRejected=true dataFault=true missingRoot=true identityFault=true heldRequestCancel=true noPartialExports=true healthyReuse=true")
     }
-  }
-
-  it should "read native uniform defaults sharing the final private-prefix line after a controlled spill" in {
-    simulate(new FragmentShaderHarness(local=true,lanes=4,warps=1,nativeProfile=true)){d=>val t=new Driver(d)
-      val inputs=6+4*2+2;val prefix=d.vp.prefixBytes(t.cap,2,4,version=2);val defaultBase=t.scratch+prefix
-      assert(prefix==544 && defaultBase%64==32)
-      NativeUniformTestData.fixture(1,defaultBase,t.put)
-      val control=Seq(addi(14,0,61),(BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(14)<<15)|(BigInt(4)<<12)|(BigInt(5)<<7)|0x57)++
-        address(6,7,(inputs+17)*t.stride)++Seq(vectorMemory(6,5,true))
-      val code=program(4,1).take(3)++control++NativeUniformTestData.instructions(1,t.stride,inputs,Some(Seq(31->0,31->3580)))++Seq(cease)
-      code.zipWithIndex.foreach{case(word,i)=>t.put(0x1000+4*i,word)}
-      t.descriptor();val q=d.io.draw.bits;q.version.poke(2.U);q.uniforms.version.poke(1.U);q.uniforms.address.poke(NativeUniformTestData.root.U)
-      q.scratch.limit.poke((defaultBase+3584).U);q.scratch.allocationLimit.poke(((defaultBase+3584+63)& ~BigInt(63)).U)
-      d.io.out.ready.poke(true.B);t.submit();t.send(0);t.end(1)
-      t.until(d.io.completion.valid.peek().litToBoolean);d.io.completion.bits.spilledBatches.expect(1.U);t.complete(0)
-      assert(t.exports.size==1)
-      for(lane<-t.exports.head.lanes)assert(lane.colors.take(2)==Vector(NativeUniformTestData.value(31,0),NativeUniformTestData.value(31,3580)))
-      assert(t.word(defaultBase)==NativeUniformTestData.value(31,0));assert(t.word(defaultBase+3580)==NativeUniformTestData.value(31,3580))
-      info("NATIVE_UNIFORM_DEFAULT_TAIL stage=1 privatePrefix544=true sharedPadding32=true activeInvocations4=true controlledSpill=true defaultFirstLast=true privateControlStores=true")
-    }
-  }
   }
 }
 
-class FragmentShaderStageSpec extends FragmentShaderStageBaseSpec(false,true)
+class FragmentShaderStageSpec extends FragmentShaderStageBaseSpec(false, true)
 
 /** Complete shared-CU fragment qualification stays local. */
 class FragmentShaderStageQualificationSpec extends FragmentShaderStageBaseSpec(false)

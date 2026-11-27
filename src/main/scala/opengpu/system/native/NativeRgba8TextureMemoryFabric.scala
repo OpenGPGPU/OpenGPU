@@ -11,13 +11,12 @@ object NativeRgba8TextureMemoryFabric {
     1 << log2Ceil(rendererTransactions + clusters * clusterStride)
 }
 
-/** Merge already-physical renderer, texture-fill and page-table requests.
-  * Translation belongs to the upstream clients. Each pair keeps sixteen data
-  * IDs and four page-walk IDs; neither may alias the renderer/DMA namespaces.
-  * Queued offers and accepted IDs remain owned through reply consumption.
+/** Merge already-physical renderer, texture-fill and page-table requests. Translation belongs to the upstream clients.
+  * Each pair keeps sixteen data IDs and four page-walk IDs; neither may alias the renderer/DMA namespaces. Queued
+  * offers and accepted IDs remain owned through reply consumption.
   */
-class NativeRgba8TextureMemoryFabric(config: GpuConfig = GpuConfig(),
-    rendererTransactions: Int = 64, clusters: Int = 2) extends Module {
+class NativeRgba8TextureMemoryFabric(config: GpuConfig = GpuConfig(), rendererTransactions: Int = 64, clusters: Int = 2)
+    extends Module {
   require(rendererTransactions >= 1 && isPow2(rendererTransactions))
   require(clusters >= 1 && clusters <= 8)
   val transactions: Int = NativeRgba8TextureMemoryFabric.transactions(rendererTransactions, clusters)
@@ -35,9 +34,12 @@ class NativeRgba8TextureMemoryFabric(config: GpuConfig = GpuConfig(),
   })
   private val arbiter = Module(new RRArbiter(new ComputeMemoryRequest(config, 64, transactions), 1 + 2 * clusters))
   private val requests = Module(new Queue(new ComputeMemoryRequest(config, 64, transactions), 2, pipe = true))
-  private val sources = Seq(io.rendererRequest) ++ (0 until clusters).flatMap(n => Seq(io.dataRequest(n), io.pageWalk(n)))
-  private val replies = Seq(io.rendererResponse) ++ (0 until clusters).flatMap(n => Seq(io.dataResponse(n), io.pageWalkResponse(n)))
-  private val bases = Seq(0) ++ (0 until clusters).flatMap(n => Seq(rendererTransactions + 32 * n, rendererTransactions + 32 * n + 16))
+  private val sources =
+    Seq(io.rendererRequest) ++ (0 until clusters).flatMap(n => Seq(io.dataRequest(n), io.pageWalk(n)))
+  private val replies =
+    Seq(io.rendererResponse) ++ (0 until clusters).flatMap(n => Seq(io.dataResponse(n), io.pageWalkResponse(n)))
+  private val bases =
+    Seq(0) ++ (0 until clusters).flatMap(n => Seq(rendererTransactions + 32 * n, rendererTransactions + 32 * n + 16))
   private val sizes = Seq(rendererTransactions) ++ (0 until clusters).flatMap(_ => Seq(16, 4))
   private val live = RegInit(VecInit(Seq.fill(transactions)(false.B)))
   private val id = io.memoryResponse.bits.transactionId
@@ -53,11 +55,16 @@ class NativeRgba8TextureMemoryFabric(config: GpuConfig = GpuConfig(),
     response.bits.transactionId := id - bases(n).U
   }
   requests.io.enq <> arbiter.io.out; io.memoryRequest <> requests.io.deq
-  io.memoryResponse.ready := VecInit(selects.zip(replies).map { case (selected, reply) => selected && reply.ready }).asUInt.orR
+  io.memoryResponse.ready := VecInit(
+    selects.zip(replies).map { case (selected, reply) => selected && reply.ready }
+  ).asUInt.orR
   when(io.memoryResponse.fire) { live(id) := false.B }
   when(arbiter.io.out.fire) {
     val accepted = arbiter.io.out.bits.transactionId
-    assert(!live(accepted) || (io.memoryResponse.fire && id === accepted), "texture fabric cannot reuse an unretired physical ID")
+    assert(
+      !live(accepted) || (io.memoryResponse.fire && id === accepted),
+      "texture fabric cannot reuse an unretired physical ID"
+    )
     live(accepted) := true.B
   }
   when(io.memoryResponse.valid) {

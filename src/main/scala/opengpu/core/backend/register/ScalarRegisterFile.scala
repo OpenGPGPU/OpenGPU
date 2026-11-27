@@ -53,9 +53,8 @@ class ScalarRegisterBank(config: GpuConfig) extends Module {
 
 /** Two-read/one-write scalar RF built from independent per-warp banks.
   *
-  * Each hardware warp owns a distinct 32 x XLEN bank. Only the selected bank
-  * receives write enable; read results are selected after the bank-local
-  * 32-entry read mux. Same-cycle read/write is explicitly write-first.
+  * Each hardware warp owns a distinct 32 x XLEN bank. Only the selected bank receives write enable; read results are
+  * selected after the bank-local 32-entry read mux. Same-cycle read/write is explicitly write-first.
   */
 class ScalarRegisterFile(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {

@@ -3,23 +3,27 @@ package opengpu.graphics
 import chisel3._
 import chisel3.util._
 
-class PersistentTileAttachmentStoreIO(externalTransfers: Boolean=false,bankedSamples: Boolean=false) extends Bundle {
+class PersistentTileAttachmentStoreIO(externalTransfers: Boolean = false, bankedSamples: Boolean = false)
+    extends Bundle {
+
   /** Optional enclosing line-buffer ownership; not a producer fault input. */
-  val externalDrained=if(externalTransfers) Some(Input(Bool())) else None
-  val externalWriteFault=if(externalTransfers) Some(Input(Bool())) else None
-  val quad=if(bankedSamples) Some(Flipped(Decoupled(new TileSampleQuad))) else None
-  val quadCompletion=if(bankedSamples) Some(Decoupled(new TileSampleQuadCompletion)) else None
-  val acceptedSamples=if(bankedSamples) Some(Output(UInt(3.W))) else None
-  val committedSamples=if(bankedSamples) Some(Output(UInt(3.W))) else None
+  val externalDrained = if (externalTransfers) Some(Input(Bool())) else None
+  val externalWriteFault = if (externalTransfers) Some(Input(Bool())) else None
+  val quad = if (bankedSamples) Some(Flipped(Decoupled(new TileSampleQuad))) else None
+  val quadCompletion = if (bankedSamples) Some(Decoupled(new TileSampleQuadCompletion)) else None
+  val acceptedSamples = if (bankedSamples) Some(Output(UInt(3.W))) else None
+  val committedSamples = if (bankedSamples) Some(Output(UInt(3.W))) else None
+
   /** Accepted local producer work/results drained; external exports may remain. */
-  val localDrained=if(bankedSamples) Some(Output(Bool())) else None
-  val localAborted=if(bankedSamples) Some(Output(Bool())) else None
+  val localDrained = if (bankedSamples) Some(Output(Bool())) else None
+  val localAborted = if (bankedSamples) Some(Output(Bool())) else None
   val pass = new TileRenderPassPort
   val fragmentX = Input(UInt(16.W))
   val fragmentY = Input(UInt(16.W))
   val permit = Output(Bool())
   val producerDrained = Input(Bool())
   val omDrained = Input(Bool())
+
   /** Accepted shader/staging fault pulse for this owner, not a prior owner's sticky status. */
   val executionFault = Input(Bool())
   val wordIndex = Input(UInt(10.W))
@@ -36,26 +40,30 @@ class PersistentTileAttachmentStoreIO(externalTransfers: Boolean=false,bankedSam
 }
 
 private class TileScalarWordRequest extends Bundle {
-  val memory=new OmMemoryRequest
-  val index=UInt(10.W)
-  val depth=Bool()
+  val memory = new OmMemoryRequest
+  val index = UInt(10.W)
+  val depth = Bool()
 }
 
-/** H1 single-owner tile SRAM. Draw completion never evicts the attachments.
-  * Clear tags cover unwritten samples as well as samples touched by shading;
-  * a store of a clear-start pass therefore exports the complete clear region.
-  * A configurable transfer window retains external ownership until pass drain.
+/** H1 single-owner tile SRAM. Draw completion never evicts the attachments. Clear tags cover unwritten samples as well
+  * as samples touched by shading; a store of a clear-start pass therefore exports the complete clear region. A
+  * configurable transfer window retains external ownership until pass drain.
   */
-class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
-  screenWidth: Int = 65535, screenHeight: Int = 65535,
-  useSramBlackBoxes: Boolean = false, storeCredits: Int = 1,
-  externalTransfers: Boolean = false,bankedSamples: Boolean = false) extends Module {
+class PersistentTileAttachmentStore(
+    maxSampleCount: Int = 4,
+    screenWidth: Int = 65535,
+    screenHeight: Int = 65535,
+    useSramBlackBoxes: Boolean = false,
+    storeCredits: Int = 1,
+    externalTransfers: Boolean = false,
+    bankedSamples: Boolean = false
+) extends Module {
   require(storeCredits > 0 && storeCredits <= 32)
   require(Set(1, 2, 4)(maxSampleCount))
   require(screenWidth > 0 && screenWidth <= 65535 && screenHeight > 0 && screenHeight <= 65535)
   private val planeWords = 256 * maxSampleCount
   private val indexBits = log2Ceil(planeWords)
-  val io = IO(new PersistentTileAttachmentStoreIO(externalTransfers,bankedSamples))
+  val io = IO(new PersistentTileAttachmentStoreIO(externalTransfers, bankedSamples))
 
   private val localMemory = Wire(new Bundle {
     val req = Decoupled(new OmMemoryRequest)
@@ -66,28 +74,45 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
   private val transferFault = WireDefault(false.B)
   private val resolveStoreEvent = Wire(Bool())
   private val transferOccupancy = Wire(UInt(6.W))
-  private val allTransfersDrained=transfersDrained && io.externalDrained.getOrElse(true.B)
+  private val allTransfersDrained = transfersDrained && io.externalDrained.getOrElse(true.B)
 
-  private val Seq(idle, admitting, running, hitRead, missRequest, missResponse, flushing,
-    resolveSample, resolveRead, resolveWrite, resolveResponse, completed,
-    quadMissProducts,quadMissRow,quadMissBase,quadMissAddress) = Enum(16)
+  private val Seq(
+    idle,
+    admitting,
+    running,
+    hitRead,
+    missRequest,
+    missResponse,
+    flushing,
+    resolveSample,
+    resolveRead,
+    resolveWrite,
+    resolveResponse,
+    completed,
+    quadMissProducts,
+    quadMissRow,
+    quadMissBase,
+    quadMissAddress
+  ) = Enum(16)
   private val state = RegInit(idle)
   private val descriptor = Reg(new TileRenderPassDescriptor)
   private val closing = RegInit(false.B)
   private val status = RegInit(TilePassStatus.success.U(TilePassStatus.width.W))
   private val failed = status =/= TilePassStatus.success.U
   private val abortNow = io.pass.cancel || io.executionFault
-  private val colorIo=if(!bankedSamples) Module(new TileAttachmentSram(planeWords,useSramBlackBoxes)).io
+  private val colorIo =
+    if (!bankedSamples) Module(new TileAttachmentSram(planeWords, useSramBlackBoxes)).io
     else Wire(new TileAttachmentSramIO(planeWords))
-  private val depthIo=if(!bankedSamples) Module(new TileAttachmentSram(planeWords,useSramBlackBoxes)).io
+  private val depthIo =
+    if (!bankedSamples) Module(new TileAttachmentSram(planeWords, useSramBlackBoxes)).io
     else Wire(new TileAttachmentSramIO(planeWords))
-  private val quadDrained=WireDefault(true.B)
-  private val quadRefillDrained=WireDefault(true.B)
-  private val scalarDrained=WireDefault(true.B)
-  private val quadColorMask=WireDefault(0.U(planeWords.W))
-  private val quadDepthMask=WireDefault(0.U(planeWords.W))
-  private val quadFillColor=WireDefault(0.U(planeWords.W))
-  private val quadFillDepth=WireDefault(0.U(planeWords.W))
+  private val quadDrained = WireDefault(true.B)
+  private val quadRefillDrained = WireDefault(true.B)
+  private val scalarDrained = WireDefault(true.B)
+  private val quadColorMask = WireDefault(0.U(planeWords.W))
+  private val quadDepthMask = WireDefault(0.U(planeWords.W))
+  private val quadFillColor = WireDefault(0.U(planeWords.W))
+  private val quadFillDepth = WireDefault(0.U(planeWords.W))
   private val export = Module(new TileAttachmentExport)
   export.io.begin := io.pass.begin.fire
   export.io.colorData := colorIo.readData
@@ -138,9 +163,9 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
   private val responseForClear = RegInit(false.B)
 
   io.pass.end.ready := state === running && !closing && !clearEngine.io.busy && !io.pass.clear.valid
-  if(bankedSamples) {
+  if (bankedSamples) {
     // A closing command must not prevent older upstream quads reaching SRAM.
-    io.pass.end.ready:=state===running && !closing && !clearEngine.io.busy && !io.pass.clear.valid &&
+    io.pass.end.ready := state === running && !closing && !clearEngine.io.busy && !io.pass.clear.valid &&
       io.producerDrained && io.omDrained && quadDrained && quadRefillDrained && scalarDrained && !responseValid
   }
   io.pass.active := state =/= idle && (state =/= completed || !allTransfersDrained)
@@ -218,25 +243,25 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
   private val omLocalY = (omPixel(7, 4) - descriptor.originY(3, 0))(3, 0)
   private val omSample = io.wordIndex & ((1.U(3.W) << descriptor.sampleMode) - 1.U)
   private val localOmIndex = (Cat(omLocalY, omLocalX) << descriptor.sampleMode) + omSample
-  private val scalar=Wire(Decoupled(new TileScalarWordRequest))
-  if(bankedSamples) {
-    val request=Module(new Queue(new TileScalarWordRequest,1))
-    val admit=state===running && quadDrained && !clearEngine.io.busy
-    request.io.enq.valid:=io.om.req.valid && admit
-    request.io.enq.bits.memory:=io.om.req.bits
-    request.io.enq.bits.index:=localOmIndex
-    request.io.enq.bits.depth:=io.depthPlane
-    io.om.req.ready:=request.io.enq.ready && admit
+  private val scalar = Wire(Decoupled(new TileScalarWordRequest))
+  if (bankedSamples) {
+    val request = Module(new Queue(new TileScalarWordRequest, 1))
+    val admit = state === running && quadDrained && !clearEngine.io.busy
+    request.io.enq.valid := io.om.req.valid && admit
+    request.io.enq.bits.memory := io.om.req.bits
+    request.io.enq.bits.index := localOmIndex
+    request.io.enq.bits.depth := io.depthPlane
+    io.om.req.ready := request.io.enq.ready && admit
     scalar <> request.io.deq
-    scalarDrained:= !request.io.deq.valid
-  }else {
-    scalar.valid:=io.om.req.valid;scalar.bits.memory:=io.om.req.bits
-    scalar.bits.index:=localOmIndex;scalar.bits.depth:=io.depthPlane
-    io.om.req.ready:=scalar.ready
+    scalarDrained := !request.io.deq.valid
+  } else {
+    scalar.valid := io.om.req.valid; scalar.bits.memory := io.om.req.bits
+    scalar.bits.index := localOmIndex; scalar.bits.depth := io.depthPlane
+    io.om.req.ready := scalar.ready
   }
-  private val operation=Wire(Decoupled(new OmMemoryRequest))
-  operation.valid:=Mux(clearEngine.io.busy,clearEngine.io.mem.req.valid,scalar.valid)
-  operation.bits:=Mux(clearEngine.io.busy,clearEngine.io.mem.req.bits,scalar.bits.memory)
+  private val operation = Wire(Decoupled(new OmMemoryRequest))
+  operation.valid := Mux(clearEngine.io.busy, clearEngine.io.mem.req.valid, scalar.valid)
+  operation.bits := Mux(clearEngine.io.busy, clearEngine.io.mem.req.bits, scalar.bits.memory)
   private val operationIndex = Mux(clearEngine.io.busy, clearEngine.io.wordIndex, scalar.bits.index)
   private val operationDepth = Mux(clearEngine.io.busy, clearEngine.io.depthPlane, scalar.bits.depth)
   private val wordIndex = operationIndex(indexBits - 1, 0)
@@ -282,8 +307,11 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
     }.elsewhen(failed || abortNow || taggedRead) {
       // A failed pass still drains old OM entries, but its completion reports
       // failure and it cannot publish these drain values as attachment stores.
-      response.data := Mux(failed || abortNow, 0.U,
-        Mux(selectedView.loadOp === AttachmentLoadOp.clear.U, selectedView.clearValue, 0.U))
+      response.data := Mux(
+        failed || abortNow,
+        0.U,
+        Mux(selectedView.loadOp === AttachmentLoadOp.clear.U, selectedView.clearValue, 0.U)
+      )
       responseValid := true.B
     }.elsewhen(selectedValid) {
       colorIo.readEnable := !operationDepth
@@ -302,8 +330,7 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
     }
   }
   when(state === hitRead) {
-    response.data := Mux(failed || abortNow, 0.U,
-      Mux(hitDepth, depthIo.readData, colorIo.readData))
+    response.data := Mux(failed || abortNow, 0.U, Mux(hitDepth, depthIo.readData, colorIo.readData))
     responseValid := true.B
     state := running
   }
@@ -327,11 +354,11 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
   private val lastInRow = flushX +& 1.U === descriptor.tileWidth &&
     flushSample === samplesPerPixel - 1.U
   private val lastInPlane = lastInRow && flushY +& 1.U === descriptor.tileHeight
-  private val nextCursor = Mux(lastInPlane,
+  private val nextCursor = Mux(
+    lastInPlane,
     Mux(flushDepth, (2 * planeWords).U, planeWords.U),
-    Mux(lastInRow,
-      Mux(flushDepth, planeWords.U, 0.U) + (((flushY +& 1.U) << 4) << descriptor.sampleMode),
-      cursor + 1.U))
+    Mux(lastInRow, Mux(flushDepth, planeWords.U, 0.U) + (((flushY +& 1.U) << 4) << descriptor.sampleMode), cursor + 1.U)
+  )
   private def advanceFlush(): Unit = {
     cursor := nextCursor
     when(lastInPlane) { flushRowBase := tileDepthBase }
@@ -359,57 +386,70 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
   private val exporting = state === flushing
   export.io.prepare.valid := exporting && !failed && !abortNow &&
     cursor =/= (2 * planeWords).U && flushNeeded
-  export.io.prepare.bits.address := flushAddress(31,0)
+  export.io.prepare.bits.address := flushAddress(31, 0)
   export.io.prepare.bits.clearValue := flushView.clearValue
   export.io.prepare.bits.fromSram := flushValid
   export.io.prepare.bits.depth := flushDepth
   export.io.local.req.ready := exporting && localMemory.req.ready
   export.io.local.resp.valid := exporting && localMemory.resp.valid
   export.io.local.resp.bits := localMemory.resp.bits
-  localMemory.req.valid := Mux(exporting,export.io.local.req.valid,
-    state === missRequest || (state === resolveWrite && (!failed || storeOffered)))
+  localMemory.req.valid := Mux(
+    exporting,
+    export.io.local.req.valid,
+    state === missRequest || (state === resolveWrite && (!failed || storeOffered))
+  )
   localMemory.req.bits := export.io.local.req.bits
   when(!exporting) {
     localMemory.req.bits.write := state =/= missRequest
-    localMemory.req.bits.addr := Mux(state === missRequest,missAddress,storeAddress)
+    localMemory.req.bits.addr := Mux(state === missRequest, missAddress, storeAddress)
     localMemory.req.bits.data := storeData
   }
-  localMemory.resp.ready := Mux(exporting,export.io.local.resp.ready,
-    state === missResponse || state === resolveResponse)
+  localMemory.resp.ready := Mux(
+    exporting,
+    export.io.local.resp.ready,
+    state === missResponse || state === resolveResponse
+  )
   when(state === missRequest && localMemory.req.fire) { state := missResponse }
   // Scalar/resolve fills have an unconditional sink in missResponse. Keep
   // their SRAM write controls independent of the quad refill ready path.
-  when(state===missResponse && !missForQuad && localMemory.resp.valid &&
-    !localResponseFault && !failed && !abortNow) {
+  when(
+    state === missResponse && !missForQuad && localMemory.resp.valid &&
+      !localResponseFault && !failed && !abortNow
+  ) {
     when(missDepth) {
-      depthIo.writeEnable:=true.B;depthIo.writeAddress:=missIndex
-      depthIo.writeData:=localMemory.resp.bits.data
-      depthValid:=depthValid.bitSet(missIndex,true.B)
+      depthIo.writeEnable := true.B; depthIo.writeAddress := missIndex
+      depthIo.writeData := localMemory.resp.bits.data
+      depthValid := depthValid.bitSet(missIndex, true.B)
     }.otherwise {
-      colorIo.writeEnable:=true.B;colorIo.writeAddress:=missIndex
-      colorIo.writeData:=localMemory.resp.bits.data
-      colorValid:=colorValid.bitSet(missIndex,true.B)
+      colorIo.writeEnable := true.B; colorIo.writeAddress := missIndex
+      colorIo.writeData := localMemory.resp.bits.data
+      colorValid := colorValid.bitSet(missIndex, true.B)
     }
   }
   when(state === missResponse && localMemory.resp.fire) {
-    assert(!localMemory.resp.bits.write && localMemory.resp.bits.addr === missAddress,
-      "tile load response must retain transaction ownership")
-    when(missForQuad) { state:=running }
+    assert(
+      !localMemory.resp.bits.write && localMemory.resp.bits.addr === missAddress,
+      "tile load response must retain transaction ownership"
+    )
+    when(missForQuad) { state := running }
       .elsewhen(missForResolve) {
-      when(localResponseFault || failed || abortNow) { state := completed }
-        .otherwise { accumulateResolve(localMemory.resp.bits.data) }
-    }.otherwise {
-      response.data := Mux(localResponseFault || failed || abortNow, 0.U, localMemory.resp.bits.data)
-      responseValid := true.B
-      state := running
-    }
+        when(localResponseFault || failed || abortNow) { state := completed }
+          .otherwise { accumulateResolve(localMemory.resp.bits.data) }
+      }
+      .otherwise {
+        response.data := Mux(localResponseFault || failed || abortNow, 0.U, localMemory.resp.bits.data)
+        responseValid := true.B
+        state := running
+      }
   }
   when(localMemory.resp.fire && localResponseFault) {
     status := TilePassStatus.memoryFault.U
     closing := true.B
   }
-  when(state === running && closing && io.producerDrained && io.omDrained && quadDrained && scalarDrained &&
-    !responseValid && !operation.valid && !io.om.req.valid && !clearEngine.io.busy) {
+  when(
+    state === running && closing && io.producerDrained && io.omDrained && quadDrained && scalarDrained &&
+      !responseValid && !operation.valid && !io.om.req.valid && !clearEngine.io.busy
+  ) {
     state := Mux(failed, completed, flushing)
   }
   when(state === flushing) {
@@ -438,9 +478,11 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
         colorIo.readEnable := true.B
         colorIo.readAddress := resolveIndex
         state := resolveRead
-      }.elsewhen(descriptor.color.loadOp =/= AttachmentLoadOp.load.U) {
+      }
+      .elsewhen(descriptor.color.loadOp =/= AttachmentLoadOp.load.U) {
         accumulateResolve(Mux(descriptor.color.loadOp === AttachmentLoadOp.clear.U, descriptor.color.clearValue, 0.U))
-      }.otherwise {
+      }
+      .otherwise {
         missAddress := resolveSourceAddress(31, 0)
         missIndex := resolveIndex
         missDepth := false.B
@@ -458,13 +500,15 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
     when(failed && !storeOffered) { state := completed }
       .elsewhen(localMemory.req.fire) {
         storeOffered := false.B
-        assert(localMemory.req.bits.addr===storeAddress,"resolve request changed its prepared destination")
+        assert(localMemory.req.bits.addr === storeAddress, "resolve request changed its prepared destination")
         state := resolveResponse
       }
   }
   when(state === resolveResponse && localMemory.resp.fire) {
-    assert(localMemory.resp.bits.write && localMemory.resp.bits.addr === storeAddress,
-      "resolve completion must acknowledge its outstanding destination")
+    assert(
+      localMemory.resp.bits.write && localMemory.resp.bits.addr === storeAddress,
+      "resolve completion must acknowledge its outstanding destination"
+    )
     for (c <- 0 until 4) resolveAcc(c) := 0.U
     resolveS := 0.U
     when(resolveX +& 1.U === descriptor.tileWidth) {
@@ -503,215 +547,248 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
     closing := true.B
   }
   when(io.externalWriteFault.getOrElse(false.B)) {
-    assert(!io.externalDrained.getOrElse(true.B),"a late write fault must retain its enclosing owner")
-    when(io.pass.active) { status:=TilePassStatus.memoryFault.U; closing:=true.B }
+    assert(!io.externalDrained.getOrElse(true.B), "a late write fault must retain its enclosing owner")
+    when(io.pass.active) { status := TilePassStatus.memoryFault.U; closing := true.B }
   }
   when(io.pass.completion.fire) { state := idle }
 
-  if(bankedSamples) {
-    val banks=Module(new BankedTileSampleSram(useSramBlackBoxes,writePorts=5,legacyPort=true))
-    val merge=Module(new TileSampleQuadMerge)
-    val admitted=admission.io.out.fire && admission.io.out.bits.valid && !failed && !abortNow
-    banks.io.begin:=admitted;banks.io.sampleMode:=descriptor.sampleMode
-    merge.io.begin:=admitted;merge.io.sampleMode:=descriptor.sampleMode
-    merge.io.cancel:=failed || abortNow
-    val probesDrained=Wire(Bool())
-    quadDrained:=merge.io.drained && banks.io.drained && probesDrained
-    val permitQuad=state===running && !closing && !failed && !abortNow &&
+  if (bankedSamples) {
+    val banks = Module(new BankedTileSampleSram(useSramBlackBoxes, writePorts = 5, legacyPort = true))
+    val merge = Module(new TileSampleQuadMerge)
+    val admitted = admission.io.out.fire && admission.io.out.bits.valid && !failed && !abortNow
+    banks.io.begin := admitted; banks.io.sampleMode := descriptor.sampleMode
+    merge.io.begin := admitted; merge.io.sampleMode := descriptor.sampleMode
+    merge.io.cancel := failed || abortNow
+    val probesDrained = Wire(Bool())
+    quadDrained := merge.io.drained && banks.io.drained && probesDrained
+    val permitQuad = state === running && !closing && !failed && !abortNow &&
       !clearEngine.io.busy && (!io.pass.clear.valid || !io.producerDrained) &&
       (!io.pass.end.valid || !io.producerDrained) &&
       !io.om.req.valid && scalarDrained && !responseValid
-    merge.io.in.valid:=io.quad.get.valid && permitQuad
-    merge.io.in.bits:=io.quad.get.bits
-    io.quad.get.ready:=merge.io.in.ready && permitQuad
+    merge.io.in.valid := io.quad.get.valid && permitQuad
+    merge.io.in.bits := io.quad.get.bits
+    io.quad.get.ready := merge.io.in.ready && permitQuad
     io.quadCompletion.get <> merge.io.out
-    io.acceptedSamples.get:=merge.io.acceptedSamples
-    io.committedSamples.get:=merge.io.committedSamples
+    io.acceptedSamples.get := merge.io.acceptedSamples
+    io.committedSamples.get := merge.io.committedSamples
     when(merge.io.in.fire) {
-      for(p <- 0 until 4)when(merge.io.in.bits.mask(p)) {
-        val pixel=merge.io.in.bits.index(p)>>descriptor.sampleMode
-        assert(pixel(3,0)<descriptor.tileWidth && pixel(7,4)<descriptor.tileHeight,
-          "quad sample leaves its admitted tile extent")
+      for (p <- 0 until 4) when(merge.io.in.bits.mask(p)) {
+        val pixel = merge.io.in.bits.index(p) >> descriptor.sampleMode
+        assert(
+          pixel(3, 0) < descriptor.tileWidth && pixel(7, 4) < descriptor.tileHeight,
+          "quad sample leaves its admitted tile extent"
+        )
       }
     }
-    val legacy=banks.io.legacy.get
-    val quadFillActive=missForQuad && (state===missRequest || state===missResponse ||
-      state===quadMissProducts || state===quadMissRow || state===quadMissBase || state===quadMissAddress)
-    quadRefillDrained:= !quadFillActive
+    val legacy = banks.io.legacy.get
+    val quadFillActive = missForQuad && (state === missRequest || state === missResponse ||
+      state === quadMissProducts || state === quadMissRow || state === quadMissBase || state === quadMissAddress)
+    quadRefillDrained := !quadFillActive
     // Canceled arithmetic may drain before an already offered refill commits.
     // Retain tagged SRAM ownership until that refill response has drained too.
-    legacy.exclusive:=merge.io.drained && !quadFillActive && probesDrained
-    legacy.readEnable:=colorIo.readEnable || depthIo.readEnable
-    legacy.readIndex:=Mux(depthIo.readEnable,depthIo.readAddress,colorIo.readAddress)
-    colorIo.readData:=legacy.colorData;depthIo.readData:=legacy.depthStencilData
-    legacy.writeEnable:=colorIo.writeEnable || depthIo.writeEnable
-    legacy.writeIndex:=Mux(depthIo.writeEnable,depthIo.writeAddress,colorIo.writeAddress)
-    legacy.colorEnable:=colorIo.writeEnable;legacy.depthStencilEnable:=depthIo.writeEnable
-    legacy.color:=colorIo.writeData;legacy.depthStencil:=depthIo.writeData
+    legacy.exclusive := merge.io.drained && !quadFillActive && probesDrained
+    legacy.readEnable := colorIo.readEnable || depthIo.readEnable
+    legacy.readIndex := Mux(depthIo.readEnable, depthIo.readAddress, colorIo.readAddress)
+    colorIo.readData := legacy.colorData; depthIo.readData := legacy.depthStencilData
+    legacy.writeEnable := colorIo.writeEnable || depthIo.writeEnable
+    legacy.writeIndex := Mux(depthIo.writeEnable, depthIo.writeAddress, colorIo.writeAddress)
+    legacy.colorEnable := colorIo.writeEnable; legacy.depthStencilEnable := depthIo.writeEnable
+    legacy.color := colorIo.writeData; legacy.depthStencil := depthIo.writeData
     when(legacy.readEnable || legacy.writeEnable) {
-      assert(merge.io.drained,"scalar/clear/export SRAM access must drain the quad owner")
+      assert(merge.io.drained, "scalar/clear/export SRAM access must drain the quad owner")
     }
-    class QuadMiss extends BankedTileSampleRead {val depth=Bool()}
-    val misses=Module(new RRArbiter(new QuadMiss,4))
-    val probePending=RegInit(VecInit(Seq.fill(4)(false.B)))
-    val probeKnown=RegInit(VecInit(Seq.fill(4)(false.B)))
-    val probePass=Reg(Vec(4,Bool()))
-    val probeReply=Reg(Vec(4,new BankedTileSampleReply))
-    val probeDeliver=RegInit(VecInit(Seq.fill(4)(false.B)))
-    val bankReadOffered=RegInit(VecInit(Seq.fill(4)(false.B)))
-    val bankReadIsProbe=Reg(Vec(4,Bool()))
-    probesDrained:= !(probePending.asUInt|probeKnown.asUInt|probeDeliver.asUInt|bankReadOffered.asUInt).orR
-    when(admitted){assert(probesDrained,"provisional reads must drain before tile reuse")}
-    for(p <- 0 until 4) {
-      val read=merge.io.read(p)
-      val index=read.bits.index(indexBits-1,0)
-      val colorMiss= !colorValid(index) && descriptor.color.loadOp===AttachmentLoadOp.load.U
-      val depthMiss= !depthValid(index) && descriptor.depth.loadOp===AttachmentLoadOp.load.U
-      val testsEnabled=merge.io.readState(p).depthTestEnable || merge.io.readState(p).stencilTestEnable
-      val aborted=failed || abortNow
+    class QuadMiss extends BankedTileSampleRead { val depth = Bool() }
+    val misses = Module(new RRArbiter(new QuadMiss, 4))
+    val probePending = RegInit(VecInit(Seq.fill(4)(false.B)))
+    val probeKnown = RegInit(VecInit(Seq.fill(4)(false.B)))
+    val probePass = Reg(Vec(4, Bool()))
+    val probeReply = Reg(Vec(4, new BankedTileSampleReply))
+    val probeDeliver = RegInit(VecInit(Seq.fill(4)(false.B)))
+    val bankReadOffered = RegInit(VecInit(Seq.fill(4)(false.B)))
+    val bankReadIsProbe = Reg(Vec(4, Bool()))
+    probesDrained := !(probePending.asUInt | probeKnown.asUInt | probeDeliver.asUInt | bankReadOffered.asUInt).orR
+    when(admitted) { assert(probesDrained, "provisional reads must drain before tile reuse") }
+    for (p <- 0 until 4) {
+      val read = merge.io.read(p)
+      val index = read.bits.index(indexBits - 1, 0)
+      val colorMiss = !colorValid(index) && descriptor.color.loadOp === AttachmentLoadOp.load.U
+      val depthMiss = !depthValid(index) && descriptor.depth.loadOp === AttachmentLoadOp.load.U
+      val testsEnabled = merge.io.readState(p).depthTestEnable || merge.io.readState(p).stencilTestEnable
+      val aborted = failed || abortNow
       // Cold color is not needed by a rejected sample. Keep the merge's
       // original read pending while a tagged depth/stencil probe runs under
       // that sample's existing reservation. Resident reads keep the fast path.
-      val needsProbe=colorMiss && testsEnabled && !depthMiss && !probeKnown(p) && !aborted
-      val returnProbe=probeKnown(p) && (!probePass(p) || aborted)
-      val colorLoad=colorMiss && (!testsEnabled || (probeKnown(p) && probePass(p)))
-      val needsLoad=(depthMiss || colorLoad) && !aborted && !returnProbe
-      val available= !probePending(p) && !probeDeliver(p)
-      val normal= !needsLoad && !needsProbe && !returnProbe
-      val issuingProbe=Mux(bankReadOffered(p),bankReadIsProbe(p),needsProbe)
-      banks.io.read(p).valid:=read.valid && available && (bankReadOffered(p) || normal || needsProbe)
-      banks.io.read(p).bits:=read.bits
-      banks.io.read(p).bits.ticket:=Mux(issuingProbe,read.bits.ticket|128.U,read.bits.ticket)
-      read.ready:=available && Mux(bankReadOffered(p),!bankReadIsProbe(p) && banks.io.read(p).ready,
-        returnProbe || (normal && banks.io.read(p).ready))
+      val needsProbe = colorMiss && testsEnabled && !depthMiss && !probeKnown(p) && !aborted
+      val returnProbe = probeKnown(p) && (!probePass(p) || aborted)
+      val colorLoad = colorMiss && (!testsEnabled || (probeKnown(p) && probePass(p)))
+      val needsLoad = (depthMiss || colorLoad) && !aborted && !returnProbe
+      val available = !probePending(p) && !probeDeliver(p)
+      val normal = !needsLoad && !needsProbe && !returnProbe
+      val issuingProbe = Mux(bankReadOffered(p), bankReadIsProbe(p), needsProbe)
+      banks.io.read(p).valid := read.valid && available && (bankReadOffered(p) || normal || needsProbe)
+      banks.io.read(p).bits := read.bits
+      banks.io.read(p).bits.ticket := Mux(issuingProbe, read.bits.ticket | 128.U, read.bits.ticket)
+      read.ready := available && Mux(
+        bankReadOffered(p),
+        !bankReadIsProbe(p) && banks.io.read(p).ready,
+        returnProbe || (normal && banks.io.read(p).ready)
+      )
       when(banks.io.read(p).valid && !banks.io.read(p).ready && !bankReadOffered(p)) {
-        bankReadOffered(p):=true.B;bankReadIsProbe(p):=needsProbe
+        bankReadOffered(p) := true.B; bankReadIsProbe(p) := needsProbe
       }
-      when(banks.io.read(p).fire){bankReadOffered(p):=false.B}
-      val wasHeld=RegNext(banks.io.read(p).valid && !banks.io.read(p).ready,false.B)
-      val heldRead=RegEnable(banks.io.read(p).bits.asUInt,banks.io.read(p).valid && !banks.io.read(p).ready)
-      when(wasHeld){assert(banks.io.read(p).valid && banks.io.read(p).bits.asUInt===heldRead,
-        "offered normal/provisional SRAM read must survive cancellation unchanged")}
+      when(banks.io.read(p).fire) { bankReadOffered(p) := false.B }
+      val wasHeld = RegNext(banks.io.read(p).valid && !banks.io.read(p).ready, false.B)
+      val heldRead = RegEnable(banks.io.read(p).bits.asUInt, banks.io.read(p).valid && !banks.io.read(p).ready)
+      when(wasHeld) {
+        assert(
+          banks.io.read(p).valid && banks.io.read(p).bits.asUInt === heldRead,
+          "offered normal/provisional SRAM read must survive cancellation unchanged"
+        )
+      }
       when(banks.io.read(p).fire && issuingProbe) {
-        assert(!read.bits.ticket(7),"the parent reserves bit7 for provisional reads")
-        probePending(p):=true.B
+        assert(!read.bits.ticket(7), "the parent reserves bit7 for provisional reads")
+        probePending(p) := true.B
       }
       when(read.fire) {
-        probeKnown(p):=false.B
-        when(returnProbe && !bankReadOffered(p)){probeDeliver(p):=true.B}
+        probeKnown(p) := false.B
+        when(returnProbe && !bankReadOffered(p)) { probeDeliver(p) := true.B }
       }
-      misses.io.in(p).valid:=read.valid && available && !bankReadOffered(p) && needsLoad
-      misses.io.in(p).bits.index:=read.bits.index
-      misses.io.in(p).bits.ticket:=read.bits.ticket
+      misses.io.in(p).valid := read.valid && available && !bankReadOffered(p) && needsLoad
+      misses.io.in(p).bits.index := read.bits.index
+      misses.io.in(p).bits.ticket := read.bits.ticket
       // Read depth/stencil first when both planes are cold, so the probe can
       // suppress a color refill without changing late stencil/depth updates.
-      misses.io.in(p).bits.depth:=depthMiss
-      val bankResponse=banks.io.response(p)
-      val isProbe=bankResponse.bits.ticket(7)
-      val responseIndex=bankResponse.bits.index(indexBits-1,0)
-      val oldDepth=Mux(depthValid(responseIndex),bankResponse.bits.depthStencil,
-        Mux(descriptor.depth.loadOp===AttachmentLoadOp.clear.U,descriptor.depth.clearValue,0.U))
+      misses.io.in(p).bits.depth := depthMiss
+      val bankResponse = banks.io.response(p)
+      val isProbe = bankResponse.bits.ticket(7)
+      val responseIndex = bankResponse.bits.index(indexBits - 1, 0)
+      val oldDepth = Mux(
+        depthValid(responseIndex),
+        bankResponse.bits.depthStencil,
+        Mux(descriptor.depth.loadOp === AttachmentLoadOp.clear.U, descriptor.depth.clearValue, 0.U)
+      )
       when(bankResponse.fire && isProbe) {
-        assert(probePending(p) && !probeKnown(p) && !probeDeliver(p),"unowned provisional SRAM reply")
-        assert(bankResponse.bits.index===read.bits.index &&
-          bankResponse.bits.ticket===(read.bits.ticket|128.U),"provisional read lost sample ownership")
-        probePending(p):=false.B;probeKnown(p):=true.B
-        probePass(p):=TileSampleTests.passes(merge.io.readDepth(p),oldDepth,merge.io.readState(p))
-        probeReply(p):=bankResponse.bits
-        probeReply(p).ticket:=bankResponse.bits.ticket&127.U
-        probeReply(p).depthStencil:=oldDepth
-        probeReply(p).color:=0.U
+        assert(probePending(p) && !probeKnown(p) && !probeDeliver(p), "unowned provisional SRAM reply")
+        assert(
+          bankResponse.bits.index === read.bits.index &&
+            bankResponse.bits.ticket === (read.bits.ticket | 128.U),
+          "provisional read lost sample ownership"
+        )
+        probePending(p) := false.B; probeKnown(p) := true.B
+        probePass(p) := TileSampleTests.passes(merge.io.readDepth(p), oldDepth, merge.io.readState(p))
+        probeReply(p) := bankResponse.bits
+        probeReply(p).ticket := bankResponse.bits.ticket & 127.U
+        probeReply(p).depthStencil := oldDepth
+        probeReply(p).color := 0.U
       }
       // Capture effective clear/load values at the first offer, and enqueue a
       // provisional result behind any older normal reply. The flow path keeps
       // continuously ready resident reads at their original throughput.
-      val replies=Module(new Queue(new BankedTileSampleReply,1,pipe=true,flow=true))
-      replies.io.enq.valid:=probeDeliver(p) || (bankResponse.valid && !isProbe)
-      replies.io.enq.bits:=banks.io.response(p).bits
-      val packedColor=Mux(colorValid(responseIndex),banks.io.response(p).bits.color,
-        Mux(descriptor.color.loadOp===AttachmentLoadOp.clear.U,descriptor.color.clearValue,0.U))
-      replies.io.enq.bits.color:=PixelFormat.decode(packedColor,descriptor.colorFormat)
-      replies.io.enq.bits.depthStencil:=oldDepth
-      when(probeDeliver(p)) {replies.io.enq.bits:=probeReply(p)}
+      val replies = Module(new Queue(new BankedTileSampleReply, 1, pipe = true, flow = true))
+      replies.io.enq.valid := probeDeliver(p) || (bankResponse.valid && !isProbe)
+      replies.io.enq.bits := banks.io.response(p).bits
+      val packedColor = Mux(
+        colorValid(responseIndex),
+        banks.io.response(p).bits.color,
+        Mux(descriptor.color.loadOp === AttachmentLoadOp.clear.U, descriptor.color.clearValue, 0.U)
+      )
+      replies.io.enq.bits.color := PixelFormat.decode(packedColor, descriptor.colorFormat)
+      replies.io.enq.bits.depthStencil := oldDepth
+      when(probeDeliver(p)) { replies.io.enq.bits := probeReply(p) }
       merge.io.response(p) <> replies.io.deq
-      bankResponse.ready:=Mux(isProbe,true.B,replies.io.enq.ready && !probeDeliver(p))
-      when(replies.io.enq.fire && probeDeliver(p)){probeDeliver(p):=false.B}
+      bankResponse.ready := Mux(isProbe, true.B, replies.io.enq.ready && !probeDeliver(p))
+      when(replies.io.enq.fire && probeDeliver(p)) { probeDeliver(p) := false.B }
       banks.io.write(p) <> merge.io.write(p)
-      banks.io.write(p).bits.color:=PixelFormat.encode(merge.io.write(p).bits.color,descriptor.colorFormat)
+      banks.io.write(p).bits.color := PixelFormat.encode(merge.io.write(p).bits.color, descriptor.colorFormat)
     }
     // A newer scalar request waits for quad drain. It must not prevent the
     // older quad's refill, otherwise both owners would wait on each other.
-    misses.io.out.ready:=state===running && !responseValid && !clearEngine.io.busy && !failed && !abortNow
+    misses.io.out.ready := state === running && !responseValid && !clearEngine.io.busy && !failed && !abortNow
     when(misses.io.out.fire) {
-      missIndex:=misses.io.out.bits.index;missDepth:=misses.io.out.bits.depth
-      missForQuad:=true.B;missForResolve:=false.B
-      state:=quadMissProducts
+      missIndex := misses.io.out.bits.index; missDepth := misses.io.out.bits.depth
+      missForQuad := true.B; missForResolve := false.B
+      state := quadMissProducts
     }
-    val rowLow=Reg(UInt(20.W));val rowHigh=Reg(UInt(20.W))
-    val rowOffset=Reg(UInt(32.W));val baseRow=Reg(UInt(32.W));val columnByte=Reg(UInt(8.W))
-    when(state===quadMissProducts) {
-      val pixel=missIndex>>descriptor.sampleMode
-      val view=Mux(missDepth,descriptor.depth,descriptor.color)
-      val sample=missIndex&((1.U(3.W)<<descriptor.sampleMode)-1.U)
-      rowLow:=pixel(7,4)*view.rowPitch(15,0)
-      rowHigh:=pixel(7,4)*view.rowPitch(31,16)
-      columnByte:=((pixel(3,0)<<descriptor.sampleMode)+sample)<<2
-      state:=Mux(failed || abortNow,running,quadMissRow)
+    val rowLow = Reg(UInt(20.W)); val rowHigh = Reg(UInt(20.W))
+    val rowOffset = Reg(UInt(32.W)); val baseRow = Reg(UInt(32.W)); val columnByte = Reg(UInt(8.W))
+    when(state === quadMissProducts) {
+      val pixel = missIndex >> descriptor.sampleMode
+      val view = Mux(missDepth, descriptor.depth, descriptor.color)
+      val sample = missIndex & ((1.U(3.W) << descriptor.sampleMode) - 1.U)
+      rowLow := pixel(7, 4) * view.rowPitch(15, 0)
+      rowHigh := pixel(7, 4) * view.rowPitch(31, 16)
+      columnByte := ((pixel(3, 0) << descriptor.sampleMode) + sample) << 2
+      state := Mux(failed || abortNow, running, quadMissRow)
     }
-    when(state===quadMissRow) {
-      rowOffset:=rowLow+(rowHigh<<16)
-      state:=Mux(failed || abortNow,running,quadMissBase)
+    when(state === quadMissRow) {
+      rowOffset := rowLow + (rowHigh << 16)
+      state := Mux(failed || abortNow, running, quadMissBase)
     }
-    when(state===quadMissBase) {
-      baseRow:=Mux(missDepth,tileDepthBase,tileColorBase)+rowOffset
-      state:=Mux(failed || abortNow,running,quadMissAddress)
+    when(state === quadMissBase) {
+      baseRow := Mux(missDepth, tileDepthBase, tileColorBase) + rowOffset
+      state := Mux(failed || abortNow, running, quadMissAddress)
     }
-    when(state===quadMissAddress) {
-      missAddress:=baseRow+columnByte
-      state:=Mux(failed || abortNow,running,missRequest)
+    when(state === quadMissAddress) {
+      missAddress := baseRow + columnByte
+      state := Mux(failed || abortNow, running, missRequest)
     }
-    val fill=banks.io.write(4)
-    val fillOffered=RegInit(false.B)
-    val fillAllowed= !localResponseFault && !failed && !abortNow
-    fill.valid:=state===missResponse && missForQuad && localMemory.resp.valid &&
+    val fill = banks.io.write(4)
+    val fillOffered = RegInit(false.B)
+    val fillAllowed = !localResponseFault && !failed && !abortNow
+    fill.valid := state === missResponse && missForQuad && localMemory.resp.valid &&
       (fillOffered || fillAllowed)
-    fill.bits.index:=missIndex;fill.bits.color:=localMemory.resp.bits.data
-    fill.bits.depthStencil:=localMemory.resp.bits.data
-    fill.bits.colorEnable:= !missDepth;fill.bits.depthStencilEnable:=missDepth
-    when(fill.valid && !fill.ready){fillOffered:=true.B}
-    when(fill.fire){fillOffered:=false.B}
-    val fillWasHeld=RegNext(fill.valid && !fill.ready,false.B)
-    val heldFill=RegEnable(fill.bits.asUInt,fill.valid && !fill.ready)
+    fill.bits.index := missIndex; fill.bits.color := localMemory.resp.bits.data
+    fill.bits.depthStencil := localMemory.resp.bits.data
+    fill.bits.colorEnable := !missDepth; fill.bits.depthStencilEnable := missDepth
+    when(fill.valid && !fill.ready) { fillOffered := true.B }
+    when(fill.fire) { fillOffered := false.B }
+    val fillWasHeld = RegNext(fill.valid && !fill.ready, false.B)
+    val heldFill = RegEnable(fill.bits.asUInt, fill.valid && !fill.ready)
     when(fillWasHeld) {
-      assert(fill.valid && fill.bits.asUInt===heldFill,"offered quad refill must survive cancellation until SRAM commit")
+      assert(
+        fill.valid && fill.bits.asUInt === heldFill,
+        "offered quad refill must survive cancellation until SRAM commit"
+      )
     }
-    when(state===missResponse && missForQuad) {
+    when(state === missResponse && missForQuad) {
       // An already offered refill retains its external response and data until
       // actual SRAM commit, even if cancel/fault arrives while the bank stalls.
-      localMemory.resp.ready:=Mux(fillOffered,fill.ready,!fillAllowed || fill.ready)
+      localMemory.resp.ready := Mux(fillOffered, fill.ready, !fillAllowed || fill.ready)
     }
-    val colorCommits=VecInit((0 until 4).map(p=>merge.io.write(p).fire && merge.io.write(p).bits.colorEnable)).asUInt
-    val depthCommits=VecInit((0 until 4).map(p=>merge.io.write(p).fire && merge.io.write(p).bits.depthStencilEnable)).asUInt
-    val fillColorCommit=fill.fire && !missDepth
-    val fillDepthCommit=fill.fire && missDepth
-    quadColorMask:=(0 until 4).map(p=>Mux(colorCommits(p),
-      UIntToOH(merge.io.write(p).bits.index(indexBits-1,0),planeWords),0.U(planeWords.W))).reduce(_|_)
-    quadDepthMask:=(0 until 4).map(p=>Mux(depthCommits(p),
-      UIntToOH(merge.io.write(p).bits.index(indexBits-1,0),planeWords),0.U(planeWords.W))).reduce(_|_)
-    quadFillColor:=Mux(fillColorCommit,UIntToOH(missIndex,planeWords),0.U(planeWords.W))
-    quadFillDepth:=Mux(fillDepthCommit,UIntToOH(missIndex,planeWords),0.U(planeWords.W))
+    val colorCommits = VecInit(
+      (0 until 4).map(p => merge.io.write(p).fire && merge.io.write(p).bits.colorEnable)
+    ).asUInt
+    val depthCommits = VecInit(
+      (0 until 4).map(p => merge.io.write(p).fire && merge.io.write(p).bits.depthStencilEnable)
+    ).asUInt
+    val fillColorCommit = fill.fire && !missDepth
+    val fillDepthCommit = fill.fire && missDepth
+    quadColorMask := (0 until 4)
+      .map(p =>
+        Mux(colorCommits(p), UIntToOH(merge.io.write(p).bits.index(indexBits - 1, 0), planeWords), 0.U(planeWords.W))
+      )
+      .reduce(_ | _)
+    quadDepthMask := (0 until 4)
+      .map(p =>
+        Mux(depthCommits(p), UIntToOH(merge.io.write(p).bits.index(indexBits - 1, 0), planeWords), 0.U(planeWords.W))
+      )
+      .reduce(_ | _)
+    quadFillColor := Mux(fillColorCommit, UIntToOH(missIndex, planeWords), 0.U(planeWords.W))
+    quadFillDepth := Mux(fillDepthCommit, UIntToOH(missIndex, planeWords), 0.U(planeWords.W))
     // Every committed index selects one bitmap bit. Use the four commit
     // strobes as enables instead of reducing the decoded tile-wide masks.
-    assert(colorCommits.orR===quadColorMask.orR && depthCommits.orR===quadDepthMask.orR)
-    assert(fillColorCommit===quadFillColor.orR && fillDepthCommit===quadFillDepth.orR)
-    when(colorCommits.orR || fillColorCommit) {colorValid:=colorValid|quadColorMask|quadFillColor}
-    when(depthCommits.orR || fillDepthCommit) {depthValid:=depthValid|quadDepthMask|quadFillDepth}
-    when(colorCommits.orR){colorDirty:=colorDirty|quadColorMask}
-    when(depthCommits.orR){depthDirty:=depthDirty|quadDepthMask}
+    assert(colorCommits.orR === quadColorMask.orR && depthCommits.orR === quadDepthMask.orR)
+    assert(fillColorCommit === quadFillColor.orR && fillDepthCommit === quadFillDepth.orR)
+    when(colorCommits.orR || fillColorCommit) { colorValid := colorValid | quadColorMask | quadFillColor }
+    when(depthCommits.orR || fillDepthCommit) { depthValid := depthValid | quadDepthMask | quadFillDepth }
+    when(colorCommits.orR) { colorDirty := colorDirty | quadColorMask }
+    when(depthCommits.orR) { depthDirty := depthDirty | quadDepthMask }
   }
 
-  io.localDrained.foreach(_:=quadDrained && quadRefillDrained && scalarDrained && !responseValid && !clearEngine.io.busy)
-  io.localAborted.foreach(_:=failed || abortNow)
+  io.localDrained.foreach(
+    _ := quadDrained && quadRefillDrained && scalarDrained && !responseValid && !clearEngine.io.busy
+  )
+  io.localAborted.foreach(_ := failed || abortNow)
   io.events.resident := io.pass.active
   io.events.admitted := admission.io.out.fire && admission.io.out.bits.valid && !failed && !abortNow
   io.events.completed := io.pass.completion.fire
@@ -721,7 +798,10 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
   io.events.transferOccupancy := transferOccupancy
   // The wide tag lookup already serves the local response path. Register its
   // diagnostic pulse so it does not also consume the external I/O budget.
-  io.events.clearRead := RegNext(operation.fire && !operation.bits.write && taggedRead &&
-    selectedView.loadOp === AttachmentLoadOp.clear.U && !failed && !abortNow, false.B)
+  io.events.clearRead := RegNext(
+    operation.fire && !operation.bits.write && taggedRead &&
+      selectedView.loadOp === AttachmentLoadOp.clear.U && !failed && !abortNow,
+    false.B
+  )
   io.events.attachmentStall := operation.valid && !operation.ready
 }

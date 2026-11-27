@@ -23,13 +23,16 @@ private[graphics] class SharedNativeTextureHarness(config: GpuConfig, stage: Int
   endpoint.io.texFormat := io.native.texFormat; endpoint.io.texBase := io.native.texBase
   endpoint.io.texWidth := io.native.texWidth; endpoint.io.texHeight := io.native.texHeight
   endpoint.io.wrapClamp := io.native.wrapClamp; endpoint.io.coordinatePolicy := io.native.coordinatePolicy
-  endpoint.io.texMaxLevel := io.native.texMaxLevel; endpoint.io.lodBias := io.native.lodBias; endpoint.io.minLevel := io.native.minLevel
-  endpoint.io.clearParameters := io.native.clearParameters; endpoint.io.cancel := io.native.cancel; endpoint.io.invalidate := io.native.invalidate
+  endpoint.io.texMaxLevel := io.native.texMaxLevel; endpoint.io.lodBias := io.native.lodBias;
+  endpoint.io.minLevel := io.native.minLevel
+  endpoint.io.clearParameters := io.native.clearParameters; endpoint.io.cancel := io.native.cancel;
+  endpoint.io.invalidate := io.native.invalidate
   io.native.busy := endpoint.io.busy; io.native.coordinateFault := endpoint.io.coordinateFault
   io.native.responseFault := endpoint.io.responseFault; io.native.faultAddress := endpoint.io.faultAddress
   io.native.faultAddressValid := endpoint.io.faultAddressValid
   cluster.io.client(0) <> endpoint.io.grouped.get
-  cluster.io.satp := 0.U; cluster.io.flush.valid := false.B; cluster.io.flush.bits := 0.U.asTypeOf(cluster.io.flush.bits)
+  cluster.io.satp := 0.U; cluster.io.flush.valid := false.B;
+  cluster.io.flush.bits := 0.U.asTypeOf(cluster.io.flush.bits)
   cluster.io.invalidate := false.B; cluster.io.cancel := false.B
   io.dataRequest <> cluster.io.memoryRequest; cluster.io.memoryResponse <> io.dataResponse
   io.pageWalk <> cluster.io.pageWalk; cluster.io.pageWalkResponse <> io.pageWalkResponse

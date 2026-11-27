@@ -54,7 +54,8 @@ class NativeRgba8TextureSharedWindowSpec extends AnyFlatSpec {
       for (c <- 0 until 3) {
         val p = d.io.client(c)
         held(c).foreach(v => { p.response.valid.expect(true.B); assert(p.response.bits.peek().litValue == v) })
-        held(c) = if (p.response.valid.peek().litToBoolean && !responseReady(c)) Some(p.response.bits.peek().litValue) else None
+        held(c) =
+          if (p.response.valid.peek().litToBoolean && !responseReady(c)) Some(p.response.bits.peek().litValue) else None
         if (p.request.valid.peek().litToBoolean && p.request.ready.peek().litToBoolean) {
           accepted(c) += offers(c).get; offers(c) = None
         }
@@ -64,7 +65,9 @@ class NativeRgba8TextureSharedWindowSpec extends AnyFlatSpec {
           p.response.bits.status.expect(status.U)
           if (status == 0) p.response.bits.rgba.zipWithIndex.foreach { case (v, i) => v.expect((q.token * 16 + i).U) }
           if (status == 4) p.response.bits.rgba.foreach(_.expect(0.U))
-          if (status == 3) { p.response.bits.faultAddressValid.expect(true.B); p.response.bits.faultAddress.expect(0x80001000L.U) }
+          if (status == 3) {
+            p.response.bits.faultAddressValid.expect(true.B); p.response.bits.faultAddress.expect(0x80001000L.U)
+          }
           retired(c) += ((q.token, status))
         }
       }
@@ -76,19 +79,31 @@ class NativeRgba8TextureSharedWindowSpec extends AnyFlatSpec {
         }
         if (p.request.valid.peek().litToBoolean && childrenReady(n)) {
           val q = p.request.bits
-          issued += Issued(n, q.tag.peek().litValue, q.coordinates(0).peek().litValue.toInt,
-            q.lookup.table.identity.generation.peek().litValue.toInt, d.io.cancelOnAdmission(n).peek().litToBoolean)
+          issued += Issued(
+            n,
+            q.tag.peek().litValue,
+            q.coordinates(0).peek().litValue.toInt,
+            q.lookup.table.identity.generation.peek().litValue.toInt,
+            d.io.cancelOnAdmission(n).peek().litToBoolean
+          )
         }
       }
       d.clock.step(); cycle += 1
     }
-    def until(p: => Boolean): Unit = { var n = 0; while (!p && n < 512) { tick(); n += 1 }; assert(p, s"window stalled cycle=$cycle") }
-    def submit(c: Int, q: Query, pair: Int = 0, status: Int = 0): Unit = { offer(c, q, pair, status); until(offers(c).isEmpty) }
+    def until(p: => Boolean): Unit = {
+      var n = 0; while (!p && n < 512) { tick(); n += 1 }; assert(p, s"window stalled cycle=$cycle")
+    }
+    def submit(c: Int, q: Query, pair: Int = 0, status: Int = 0): Unit = {
+      offer(c, q, pair, status); until(offers(c).isEmpty)
+    }
     def result(token: Int, status: Int = 0): Unit = {
       until(issued.exists(_.token == token)); val r = issued.find(_.token == token).get
       tick(Some((r, status))); until(replyOffers(r.pair).isEmpty)
     }
-    def drain(): Unit = { responseReady.indices.foreach(c => responseReady(c) = true); until(!d.io.busy.peek().litToBoolean && offers.forall(_.isEmpty)); assert(expected.forall(_.isEmpty)) }
+    def drain(): Unit = {
+      responseReady.indices.foreach(c => responseReady(c) = true);
+      until(!d.io.busy.peek().litToBoolean && offers.forall(_.isEmpty)); assert(expected.forall(_.isEmpty))
+    }
   }
 
   it should "arbitrate a same-bank collection against publication and drain cancellation without losing a held reply" in {
@@ -107,7 +122,9 @@ class NativeRgba8TextureSharedWindowSpec extends AnyFlatSpec {
       assert(t.retired(0).toVector == Vector((100, 0), (101, 4), (102, 0), (103, 4)))
       d.io.cancel.poke(false.B)
       t.submit(0, Query(104)); t.result(104); t.drain()
-      info("NATIVE_RESPONSE_SRAM sameBankReadWriteConflict=true writerBackpressure=true heldReplyImmutable=true cancellationDrain=true healthyReuse=true")
+      info(
+        "NATIVE_RESPONSE_SRAM sameBankReadWriteConflict=true writerBackpressure=true heldReplyImmutable=true cancellationDrain=true healthyReuse=true"
+      )
     }
   }
 
@@ -139,8 +156,13 @@ class NativeRgba8TextureSharedWindowSpec extends AnyFlatSpec {
           if (client.request.valid.peek().litToBoolean && client.request.ready.peek().litToBoolean) admitted(n) += 1
           if (child.response.valid.peek().litToBoolean && child.response.ready.peek().litToBoolean) replies(n).dequeue()
           if (child.request.valid.peek().litToBoolean) {
-            replies(n).enqueue(Reply(child.request.bits.tag.peek().litValue,
-              child.request.bits.coordinates(0).peek().litValue, cycle + 64))
+            replies(n).enqueue(
+              Reply(
+                child.request.bits.tag.peek().litValue,
+                child.request.bits.coordinates(0).peek().litValue,
+                cycle + 64
+              )
+            )
           }
           if (client.response.valid.peek().litToBoolean) {
             val token = retired(n) + n * 1024
@@ -158,7 +180,9 @@ class NativeRgba8TextureSharedWindowSpec extends AnyFlatSpec {
       }
       assert(cycles(0).slice(32, 480) == cycles(1).slice(32, 480))
       assert(replies.forall(_.isEmpty)); d.io.busy.expect(false.B)
-      info("NATIVE_RESPONSE_SRAM clients=5 clusters=2 rowsPerCluster=128 orderedResults=1024 steadyCycles=448 samplesPerCycle=2")
+      info(
+        "NATIVE_RESPONSE_SRAM clients=5 clusters=2 rowsPerCluster=128 orderedResults=1024 steadyCycles=448 samplesPerCycle=2"
+      )
     }
   }
 
@@ -176,7 +200,9 @@ class NativeRgba8TextureSharedWindowSpec extends AnyFlatSpec {
       t.result(0); t.responseReady(0) = true; t.until(t.offers(0).isEmpty)
       for (token <- 1 to 4) t.result(token)
       t.drain()
-      info("NATIVE_SHARED_RESERVATIONS rows8=true clients3=true minimum2=true hotBorrower4=true otherClientsProgress=true borrowedRowReuse=true")
+      info(
+        "NATIVE_SHARED_RESERVATIONS rows8=true clients3=true minimum2=true hotBorrower4=true otherClientsProgress=true borrowedRowReuse=true"
+      )
     }
   }
 
@@ -191,7 +217,9 @@ class NativeRgba8TextureSharedWindowSpec extends AnyFlatSpec {
       t.result(1, 3); t.until(d.io.client(0).response.valid.peek().litToBoolean)
       d.io.client(0).response.bits.status.expect(3.U)
       t.drain(); assert(t.retired(0).toVector == Vector((1, 3), (2, 0)))
-      info("NATIVE_SHARED_ORDER dualPairAdmissionII1=true repeatedCallerTag=true outOfOrderCollection=true perClientOrderedRetirement=true independentClientProgress=true primaryFault=true")
+      info(
+        "NATIVE_SHARED_ORDER dualPairAdmissionII1=true repeatedCallerTag=true outOfOrderCollection=true perClientOrderedRetirement=true independentClientProgress=true primaryFault=true"
+      )
     }
   }
 
@@ -211,7 +239,9 @@ class NativeRgba8TextureSharedWindowSpec extends AnyFlatSpec {
       d.io.cancel.poke(false.B); d.io.allow.poke(true.B); t.childrenReady(1) = true
       t.submit(0, Query(6)); t.result(6); t.drain()
       assert(t.retired(0).last == (6, 0))
-      info("NATIVE_SHARED_HELD_RESET collectedReplyImmutable=true primaryFaultPreserved=true queuedCancelledLocally=true heldOfferAcknowledged=true sameIdentityAndFullTagReused=true")
+      info(
+        "NATIVE_SHARED_HELD_RESET collectedReplyImmutable=true primaryFaultPreserved=true queuedCancelledLocally=true heldOfferAcknowledged=true sameIdentityAndFullTagReused=true"
+      )
     }
   }
 
@@ -248,7 +278,9 @@ class NativeRgba8TextureSharedWindowSpec extends AnyFlatSpec {
         assert(t.retired(0).last == ((first, if (fault) 3 else 0)))
         assert(t.retired(1).last == ((second, if (cancel) 4 else 0)))
       }
-      info("NATIVE_SHARED_BANKS simultaneousReplies=true equalLocalRows=true primaryFaultPreserved=true cancelledPeerZeroed=true heldRepliesImmutable=true crossPairReuse=true")
+      info(
+        "NATIVE_SHARED_BANKS simultaneousReplies=true equalLocalRows=true primaryFaultPreserved=true cancelledPeerZeroed=true heldRepliesImmutable=true crossPairReuse=true"
+      )
     }
   }
   it should "poison every matching queued tag without cancelling another identity or client" in {
@@ -264,7 +296,9 @@ class NativeRgba8TextureSharedWindowSpec extends AnyFlatSpec {
       for (token <- 1 to 4) t.result(token)
       t.drain(); t.submit(0, Query(5)); t.result(5); t.drain()
       assert(!t.issued.last.poisoned && t.retired(0).last == (5, 0))
-      info("NATIVE_SHARED_SCOPED_CANCEL queuedAdmissionPoisoned=true repeatedFullTags=true otherGenerationAndClientUnaffected=true sameIdentityAndTagReuse=true")
+      info(
+        "NATIVE_SHARED_SCOPED_CANCEL queuedAdmissionPoisoned=true repeatedFullTags=true otherGenerationAndClientUnaffected=true sameIdentityAndTagReuse=true"
+      )
     }
   }
 

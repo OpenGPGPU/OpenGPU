@@ -19,12 +19,13 @@ class ScalarMemoryFault(config: GpuConfig) extends Bundle {
 }
 
 class ScalarMemoryUnit(
-  config: GpuConfig = GpuConfig(),
-  lineBytes: Int = 64, helperInvocations: Boolean = false
+    config: GpuConfig = GpuConfig(),
+    lineBytes: Int = 64,
+    helperInvocations: Boolean = false
 ) extends Module {
   private val offsetWidth = log2Ceil(lineBytes)
   val io = IO(new Bundle {
-    val invocations=if(helperInvocations)Some(Input(Vec(config.warps,new WarpInvocationPolicy(config))))else None
+    val invocations = if (helperInvocations) Some(Input(Vec(config.warps, new WarpInvocationPolicy(config)))) else None
     val in = Flipped(Decoupled(new ScalarIssuedInstruction(config)))
     val cacheRequest = Decoupled(new VectorCacheLineRequest(config, lineBytes))
     val cacheResponse = Flipped(Decoupled(new VectorCacheLineResponse(lineBytes)))
@@ -49,19 +50,23 @@ class ScalarMemoryUnit(
   private val shiftedRead = response.readData >> (byteOffset << 3)
   private val byteValue = shiftedRead(7, 0)
   private val halfValue = shiftedRead(15, 0)
-  private val loadValue = MuxLookup(funct3, shiftedRead(31, 0))(Seq(
-    "b000".U -> Cat(Fill(24, byteValue(7)), byteValue),
-    "b001".U -> Cat(Fill(16, halfValue(15)), halfValue),
-    "b010".U -> shiftedRead(31, 0),
-    "b100".U -> Cat(0.U(24.W), byteValue),
-    "b101".U -> Cat(0.U(16.W), halfValue)
-  ))
+  private val loadValue = MuxLookup(funct3, shiftedRead(31, 0))(
+    Seq(
+      "b000".U -> Cat(Fill(24, byteValue(7)), byteValue),
+      "b001".U -> Cat(Fill(16, halfValue(15)), halfValue),
+      "b010".U -> shiftedRead(31, 0),
+      "b100".U -> Cat(0.U(24.W), byteValue),
+      "b101".U -> Cat(0.U(16.W), halfValue)
+    )
+  )
   private val bytes = 1.U << size
-  private val baseMask = MuxLookup(size, 1.U(lineBytes.W))(Seq(
-    0.U -> 1.U(lineBytes.W),
-    1.U -> 3.U(lineBytes.W),
-    2.U -> 15.U(lineBytes.W)
-  ))
+  private val baseMask = MuxLookup(size, 1.U(lineBytes.W))(
+    Seq(
+      0.U -> 1.U(lineBytes.W),
+      1.U -> 3.U(lineBytes.W),
+      2.U -> 15.U(lineBytes.W)
+    )
+  )
 
   io.in.ready := state === State.idle
   io.cacheRequest.valid := state === State.request && !misaligned && !suppressed
@@ -101,19 +106,28 @@ class ScalarMemoryUnit(
     instruction := io.in.bits
     val effectiveAddress = io.in.bits.rs1Data + io.in.bits.decode.decoded.immediate
     address := effectiveAddress
-    response:=0.U.asTypeOf(response)
+    response := 0.U.asTypeOf(response)
     val requestSize = io.in.bits.decode.instruction(13, 12)
-    suppressed:=(if(helperInvocations)io.in.bits.decode.decoded.memoryWrite &&
-      !HelperInvocationPolicy.store(config,HelperInvocationPolicy.select(io.invocations.get,io.in.bits.decode.warpId),io.in.bits.decode.activeMask,effectiveAddress,1.U(4.W)<<requestSize)
-      else false.B)
-    misaligned := MuxLookup(requestSize, false.B)(Seq(
-      1.U -> effectiveAddress(0),
-      2.U -> effectiveAddress(1, 0).orR
-    ))
+    suppressed := (if (helperInvocations)
+                     io.in.bits.decode.decoded.memoryWrite &&
+                     !HelperInvocationPolicy.store(
+                       config,
+                       HelperInvocationPolicy.select(io.invocations.get, io.in.bits.decode.warpId),
+                       io.in.bits.decode.activeMask,
+                       effectiveAddress,
+                       1.U(4.W) << requestSize
+                     )
+                   else false.B)
+    misaligned := MuxLookup(requestSize, false.B)(
+      Seq(
+        1.U -> effectiveAddress(0),
+        2.U -> effectiveAddress(1, 0).orR
+      )
+    )
     state := State.request
   }
   when(state === State.request) {
-    when(suppressed){state:=State.commit}
+    when(suppressed) { state := State.commit }
       .elsewhen(misaligned) { state := State.fault }
       .elsewhen(io.cacheRequest.fire) { state := State.response }
   }
@@ -126,8 +140,8 @@ class ScalarMemoryUnit(
 
 /** Locks the selected requester until its response returns. */
 class SharedCacheLinePort(
-  config: GpuConfig = GpuConfig(),
-  lineBytes: Int = 64
+    config: GpuConfig = GpuConfig(),
+    lineBytes: Int = 64
 ) extends Module {
   val io = IO(new Bundle {
     val scalarRequest = Flipped(Decoupled(new VectorCacheLineRequest(config, lineBytes)))
@@ -139,8 +153,7 @@ class SharedCacheLinePort(
     val sharedRequest = Decoupled(new VectorCacheLineRequest(config, lineBytes))
     val sharedResponse = Flipped(Decoupled(new VectorCacheLineResponse(lineBytes)))
   })
-  private val arbiter = Module(new RRArbiter(
-    new VectorCacheLineRequest(config, lineBytes), 3))
+  private val arbiter = Module(new RRArbiter(new VectorCacheLineRequest(config, lineBytes), 3))
   private val busy = RegInit(false.B)
   private val source = Reg(UInt(2.W))
   arbiter.io.in(0) <> io.scalarRequest
@@ -162,10 +175,12 @@ class SharedCacheLinePort(
   io.scalarResponse.bits := io.sharedResponse.bits
   io.vectorResponse.bits := io.sharedResponse.bits
   io.fpuResponse.bits := io.sharedResponse.bits
-  io.sharedResponse.ready := MuxLookup(source, false.B)(Seq(
-    0.U -> io.scalarResponse.ready,
-    1.U -> io.vectorResponse.ready,
-    2.U -> io.fpuResponse.ready
-  )) && busy
+  io.sharedResponse.ready := MuxLookup(source, false.B)(
+    Seq(
+      0.U -> io.scalarResponse.ready,
+      1.U -> io.vectorResponse.ready,
+      2.U -> io.fpuResponse.ready
+    )
+  ) && busy
   when(io.sharedResponse.fire) { busy := false.B }
 }

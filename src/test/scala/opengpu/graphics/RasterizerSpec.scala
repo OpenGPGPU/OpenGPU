@@ -109,9 +109,11 @@ class RasterizerSpec extends AnyFlatSpec {
           ef > 0 || (ef == 0 && (af < 0 || (af == 0 && bf < 0)))
         }
       }
-      val expected = (0 until 16).flatMap { y => (0 until 16).flatMap { x =>
-        if (inside(x, y)) Some((x, y)) else None
-      } }.toSet
+      val expected = (0 until 16).flatMap { y =>
+        (0 until 16).flatMap { x =>
+          if (inside(x, y)) Some((x, y)) else None
+        }
+      }.toSet
       assert(covered == expected, s"coverage mismatch: ${(covered -- expected)} vs ${(expected -- covered)}")
 
       // A second draw of the same triangle, clipped to [4,8) x [4,8).
@@ -136,8 +138,7 @@ class RasterizerSpec extends AnyFlatSpec {
         cycles += 1
       }
       val box = expected.filter { case (x, y) => x >= 4 && x < 8 && y >= 4 && y < 8 }
-      assert(clipped == box,
-        s"scissor mismatch: extra ${(clipped -- box)} missing ${(box -- clipped)}")
+      assert(clipped == box, s"scissor mismatch: extra ${(clipped -- box)} missing ${(box -- clipped)}")
       dut.io.scissorEnable.poke(false.B)
     }
   }
@@ -213,17 +214,27 @@ class RasterizerSpec extends AnyFlatSpec {
       }
       assert(cycles < 8000)
       assert(covered.nonEmpty)
-      assert(covered.forall { case (x, y) => x < 16 && y < 16 },
-        s"pixels outside the programmed 16x16 mode: ${covered.filter { case (x, y) => x >= 16 || y >= 16 }}")
+      assert(
+        covered.forall { case (x, y) => x < 16 && y < 16 },
+        s"pixels outside the programmed 16x16 mode: ${covered.filter { case (x, y) => x >= 16 || y >= 16 }}"
+      )
     }
   }
 
   it should "cover edge-sharing triangles exactly once (no cracks, no double-draw)" in {
     val config = GraphicsConfig(screenWidth = 16, screenHeight = 16, subPixelBits = 8)
     // Above-left triangle: shares the diagonal with the below-right triangle.
-    val t1 = ((config.toFixed(2), config.toFixed(2)), (config.toFixed(14), config.toFixed(2)), (config.toFixed(2), config.toFixed(14)))
+    val t1 = (
+      (config.toFixed(2), config.toFixed(2)),
+      (config.toFixed(14), config.toFixed(2)),
+      (config.toFixed(2), config.toFixed(14))
+    )
     // Below-right triangle: shares the diagonal x+y==16 edge boundary pixels.
-    val t2 = ((config.toFixed(14), config.toFixed(2)), (config.toFixed(14), config.toFixed(14)), (config.toFixed(2), config.toFixed(14)))
+    val t2 = (
+      (config.toFixed(14), config.toFixed(2)),
+      (config.toFixed(14), config.toFixed(14)),
+      (config.toFixed(2), config.toFixed(14))
+    )
     simulate(new TriangleRasterizer(config)) { dut =>
       def drain(t: ((Int, Int), (Int, Int), (Int, Int))): Set[(Int, Int)] = {
         dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
@@ -255,8 +266,7 @@ class RasterizerSpec extends AnyFlatSpec {
   }
 
   it should "skip empty quads and retain complete TL/TR/BL/BR groups around covered samples" in {
-    val config = GraphicsConfig(screenWidth = 16, screenHeight = 16,
-      subPixelBits = 8)
+    val config = GraphicsConfig(screenWidth = 16, screenHeight = 16, subPixelBits = 8)
     simulate(new TriangleRasterizer(config, quadMode = true)) { dut =>
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
       dut.io.sampleMode.poke(0.U)
@@ -277,9 +287,11 @@ class RasterizerSpec extends AnyFlatSpec {
       while (!dut.io.draw.ready.peek().litToBoolean && guard < 2000) {
         if (dut.io.quad.valid.peek().litToBoolean) {
           quads += (0 until 4).map { k =>
-            (dut.io.quad.bits.lanes(k).x.peek().litValue.toInt,
+            (
+              dut.io.quad.bits.lanes(k).x.peek().litValue.toInt,
               dut.io.quad.bits.lanes(k).y.peek().litValue.toInt,
-              dut.io.quad.bits.lanes(k).covered.peek().litToBoolean)
+              dut.io.quad.bits.lanes(k).covered.peek().litToBoolean
+            )
           }
         }
         dut.clock.step(); guard += 1
@@ -289,16 +301,20 @@ class RasterizerSpec extends AnyFlatSpec {
       quads.foreach { lanes =>
         val (x, y, _) = lanes.head
         assert((x & 1) == 0 && (y & 1) == 0)
-        assert(lanes.map(p => (p._1, p._2)) ==
-          Seq((x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)))
+        assert(
+          lanes.map(p => (p._1, p._2)) ==
+            Seq((x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1))
+        )
         assert(lanes.exists(_._3), "a fully uncovered quad must not reach the shader")
       }
       val emitted = quads.flatten
       val covered = emitted.collect { case (x, y, true) => (x, y) }.toSet
       // This winding's top-left rule excludes x=2/y=2 and owns the diagonal.
-      val expected = (3 until 12).flatMap { y => (3 until 12).collect {
-        case x if x + y <= 14 => (x, y)
-      }}.toSet
+      val expected = (3 until 12).flatMap { y =>
+        (3 until 12).collect {
+          case x if x + y <= 14 => (x, y)
+        }
+      }.toSet
       assert(covered == expected)
       assert(emitted.exists(!_._3), "edge quads must contain helper lanes")
       val expectedOrigins = expected.map { case (x, y) => (x & ~1, y & ~1) }
@@ -354,8 +370,10 @@ class RasterizerSpec extends AnyFlatSpec {
         }
         dut.io.draw.valid.poke(true.B); dut.clock.step(); dut.io.draw.valid.poke(false.B)
         var cycles = 0
-        while (!dut.io.quad.valid.peek().litToBoolean &&
-          !dut.io.draw.ready.peek().litToBoolean && cycles < 100) {
+        while (
+          !dut.io.quad.valid.peek().litToBoolean &&
+          !dut.io.draw.ready.peek().litToBoolean && cycles < 100
+        ) {
           dut.clock.step(); cycles += 1
         }
         if (mode == 0) {
@@ -365,16 +383,20 @@ class RasterizerSpec extends AnyFlatSpec {
           dut.io.quad.valid.expect(true.B)
           def snapshot(): Seq[BigInt] = (0 until 4).flatMap { k =>
             val lane = dut.io.quad.bits.lanes(k)
-            Seq(lane.x.peek().litValue, lane.y.peek().litValue,
-              lane.e0.peek().litValue, lane.e1.peek().litValue,
-              lane.e2.peek().litValue, lane.coverageMask.peek().litValue)
+            Seq(
+              lane.x.peek().litValue,
+              lane.y.peek().litValue,
+              lane.e0.peek().litValue,
+              lane.e1.peek().litValue,
+              lane.e2.peek().litValue,
+              lane.coverageMask.peek().litValue
+            )
           }
           val stalled = snapshot()
           dut.clock.step(4)
           dut.io.quad.valid.expect(true.B)
           assert(snapshot() == stalled)
-          assert((0 until 4).exists(k =>
-            dut.io.quad.bits.lanes(k).coverageMask.peek().litValue != 0))
+          assert((0 until 4).exists(k => dut.io.quad.bits.lanes(k).coverageMask.peek().litValue != 0))
           dut.io.quad.ready.poke(true.B); dut.clock.step()
           cycles = 0
           while (!dut.io.draw.ready.peek().litToBoolean && cycles < 100) {
@@ -390,7 +412,11 @@ class RasterizerSpec extends AnyFlatSpec {
   it should "skip a back-facing triangle when cull mode is back" in {
     val config = GraphicsConfig(screenWidth = 16, screenHeight = 16, subPixelBits = 8)
     // Same geometry, but reversed winding => back-facing (negative area).
-    val tri = ((config.toFixed(2), config.toFixed(2)), (config.toFixed(2), config.toFixed(14)), (config.toFixed(14), config.toFixed(2)))
+    val tri = (
+      (config.toFixed(2), config.toFixed(2)),
+      (config.toFixed(2), config.toFixed(14)),
+      (config.toFixed(14), config.toFixed(2))
+    )
     simulate(new TriangleRasterizer(config)) { dut =>
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
       dut.io.sampleMode.poke(0.U)
@@ -421,7 +447,8 @@ class RasterizerSpec extends AnyFlatSpec {
       val planes = Seq(
         plane(f(1)._1, f(1)._2, f(2)._1, f(2)._2),
         plane(f(2)._1, f(2)._2, f(0)._1, f(0)._2),
-        plane(f(0)._1, f(0)._2, f(1)._1, f(1)._2))
+        plane(f(0)._1, f(0)._2, f(1)._1, f(1)._2)
+      )
       val areaV = { val (a, b, c) = planes(0); a * f(0)._1 + b * f(0)._2 + c }
       val front = areaV >= 0
       def inside(px: Int, py: Int): Boolean = {
@@ -436,13 +463,14 @@ class RasterizerSpec extends AnyFlatSpec {
           ef > 0 || (ef == 0 && (af < 0 || (af == 0 && bf < 0)))
         }
       }
-      (0 until 64).flatMap { y => (0 until 64).flatMap { x =>
-        if (inside(x, y)) Some((x, y)) else None } }.toSet
+      (0 until 64).flatMap { y =>
+        (0 until 64).flatMap { x =>
+          if (inside(x, y)) Some((x, y)) else None
+        }
+      }.toSet
     }
 
-    def drain(dut: TriangleRasterizer,
-              tri: Seq[(Int, Int)],
-              cull: Int): Set[(Int, Int)] = {
+    def drain(dut: TriangleRasterizer, tri: Seq[(Int, Int)], cull: Int): Set[(Int, Int)] = {
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
       dut.io.sampleMode.poke(0.U)
       dut.io.pixel.ready.poke(true.B)
@@ -456,8 +484,7 @@ class RasterizerSpec extends AnyFlatSpec {
       var guard = 0
       while (!dut.io.draw.ready.peek().litToBoolean && guard < 20000) {
         if (dut.io.pixel.valid.peek().litToBoolean)
-          got += ((dut.io.pixel.bits.x.peek().litValue.toInt,
-            dut.io.pixel.bits.y.peek().litValue.toInt))
+          got += ((dut.io.pixel.bits.x.peek().litValue.toInt, dut.io.pixel.bits.y.peek().litValue.toInt))
         dut.clock.step(); guard += 1
       }
       assert(guard < 20000, "rasterizer did not drain")
@@ -481,9 +508,11 @@ class RasterizerSpec extends AnyFlatSpec {
           tri = Seq((4, 4), (40, 12), (12, 40))
         val exp = expected(tri)
         val got = drain(dut, tri, 0)
-        assert(got == exp,
+        assert(
+          got == exp,
           s"triangle $t $tri mismatch: hw-only=${(got -- exp).take(6)} " +
-            s"sw-only=${(exp -- got).take(6)}")
+            s"sw-only=${(exp -- got).take(6)}"
+        )
       }
     }
   }
@@ -493,14 +522,16 @@ class RasterizerSpec extends AnyFlatSpec {
     val verts = Seq(
       (config.toFixed(2), config.toFixed(6)),
       (config.toFixed(14), config.toFixed(7)),
-      (config.toFixed(3), config.toFixed(13)))
+      (config.toFixed(3), config.toFixed(13))
+    )
 
     def plane(ax: Long, ay: Long, bx: Long, by: Long): (Long, Long, Long) =
       ((ay - by), (bx - ax), (ax * by - bx * ay))
     val planes = Array(
       plane(verts(1)._1, verts(1)._2, verts(2)._1, verts(2)._2),
       plane(verts(2)._1, verts(2)._2, verts(0)._1, verts(0)._2),
-      plane(verts(0)._1, verts(0)._2, verts(1)._1, verts(1)._2))
+      plane(verts(0)._1, verts(0)._2, verts(1)._1, verts(1)._2)
+    )
     val area0 = { val (a, b, c) = planes(0); a * verts(0)._1 + b * verts(0)._2 + c }
     val front = area0 >= 0
     val tl = planes.map { case (a, b, _) =>
@@ -513,18 +544,20 @@ class RasterizerSpec extends AnyFlatSpec {
     val qdy = planes.map { case (_, b, _) => (b << config.subPixelBits) / 4 }
 
     def expected(mode: Int): Set[(Int, Int)] =
-      (0 until 16).flatMap { py => (0 until 16).flatMap { px =>
-        val x = px.toLong << config.subPixelBits
-        val y = py.toLong << config.subPixelBits
-        val e = planes.map { case (a, b, c) => a * x + b * y + c }
-        val any = Msaa.positions(mode).exists { case (sx, sy) =>
-          (0 until 3).forall { i =>
-            val v = e(i) + sx.toLong * qdx(i) + sy.toLong * qdy(i)
-            if (front) v > 0 || (v == 0 && tl(i)) else v < 0 || (v == 0 && tl(i))
+      (0 until 16).flatMap { py =>
+        (0 until 16).flatMap { px =>
+          val x = px.toLong << config.subPixelBits
+          val y = py.toLong << config.subPixelBits
+          val e = planes.map { case (a, b, c) => a * x + b * y + c }
+          val any = Msaa.positions(mode).exists { case (sx, sy) =>
+            (0 until 3).forall { i =>
+              val v = e(i) + sx.toLong * qdx(i) + sy.toLong * qdy(i)
+              if (front) v > 0 || (v == 0 && tl(i)) else v < 0 || (v == 0 && tl(i))
+            }
           }
+          if (any) Some((px, py)) else None
         }
-        if (any) Some((px, py)) else None
-      } }.toSet
+      }.toSet
 
     for (mode <- 1 to 2) {
       simulate(new TriangleRasterizer(config)) { dut =>
@@ -545,15 +578,16 @@ class RasterizerSpec extends AnyFlatSpec {
         var guard = 0
         while (!dut.io.draw.ready.peek().litToBoolean && guard < 10000) {
           if (dut.io.pixel.valid.peek().litToBoolean)
-            got += ((dut.io.pixel.bits.x.peek().litValue.toInt,
-              dut.io.pixel.bits.y.peek().litValue.toInt))
+            got += ((dut.io.pixel.bits.x.peek().litValue.toInt, dut.io.pixel.bits.y.peek().litValue.toInt))
           dut.clock.step(); guard += 1
         }
         assert(guard < 10000, s"multisample mode $mode did not drain")
         val exp = expected(mode)
-        assert(got.toSet == exp,
+        assert(
+          got.toSet == exp,
           s"mode $mode mismatch: hw-only=${(got.toSet -- exp).take(6)} " +
-            s"sw-only=${(exp -- got.toSet).take(6)}")
+            s"sw-only=${(exp -- got.toSet).take(6)}"
+        )
       }
     }
   }

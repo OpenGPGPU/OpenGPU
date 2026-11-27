@@ -9,11 +9,15 @@ object EmitWorkgroupBarrierEpoch extends App {
   val sliced = args(0) match {
     case "whole-grid" => false
     case "grid-slice" => true
-    case other => throw new IllegalArgumentException(other)
+    case other        => throw new IllegalArgumentException(other)
   }
   EmitRtl.emit(
     new SingleCuKernelController(GpuConfig(), gridSlices = sliced),
     args(1),
-    Array("-disable-all-randomization", "-strip-debug-info",
-      "--lowering-options=disallowLocalVariables,disallowPackedArrays"))
+    Array(
+      "-disable-all-randomization",
+      "-strip-debug-info",
+      "--lowering-options=disallowLocalVariables,disallowPackedArrays"
+    )
+  )
 }

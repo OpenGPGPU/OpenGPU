@@ -12,150 +12,176 @@ import opengpu.core.memory.{
   SharedAtomicResponse
 }
 
-/** Renderer boundary shared with the host. Native external rendering retains
-  * the register/DMA interface without allocating a second rendering datapath.
+/** Renderer boundary shared with the host. Native external rendering retains the register/DMA interface without
+  * allocating a second rendering datapath.
   */
 class RenderCoreIO(
-  gpuConfig: GpuConfig,
-  sharedShader: Option[SharedCuShaderConfig],
-  persistentAttachments: Boolean,
-  bankedAttachments: Boolean
+    gpuConfig: GpuConfig,
+    sharedShader: Option[SharedCuShaderConfig],
+    persistentAttachments: Boolean,
+    bankedAttachments: Boolean
 ) extends Bundle {
-    /** Persistent mode replaces legacy start/register submission with one
-      * immutable, bounded command-list job and a tagged completion. */
-    val tileJob = if (persistentAttachments) Some(Flipped(Decoupled(new TileCommandJob))) else None
-    val tileCompletion = if (persistentAttachments) Some(Decoupled(new TileRenderPassCompletion)) else None
-    val tileCancel = if (persistentAttachments) Some(Input(Bool())) else None
-    /** Sidebands apply to a response accepted on the corresponding port. */
-    val commandMemoryFault = if (persistentAttachments) Some(Input(Bool())) else None
-    val attachmentMemoryFault = if (persistentAttachments) Some(Input(Bool())) else None
-    val textureMemoryFault = if (persistentAttachments) Some(Input(Bool())) else None
-    val tileEvents = if (persistentAttachments) Some(Output(new TileAttachmentEvents)) else None
-    val tileAcceptedSamples=if(bankedAttachments)Some(Output(UInt(3.W)))else None
-    val tileCommittedSamples=if(bankedAttachments)Some(Output(UInt(3.W)))else None
-    val shared = sharedShader.map(pool => Flipped(new SharedCuGraphicsPort(
-      gpuConfig, pool.taskIdWidth, pool.numComputeUnits)))
-    val cmdBase = Input(UInt(32.W))
-    val cmdCount = Input(UInt(16.W))
-    val start = Input(Bool())
-    val cbMem = new Bundle {
-      val req = Decoupled(new OmMemoryRequest)
-      val resp = Flipped(Decoupled(new OmMemoryResponse))
-    }
-    val fbMem = new Bundle {
-      val req = Decoupled(new OmMemoryRequest)
-      val resp = Flipped(Decoupled(new OmMemoryResponse))
-    }
-    val kernelMemReq = Decoupled(new ComputeMemoryRequest(gpuConfig))
-    val kernelMemResp = Flipped(Decoupled(new ComputeMemoryResponse()))
-    val kernelWordMemReq = Decoupled(new ComputeMemoryRequest(gpuConfig, 64, SharedCuShaderConfig.kernelWordTransactions(sharedShader)))
-    val kernelWordMemResp = Flipped(Decoupled(new ComputeMemoryResponse(64, SharedCuShaderConfig.kernelWordTransactions(sharedShader))))
-    val kernelL1Invalidate = Flipped(Decoupled(new CacheLineInvalidate(gpuConfig)))
-    val kernelL1InvalidateDone = Decoupled(new CacheLineInvalidate(gpuConfig))
-    val kernelGlobalAtomicRequest = Decoupled(new SharedAtomicRequest(gpuConfig))
-    val kernelGlobalAtomicResponse = Flipped(Decoupled(new SharedAtomicResponse(gpuConfig)))
-    val instructionSatp = Input(UInt(32.W))
-    val instructionTlbFlush = Flipped(Valid(new opengpu.core.memory.VectorTlbFlush(gpuConfig)))
-    val vectorSatp = Input(UInt(32.W))
-    val vectorTlbFlush = Flipped(Valid(new opengpu.core.memory.VectorTlbFlush(gpuConfig)))
-    val shaderFault = Output(Bool())
-    val colorFormat = Input(UInt(PixelFormat.width.W))
-    val colorBase = Input(UInt(32.W))
-    val depthBase = Input(UInt(32.W))
-    val stride = Input(UInt(32.W))
-    /** Texture sampling (forwarded to the fixed-function fragment stage). */
-    val texEnable = Input(Bool())
-    val texFormat = Input(UInt(PixelFormat.width.W))
-    val texBase = Input(UInt(32.W))
-    val texWidth = Input(UInt(14.W))
-    val texHeight = Input(UInt(14.W))
-    val texWrapClamp = Input(Bool())
-    val texMaxLevel = Input(UInt(4.W))
-    val depthTestEnable = Input(Bool())
-    val depthFunc = Input(UInt(3.W))
-    val depthWriteEnable = Input(Bool())
-    val blendCfgEnable = Input(Bool())
-    val blendSrcFactor = Input(UInt(4.W))
-    val blendDstFactor = Input(UInt(4.W))
-    val blendEquation = Input(UInt(3.W))
-    val stencilTestEnable = Input(Bool())
-    val stencilFunc = Input(UInt(3.W))
-    val stencilRef = Input(UInt(8.W))
-    val stencilReadMask = Input(UInt(8.W))
-    val stencilWriteMask = Input(UInt(8.W))
-    val stencilFailOp = Input(UInt(3.W))
-    val stencilZFailOp = Input(UInt(3.W))
-    val stencilZPassOp = Input(UInt(3.W))
-    val cullMode = Input(UInt(2.W))
-    /** bits[1:0] sample mode: 0 = 1x, 1 = 2x, 2 = 4x. */
-    val sampleMode = Input(UInt(2.W))
-    /** Active mode. Zero uses the elaborated maximum. */
-    val screenW = Input(UInt(16.W))
-    val screenH = Input(UInt(16.W))
-    /** Sampler word port (separate client in the fabric arbitration). */
-    val texMem = new Bundle {
-      val req = Decoupled(new OmMemoryRequest)
-      val resp = Flipped(Decoupled(new OmMemoryResponse))
-    }
-    val performance = Output(new GraphicsPerformanceEvents)
-    val done = Output(Bool())
+
+  /** Persistent mode replaces legacy start/register submission with one immutable, bounded command-list job and a
+    * tagged completion.
+    */
+  val tileJob = if (persistentAttachments) Some(Flipped(Decoupled(new TileCommandJob))) else None
+  val tileCompletion = if (persistentAttachments) Some(Decoupled(new TileRenderPassCompletion)) else None
+  val tileCancel = if (persistentAttachments) Some(Input(Bool())) else None
+
+  /** Sidebands apply to a response accepted on the corresponding port. */
+  val commandMemoryFault = if (persistentAttachments) Some(Input(Bool())) else None
+  val attachmentMemoryFault = if (persistentAttachments) Some(Input(Bool())) else None
+  val textureMemoryFault = if (persistentAttachments) Some(Input(Bool())) else None
+  val tileEvents = if (persistentAttachments) Some(Output(new TileAttachmentEvents)) else None
+  val tileAcceptedSamples = if (bankedAttachments) Some(Output(UInt(3.W))) else None
+  val tileCommittedSamples = if (bankedAttachments) Some(Output(UInt(3.W))) else None
+  val shared =
+    sharedShader.map(pool => Flipped(new SharedCuGraphicsPort(gpuConfig, pool.taskIdWidth, pool.numComputeUnits)))
+  val cmdBase = Input(UInt(32.W))
+  val cmdCount = Input(UInt(16.W))
+  val start = Input(Bool())
+  val cbMem = new Bundle {
+    val req = Decoupled(new OmMemoryRequest)
+    val resp = Flipped(Decoupled(new OmMemoryResponse))
+  }
+  val fbMem = new Bundle {
+    val req = Decoupled(new OmMemoryRequest)
+    val resp = Flipped(Decoupled(new OmMemoryResponse))
+  }
+  val kernelMemReq = Decoupled(new ComputeMemoryRequest(gpuConfig))
+  val kernelMemResp = Flipped(Decoupled(new ComputeMemoryResponse()))
+  val kernelWordMemReq = Decoupled(
+    new ComputeMemoryRequest(gpuConfig, 64, SharedCuShaderConfig.kernelWordTransactions(sharedShader))
+  )
+  val kernelWordMemResp = Flipped(
+    Decoupled(new ComputeMemoryResponse(64, SharedCuShaderConfig.kernelWordTransactions(sharedShader)))
+  )
+  val kernelL1Invalidate = Flipped(Decoupled(new CacheLineInvalidate(gpuConfig)))
+  val kernelL1InvalidateDone = Decoupled(new CacheLineInvalidate(gpuConfig))
+  val kernelGlobalAtomicRequest = Decoupled(new SharedAtomicRequest(gpuConfig))
+  val kernelGlobalAtomicResponse = Flipped(Decoupled(new SharedAtomicResponse(gpuConfig)))
+  val instructionSatp = Input(UInt(32.W))
+  val instructionTlbFlush = Flipped(Valid(new opengpu.core.memory.VectorTlbFlush(gpuConfig)))
+  val vectorSatp = Input(UInt(32.W))
+  val vectorTlbFlush = Flipped(Valid(new opengpu.core.memory.VectorTlbFlush(gpuConfig)))
+  val shaderFault = Output(Bool())
+  val colorFormat = Input(UInt(PixelFormat.width.W))
+  val colorBase = Input(UInt(32.W))
+  val depthBase = Input(UInt(32.W))
+  val stride = Input(UInt(32.W))
+
+  /** Texture sampling (forwarded to the fixed-function fragment stage). */
+  val texEnable = Input(Bool())
+  val texFormat = Input(UInt(PixelFormat.width.W))
+  val texBase = Input(UInt(32.W))
+  val texWidth = Input(UInt(14.W))
+  val texHeight = Input(UInt(14.W))
+  val texWrapClamp = Input(Bool())
+  val texMaxLevel = Input(UInt(4.W))
+  val depthTestEnable = Input(Bool())
+  val depthFunc = Input(UInt(3.W))
+  val depthWriteEnable = Input(Bool())
+  val blendCfgEnable = Input(Bool())
+  val blendSrcFactor = Input(UInt(4.W))
+  val blendDstFactor = Input(UInt(4.W))
+  val blendEquation = Input(UInt(3.W))
+  val stencilTestEnable = Input(Bool())
+  val stencilFunc = Input(UInt(3.W))
+  val stencilRef = Input(UInt(8.W))
+  val stencilReadMask = Input(UInt(8.W))
+  val stencilWriteMask = Input(UInt(8.W))
+  val stencilFailOp = Input(UInt(3.W))
+  val stencilZFailOp = Input(UInt(3.W))
+  val stencilZPassOp = Input(UInt(3.W))
+  val cullMode = Input(UInt(2.W))
+
+  /** bits[1:0] sample mode: 0 = 1x, 1 = 2x, 2 = 4x. */
+  val sampleMode = Input(UInt(2.W))
+
+  /** Active mode. Zero uses the elaborated maximum. */
+  val screenW = Input(UInt(16.W))
+  val screenH = Input(UInt(16.W))
+
+  /** Sampler word port (separate client in the fabric arbitration). */
+  val texMem = new Bundle {
+    val req = Decoupled(new OmMemoryRequest)
+    val resp = Flipped(Decoupled(new OmMemoryResponse))
+  }
+  val performance = Output(new GraphicsPerformanceEvents)
+  val done = Output(Bool())
 }
 
 /** Top-level command-driven renderer.
   *
-  * Wires CommandBufferStage (reads draw-call records from host memory) into
-  * RenderPipeline (geometry viewport -> rasterize -> shade -> depth test ->
-  * write colour/depth buffers).  The command buffer and the framebuffer use
-  * two separate memory ports, mirroring a real integrated SoC where the
-  * command ring and the render targets are distinct traffic.
+  * Wires CommandBufferStage (reads draw-call records from host memory) into RenderPipeline (geometry viewport ->
+  * rasterize -> shade -> depth test -> write colour/depth buffers). The command buffer and the framebuffer use two
+  * separate memory ports, mirroring a real integrated SoC where the command ring and the render targets are distinct
+  * traffic.
   *
-  * `fragCore` selects the shading backend (passed to `RenderPipeline`).  With
-  * `fragCore = true` fragments are shaded by a compiled RV32 kernel launched on
-  * the compute unit's SIMT warps (the phase-D unified-shader path); the
-  * kernel's program/kernarg/output live in the line-based memory behind
-  * `kernelMemReq/Resp` and `kernelWordMemReq/Resp`.  With `fragCore = false`
-  * the fixed-function interpolated colour is used and those ports are idle.
+  * `fragCore` selects the shading backend (passed to `RenderPipeline`). With `fragCore = true` fragments are shaded by
+  * a compiled RV32 kernel launched on the compute unit's SIMT warps (the phase-D unified-shader path); the kernel's
+  * program/kernarg/output live in the line-based memory behind `kernelMemReq/Resp` and `kernelWordMemReq/Resp`. With
+  * `fragCore = false` the fixed-function interpolated colour is used and those ports are idle.
   *
-  * A `start` pulse makes the command stage read `cmdCount` records starting at
-  * `cmdBase` and, for each, render one triangle; `done` goes high once every
-  * record has been consumed and the last read-modify-write has retired.  In
-  * vertex-core mode one record references a vertex buffer and may produce
-  * multiple triangles.
+  * A `start` pulse makes the command stage read `cmdCount` records starting at `cmdBase` and, for each, render one
+  * triangle; `done` goes high once every record has been consumed and the last read-modify-write has retired. In
+  * vertex-core mode one record references a vertex buffer and may produce multiple triangles.
   *
-  * Persistent mode instead accepts tileJob and retains its immutable binding
-  * through tileCompletion. done then reports controller idle, including result
-  * delivery; legacy start stays low. Memory ports still use the caller's
+  * Persistent mode instead accepts tileJob and retains its immutable binding through tileCompletion. done then reports
+  * controller idle, including result delivery; legacy start stays low. Memory ports still use the caller's
   * translation/cache domain, whose ownership must outlive the tagged job.
   */
 class RenderCore(
-  config: GraphicsConfig = GraphicsConfig(),
-  gpuConfig: GpuConfig = GpuConfig(),
-  fragCore: Boolean = false,
-  vertCore: Boolean = false,
-  graphicsScalarFpu: Boolean = true,
-  sharedShader: Option[SharedCuShaderConfig] = None,
-  persistentAttachments: Boolean = false,
-  tileStoreCredits: Int = 1,
-  useTileSramBlackBoxes: Boolean = false,
-  bankedAttachments: Boolean = false,
-  constantBlend: Boolean = false,
-  biasedClamp: Boolean = false,
-  mirroredRepeat: Boolean = false
+    config: GraphicsConfig = GraphicsConfig(),
+    gpuConfig: GpuConfig = GpuConfig(),
+    fragCore: Boolean = false,
+    vertCore: Boolean = false,
+    graphicsScalarFpu: Boolean = true,
+    sharedShader: Option[SharedCuShaderConfig] = None,
+    persistentAttachments: Boolean = false,
+    tileStoreCredits: Int = 1,
+    useTileSramBlackBoxes: Boolean = false,
+    bankedAttachments: Boolean = false,
+    constantBlend: Boolean = false,
+    biasedClamp: Boolean = false,
+    mirroredRepeat: Boolean = false
 ) extends Module {
   val io = IO(new RenderCoreIO(gpuConfig, sharedShader, persistentAttachments, bankedAttachments))
 
   // The command payload type must follow the selected front end.  In vertex
   // core mode words 0..6 describe a vertex buffer and vertex shader rather
   // than containing three inline clip-space vertices.
-  private val cb = Module(new CommandBufferStage(config, vertCore,
-    cancellable = persistentAttachments, tileCommands = persistentAttachments,
-    constantBlend = constantBlend, biasedClamp = biasedClamp, mirroredRepeat = mirroredRepeat))
-  private val rp = Module(new RenderPipeline(
-    config, gpuConfig, fragCore, vertCore, graphicsScalarFpu, sharedShader,
-    persistentAttachments, tileStoreCredits, useTileSramBlackBoxes,bankedAttachments=bankedAttachments,
-    constantBlend=constantBlend, biasedClamp=biasedClamp, mirroredRepeat=mirroredRepeat))
-  io.tileAcceptedSamples.foreach(_:=rp.io.tileAcceptedSamples.get)
-  io.tileCommittedSamples.foreach(_:=rp.io.tileCommittedSamples.get)
+  private val cb = Module(
+    new CommandBufferStage(
+      config,
+      vertCore,
+      cancellable = persistentAttachments,
+      tileCommands = persistentAttachments,
+      constantBlend = constantBlend,
+      biasedClamp = biasedClamp,
+      mirroredRepeat = mirroredRepeat
+    )
+  )
+  private val rp = Module(
+    new RenderPipeline(
+      config,
+      gpuConfig,
+      fragCore,
+      vertCore,
+      graphicsScalarFpu,
+      sharedShader,
+      persistentAttachments,
+      tileStoreCredits,
+      useTileSramBlackBoxes,
+      bankedAttachments = bankedAttachments,
+      constantBlend = constantBlend,
+      biasedClamp = biasedClamp,
+      mirroredRepeat = mirroredRepeat
+    )
+  )
+  io.tileAcceptedSamples.foreach(_ := rp.io.tileAcceptedSamples.get)
+  io.tileCommittedSamples.foreach(_ := rp.io.tileCommittedSamples.get)
   private val tileController = if (persistentAttachments) Some(Module(new TileCommandPassController)) else None
   private val jobConfig = tileController.map(_.io.config)
   sharedShader.foreach(_ => rp.io.shared.get <> io.shared.get)
@@ -212,7 +238,7 @@ class RenderCore(
     controller.io.commandFault := io.commandMemoryFault.get && io.cbMem.resp.fire
     // Refill readiness can depend on fault metadata. Keep metadata independent
     // of ready, and register the accepted fault before feeding cancellation back.
-    controller.io.attachmentFault := RegNext(io.attachmentMemoryFault.get && io.fbMem.resp.fire,false.B)
+    controller.io.attachmentFault := RegNext(io.attachmentMemoryFault.get && io.fbMem.resp.fire, false.B)
     controller.io.textureFault := io.textureMemoryFault.get && io.texMem.resp.fire
     controller.io.shaderFault := rp.io.shaderFault
     controller.io.invalidCommand := cb.io.encodingFault.get
@@ -220,7 +246,7 @@ class RenderCore(
     cb.io.clearComplete.get := controller.io.clearComplete
     cb.io.typedCommands.get := controller.io.typedCommands
     controller.io.pass <> rp.io.tilePass.get
-    rp.io.tilePass.get.memoryFault:=io.attachmentMemoryFault.get && io.fbMem.resp.valid
+    rp.io.tilePass.get.memoryFault := io.attachmentMemoryFault.get && io.fbMem.resp.valid
     controller.io.admitted := rp.io.tileEvents.get.admitted
     controller.io.commandsDrained := cb.io.done
     controller.io.renderDrained := rp.io.done

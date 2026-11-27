@@ -5,8 +5,7 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 
 private class L2PriorityProbe extends Module {
-  val widths = Seq(1, 2, 3, 7, 8, 9, 16, 17, 31, 32, 33, 63, 64, 65,
-    255, 256, 257, 564, 576, 1024)
+  val widths = Seq(1, 2, 3, 7, 8, 9, 16, 17, 31, 32, 33, 63, 64, 65, 255, 256, 257, 564, 576, 1024)
   val io = IO(new Bundle {
     val bits = Input(UInt(1024.W))
     val selected = Output(Vec(widths.size, UInt(10.W)))
@@ -25,7 +24,8 @@ class L2PriorityEncoderSpec extends AnyFlatSpec {
         dut.io.bits.poke(bits.U)
         for ((width, index) <- dut.widths.zipWithIndex) {
           val masked = bits & ((BigInt(1) << width) - 1)
-          val expected = if (masked == 0) width - 1
+          val expected =
+            if (masked == 0) width - 1
             else (masked & -masked).bitLength - 1
           dut.io.selected(index).expect(expected.U)
         }

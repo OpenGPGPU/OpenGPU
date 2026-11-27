@@ -9,19 +9,27 @@ import scala.collection.mutable
 
 class GpuComputeUnitFpuFaultReuseSpec extends AnyFlatSpec {
   private def zero(data: Data): Unit = data match {
-    case r: Record => r.elements.values.foreach(zero)
-    case v: Vec[_] => v.foreach(zero)
+    case r: Record                                                     => r.elements.values.foreach(zero)
+    case v: Vec[_]                                                     => v.foreach(zero)
     case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b.poke(false.B)
     case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u.poke(0.U)
-    case _ => ()
+    case _                                                             => ()
   }
   private def code(words: Seq[BigInt]): BigInt =
     words.zipWithIndex.foldLeft(BigInt(0)) { case (v, (word, i)) => v | (word << (32 * i)) }
   for (rd <- Seq(0, 10); kind <- Seq("misaligned", "access", "page")) {
     it should s"release an acknowledged FP $kind fault without fabricating f$rd and reuse that destination" in {
-      simulate(new GpuComputeUnit(GpuConfig(lanes = 4, warps = 2), enableFpuBackend = true,
-        instructionCacheSets = 4, instructionCacheWays = 1, vectorCacheSets = 4,
-        vectorCacheWays = 1, finishOnTrap = true)) { d =>
+      simulate(
+        new GpuComputeUnit(
+          GpuConfig(lanes = 4, warps = 2),
+          enableFpuBackend = true,
+          instructionCacheSets = 4,
+          instructionCacheWays = 1,
+          vectorCacheSets = 4,
+          vectorCacheWays = 1,
+          finishOnTrap = true
+        )
+      ) { d =>
         zero(d.io); d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
         d.io.memoryRequest.ready.poke(true.B); d.io.l1InvalidateDone.ready.poke(true.B)
         d.io.globalAtomicRequest.ready.poke(true.B)
@@ -30,12 +38,18 @@ class GpuComputeUnitFpuFaultReuseSpec extends AnyFlatSpec {
         val faultAddress = if (misaligned) 0x9002 else 0x9000
         val faultCause = if (misaligned) 4 else if (kind == "page") 13 else 5
         val flw = BigInt((12 << 15) | (2 << 12) | (rd << 7) | 7)
-        val failed = code(Seq(BigInt("00009637", 16)) ++
-          (if (misaligned) Seq(BigInt("00260613", 16)) else Seq.empty) ++ Seq(flw, BigInt("30500073", 16)))
-        val healthy = code(Seq(BigInt("00700593", 16),
-          (BigInt(0x78) << 25) | (BigInt(11) << 15) | (BigInt(rd) << 7) | 0x53,
-          (BigInt(0x70) << 25) | (BigInt(rd) << 15) | (BigInt(10) << 7) | 0x53,
-          BigInt("30500073", 16)))
+        val failed = code(
+          Seq(BigInt("00009637", 16)) ++
+            (if (misaligned) Seq(BigInt("00260613", 16)) else Seq.empty) ++ Seq(flw, BigInt("30500073", 16))
+        )
+        val healthy = code(
+          Seq(
+            BigInt("00700593", 16),
+            (BigInt(0x78) << 25) | (BigInt(11) << 15) | (BigInt(rd) << 7) | 0x53,
+            (BigInt(0x70) << 25) | (BigInt(rd) << 15) | (BigInt(10) << 7) | 0x53,
+            BigInt("30500073", 16)
+          )
+        )
         case class Reply(id: BigInt, data: BigInt, fault: Boolean, due: Int)
         val pending = mutable.Queue.empty[Reply]
         var cycle = 0; var fpWrites = 0; var scalarResult = 0; var traps = 0
@@ -46,15 +60,21 @@ class GpuComputeUnitFpuFaultReuseSpec extends AnyFlatSpec {
             d.io.memoryResponse.bits.transactionId.poke(r.id.U)
             d.io.memoryResponse.bits.readData.poke(r.data.U); d.io.memoryResponse.bits.fault.poke(r.fault.B)
           }
-          if (d.io.memoryResponse.valid.peek().litToBoolean && d.io.memoryResponse.ready.peek().litToBoolean) pending.dequeue()
+          if (d.io.memoryResponse.valid.peek().litToBoolean && d.io.memoryResponse.ready.peek().litToBoolean)
+            pending.dequeue()
           if (d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.ready.peek().litToBoolean) {
             val q = d.io.memoryRequest.bits; val address = q.address.peek().litValue
             q.isWrite.expect(false.B)
             assert(Set[BigInt](0x1000, 0x2000, 0x9000, 0x30000)(address), s"unexpected FP access $address")
             if (address == 0x9000) assert(kind == "access", "misaligned/page failure must precede a physical data read")
-            pending.enqueue(Reply(q.transactionId.peek().litValue,
-              if (address == 0x1000) failed else if (address == 0x2000) healthy else BigInt(0),
-              address == 0x9000, cycle + 9))
+            pending.enqueue(
+              Reply(
+                q.transactionId.peek().litValue,
+                if (address == 0x1000) failed else if (address == 0x2000) healthy else BigInt(0),
+                address == 0x9000,
+                cycle + 9
+              )
+            )
           }
           if (d.io.trap.valid.peek().litToBoolean && d.io.trap.ready.peek().litToBoolean) traps += 1
           if (d.io.committedFpuWriteback.valid.peek().litToBoolean) {
@@ -69,7 +89,10 @@ class GpuComputeUnitFpuFaultReuseSpec extends AnyFlatSpec {
         }
         def until(condition: => Boolean): Unit = {
           var n = 0; while (!condition && n < 1200) { tick(); n += 1 }
-          assert(condition, s"FP destination f$rd remains unavailable after $kind fault: cycle=$cycle traps=$traps fpWrites=$fpWrites scalarResult=$scalarResult")
+          assert(
+            condition,
+            s"FP destination f$rd remains unavailable after $kind fault: cycle=$cycle traps=$traps fpWrites=$fpWrites scalarResult=$scalarResult"
+          )
         }
         def launch(pc: Int): Unit = {
           d.io.kernel.bits.poke(0.U.asTypeOf(d.io.kernel.bits)); d.io.kernel.bits.kernelPc.poke(pc.U)
@@ -94,7 +117,9 @@ class GpuComputeUnitFpuFaultReuseSpec extends AnyFlatSpec {
         until(d.io.completion.valid.peek().litToBoolean); d.io.completion.bits.success.expect(true.B)
         assert(traps == 1 && fpWrites == 1 && scalarResult == 1 && pending.isEmpty)
         d.io.completion.ready.poke(true.B); tick()
-        info(s"CU_FP_FAULT_REUSE fault=$kind rd=$rd kernels=2 heldTrap=true noFabricatedFPWrite=true preciseFault=true destinationReused=true")
+        info(
+          s"CU_FP_FAULT_REUSE fault=$kind rd=$rd kernels=2 heldTrap=true noFabricatedFPWrite=true preciseFault=true destinationReused=true"
+        )
       }
     }
   }

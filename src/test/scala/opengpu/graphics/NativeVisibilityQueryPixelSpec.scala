@@ -52,8 +52,14 @@ class NativeVisibilityQueryPixelSpec extends AnyFlatSpec {
   it should "query real late visibility independently of color writes and exclude rejected discarded helper and masked samples" in {
     simulate(new NativeVisibilityQueryPixelHarness) { d =>
       zero(d.io); d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
-      val memory = new Memory(d.io.memoryRequest.bits, d.io.memoryResponse.bits,
-        d.io.memoryRequest.valid, d.io.memoryRequest.ready, d.io.memoryResponse.valid, d.io.memoryResponse.ready)
+      val memory = new Memory(
+        d.io.memoryRequest.bits,
+        d.io.memoryResponse.bits,
+        d.io.memoryRequest.valid,
+        d.io.memoryRequest.ready,
+        d.io.memoryResponse.valid,
+        d.io.memoryResponse.ready
+      )
       var cookie = 0; var passes = 0; var tested = 0; var colorWrites = 0
       def tick(): Unit = { memory.drive(); memory.capture(); d.clock.step() }
       def until(condition: => Boolean): Unit = {
@@ -90,8 +96,15 @@ class NativeVisibilityQueryPixelSpec extends AnyFlatSpec {
         d.io.begin.valid.poke(true.B); until(d.io.begin.ready.peek().litToBoolean)
         tick(); d.io.begin.valid.poke(false.B); until(d.io.in.ready.peek().litToBoolean)
       }
-      def quad(selected: Int, z: Float, depth: Boolean, discarded: Boolean = false,
-          helper: Boolean = false, expectedTested: Int = 0, expectedPassed: Int = 0): Unit = {
+      def quad(
+          selected: Int,
+          z: Float,
+          depth: Boolean,
+          discarded: Boolean = false,
+          helper: Boolean = false,
+          expectedTested: Int = 0,
+          expectedPassed: Int = 0
+      ): Unit = {
         val q = d.io.in.bits; zero(q); identity(q.color.quad.identity)
         q.color.quad.sampleMode.poke(2.U); q.color.quad.colorSlots.poke(1.U)
         q.color.quad.sequence.poke((tested + passes).U)
@@ -147,7 +160,9 @@ class NativeVisibilityQueryPixelSpec extends AnyFlatSpec {
         quad(9, 0.75f, depth = false, expectedTested = 2, expectedPassed = 2)
       }
       assert(tested == 7 && passes == 3 && colorWrites == 0)
-      info("NATIVE_VISIBILITY_PIXEL scopes=4 exactResults=false,false,true,true sampleMode=4 testedSamples=7 passingSamples=3 colorWrites=0 lateDepthReject=true discardExcluded=true helpersExcluded=true sampleMasks=true depthDisabledPass=true heldQuadReplies=true acknowledgedResultRecords=true")
+      info(
+        "NATIVE_VISIBILITY_PIXEL scopes=4 exactResults=false,false,true,true sampleMode=4 testedSamples=7 passingSamples=3 colorWrites=0 lateDepthReject=true discardExcluded=true helpersExcluded=true sampleMasks=true depthDisabledPass=true heldQuadReplies=true acknowledgedResultRecords=true"
+      )
     }
   }
 }

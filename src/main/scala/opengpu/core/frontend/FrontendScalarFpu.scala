@@ -4,28 +4,22 @@ import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
 import opengpu.core.backend.{FpuBackend, ScalarBackend}
-import opengpu.core.backend.register.{
-  FpuRegisterRead,
-  FpuRegisterWrite,
-  ScalarRegisterFile,
-  ScalarRegisterWrite
-}
+import opengpu.core.backend.register.{FpuRegisterRead, FpuRegisterWrite, ScalarRegisterFile, ScalarRegisterWrite}
 import opengpu.core.execute.control.SimtPath
 import opengpu.core.frontend.warp.WarpLaunch
 import opengpu.core.memory.{InstructionLineRequest, InstructionLineResponse}
 
 /** FrontendICache closed through scalar integer and FP32 execute.
   *
-  * Fetch, decode, RV32I, FP32 FMA/exact, and warp redirect stay on-chip.
-  * IMEM refill stays at the DUT boundary. Vector decode and data-memory
-  * ports are tied off.
+  * Fetch, decode, RV32I, FP32 FMA/exact, and warp redirect stay on-chip. IMEM refill stays at the DUT boundary. Vector
+  * decode and data-memory ports are tied off.
   */
 class FrontendScalarFpu(
-  config: GpuConfig,
-  sets: Int,
-  ways: Int,
-  lineBytes: Int,
-  missEntries: Int
+    config: GpuConfig,
+    sets: Int,
+    ways: Int,
+    lineBytes: Int,
+    missEntries: Int
 ) extends Module {
   val io = IO(new Bundle {
     val launch = Flipped(Decoupled(new WarpLaunch(config)))
@@ -40,13 +34,11 @@ class FrontendScalarFpu(
     val wawHazard = Output(Bool())
     val lowerRequest =
       Decoupled(new InstructionLineRequest(config, lineBytes, missEntries))
-    val lowerResponse = Flipped(
-      Decoupled(new InstructionLineResponse(lineBytes, missEntries)))
+    val lowerResponse = Flipped(Decoupled(new InstructionLineResponse(lineBytes, missEntries)))
     val invalidate = Input(Bool())
   })
 
-  private val fetch = Module(
-    new FrontendICache(config, sets, ways, lineBytes, missEntries))
+  private val fetch = Module(new FrontendICache(config, sets, ways, lineBytes, missEntries))
   private val scalar = Module(new ScalarBackend(config, useBlackBoxes = false))
   private val fpu = Module(new FpuBackend(config))
   private val scalarFpuRead = Module(new ScalarRegisterFile(config))

@@ -4,21 +4,16 @@ import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
 import opengpu.core.memory.Asap7Sram1Rw256x32
-import opengpu.core.backend.scoreboard.{
-  RegisterScoreboardState,
-  RegisterReservation,
-  RegisterRelease
-}
+import opengpu.core.backend.scoreboard.{RegisterScoreboardState, RegisterReservation, RegisterRelease}
 
 /** Per-warp synchronous 2R1W RF made from two mirrored 1RW arrays.
   *
-  * A write occupies both copies for one cycle. Otherwise each copy serves one
-  * read port. `useBlackBoxes=false` is the cycle-accurate simulation model;
-  * ASIC timing emission selects the ASAP7 32-bit SRAM black boxes.
+  * A write occupies both copies for one cycle. Otherwise each copy serves one read port. `useBlackBoxes=false` is the
+  * cycle-accurate simulation model; ASIC timing emission selects the ASAP7 32-bit SRAM black boxes.
   */
 class ScalarRegisterMacroFile(
-  config: GpuConfig,
-  useBlackBoxes: Boolean = false
+    config: GpuConfig,
+    useBlackBoxes: Boolean = false
 ) extends Module {
   require(config.xLen == 32, "ASAP7 RF macro is fixed at XLEN=32")
 
@@ -44,10 +39,12 @@ class ScalarRegisterMacroFile(
     if (useBlackBoxes) {
       val rs1Macro = Module(new Asap7Sram1Rw256x32)
       val rs2Macro = Module(new Asap7Sram1Rw256x32)
-      for ((macroPort, address) <- Seq(
-        (rs1Macro.io, io.read.bits.rs1),
-        (rs2Macro.io, io.read.bits.rs2)
-      )) {
+      for (
+        (macroPort, address) <- Seq(
+          (rs1Macro.io, io.read.bits.rs1),
+          (rs2Macro.io, io.read.bits.rs2)
+        )
+      ) {
         macroPort.clk := clock
         macroPort.ADDRESS := Mux(selectedWrite, io.write.bits.rd, address).pad(8)
         macroPort.banksel := selectedRead || selectedWrite
@@ -90,8 +87,8 @@ class ScalarRegisterMacroFile(
   * request -> macro address/scoreboard reservation -> issue output.
   */
 class ScalarRegisterMacroManager(
-  config: GpuConfig = GpuConfig(),
-  useBlackBoxes: Boolean = false
+    config: GpuConfig = GpuConfig(),
+    useBlackBoxes: Boolean = false
 ) extends Module {
   val io = IO(new Bundle {
     val request = Flipped(Decoupled(new RegisterReservation(config)))
@@ -186,11 +183,11 @@ class ScalarRegisterMacroManager(
     !comparePending && !compareSaved && !compareWriteConflict
   comparePending := launchCompare
   registerFile.io.read.valid := launchRead || launchCompare
-  registerFile.io.read.bits.warpId := Mux(launchCompare,readBits.warpId,requestBits.warpId)
-  registerFile.io.read.bits.rs1 := Mux(launchCompare,readBits.rd,requestBits.rs1)
+  registerFile.io.read.bits.warpId := Mux(launchCompare, readBits.warpId, requestBits.warpId)
+  registerFile.io.read.bits.rs1 := Mux(launchCompare, readBits.rd, requestBits.rs1)
   registerFile.io.read.bits.rs2 := requestBits.rs2
   registerFile.io.responseWarpId := readBits.warpId
-  registerFile.io.responseRs1 := Mux(comparePending,readBits.rd,readBits.rs1)
+  registerFile.io.responseRs1 := Mux(comparePending, readBits.rd, readBits.rs1)
   registerFile.io.responseRs2 := readBits.rs2
   registerFile.io.write.valid := writebackValid
   registerFile.io.write.bits := writebackBits
@@ -240,8 +237,7 @@ class ScalarRegisterMacroManager(
       issueBits.request := readBits
       issueBits.rs1Data := Mux(readDataSaved, readRs1Data, registerFile.io.rs1Data)
       issueBits.rs2Data := Mux(readDataSaved, readRs2Data, registerFile.io.rs2Data)
-      issueBits.compareData := Mux(readBits.readCompare,
-        Mux(compareSaved,compareData,registerFile.io.rs1Data),0.U)
+      issueBits.compareData := Mux(readBits.readCompare, Mux(compareSaved, compareData, registerFile.io.rs1Data), 0.U)
     }
   }
 

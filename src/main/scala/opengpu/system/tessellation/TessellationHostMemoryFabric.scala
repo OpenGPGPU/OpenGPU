@@ -12,9 +12,8 @@ object TessellationHostMemoryFabric {
   }
 }
 
-/** Shares the GPU's physical, coherent graphics-host L2 port with an internal
-  * tessellation job. Neither input is translated here. Each accepted ID is
-  * owned until its response is consumed by the originating client.
+/** Shares the GPU's physical, coherent graphics-host L2 port with an internal tessellation job. Neither input is
+  * translated here. Each accepted ID is owned until its response is consumed by the originating client.
   */
 class TessellationHostMemoryFabric(config: GpuConfig, hostIds: Int, tessellationIds: Int) extends Module {
   private val slots = TessellationHostMemoryFabric.transactions(hostIds, tessellationIds)
@@ -39,7 +38,9 @@ class TessellationHostMemoryFabric(config: GpuConfig, hostIds: Int, tessellation
   private val hostTagLive = if (hostIds == 1) hostLive(0) else hostLive(hostTag)
   private val tessellationTagLive = if (tessellationIds == 1) tessellationLive(0) else tessellationLive(tessellationTag)
   when(io.hostRequest.valid) { assert(hostTag < hostIds.U, "unreserved host memory ID") }
-  when(io.tessellationRequest.valid) { assert(tessellationTag < tessellationIds.U, "unreserved tessellation memory ID") }
+  when(io.tessellationRequest.valid) {
+    assert(tessellationTag < tessellationIds.U, "unreserved tessellation memory ID")
+  }
 
   arbiter.io.in(0).valid := io.hostRequest.valid && !hostTagLive
   arbiter.io.in(0).bits := io.hostRequest.bits
@@ -56,15 +57,19 @@ class TessellationHostMemoryFabric(config: GpuConfig, hostIds: Int, tessellation
   private val tessellationReply = responseTag >= hostIds.U && responseTag < (hostIds + tessellationIds).U
   private val localTessellationTag = responseTag - hostIds.U
   private val responseHostOwned = if (hostIds == 1) hostLive(0) else hostLive(responseTag(log2Ceil(hostIds) - 1, 0))
-  private val responseTessellationOwned = if (tessellationIds == 1) tessellationLive(0)
+  private val responseTessellationOwned =
+    if (tessellationIds == 1) tessellationLive(0)
     else tessellationLive(localTessellationTag(log2Ceil(tessellationIds) - 1, 0))
   io.hostResponse.valid := io.memoryResponse.valid && hostReply
   io.hostResponse.bits := io.memoryResponse.bits
   io.tessellationResponse.valid := io.memoryResponse.valid && tessellationReply
   io.tessellationResponse.bits := io.memoryResponse.bits
   io.tessellationResponse.bits.transactionId := localTessellationTag
-  io.memoryResponse.ready := Mux(hostReply, io.hostResponse.ready,
-    Mux(tessellationReply, io.tessellationResponse.ready, false.B))
+  io.memoryResponse.ready := Mux(
+    hostReply,
+    io.hostResponse.ready,
+    Mux(tessellationReply, io.tessellationResponse.ready, false.B)
+  )
   when(io.memoryResponse.valid) {
     assert(hostReply || tessellationReply, "unreserved tessellation host memory response")
     when(hostReply) { assert(responseHostOwned, "host response lacks an owner") }
@@ -72,10 +77,10 @@ class TessellationHostMemoryFabric(config: GpuConfig, hostIds: Int, tessellation
   }
   private val hostAcquired = Mux(io.hostRequest.fire, UIntToOH(hostTag, hostIds), 0.U(hostIds.W))
   private val hostReleased = Mux(io.hostResponse.fire, UIntToOH(responseTag, hostIds), 0.U(hostIds.W))
-  private val tessellationAcquired = Mux(io.tessellationRequest.fire,
-    UIntToOH(tessellationTag, tessellationIds), 0.U(tessellationIds.W))
-  private val tessellationReleased = Mux(io.tessellationResponse.fire,
-    UIntToOH(localTessellationTag, tessellationIds), 0.U(tessellationIds.W))
+  private val tessellationAcquired =
+    Mux(io.tessellationRequest.fire, UIntToOH(tessellationTag, tessellationIds), 0.U(tessellationIds.W))
+  private val tessellationReleased =
+    Mux(io.tessellationResponse.fire, UIntToOH(localTessellationTag, tessellationIds), 0.U(tessellationIds.W))
   // The original per-ID assignments placed response release last. Preserve
   // that priority, and retain the occupied-ID request gating above unchanged.
   when(io.hostRequest.fire || io.hostResponse.fire) {

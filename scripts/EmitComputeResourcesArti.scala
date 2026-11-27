@@ -8,7 +8,10 @@ import opengpu.system.GpuHostSystemAxi
 /** Small, explicitly requested Linux/ARTI compute resource coexistence validation model. */
 object EmitComputeResourcesArti {
   def main(args: Array[String]): Unit = {
-    require(args.length == 1 || (args.length == 2 && args(1) == "storage-atomics"), "expected output directory and optional storage-atomics")
+    require(
+      args.length == 1 || (args.length == 2 && args(1) == "storage-atomics"),
+      "expected output directory and optional storage-atomics"
+    )
     val storageAtomics = args.length == 2
     ChiselStage.emitSystemVerilogFile(
       new GpuHostSystemAxi(
@@ -21,8 +24,10 @@ object EmitComputeResourcesArti {
         storageAtomicAvailable = storageAtomics,
         computeTextureAvailable = true,
         enableFpuBackend = true,
-        memoryAxiDataBytes = 8),
+        memoryAxiDataBytes = 8
+      ),
       Array("--target-dir", args(0)),
-      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays"))
+      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays")
+    )
   }
 }

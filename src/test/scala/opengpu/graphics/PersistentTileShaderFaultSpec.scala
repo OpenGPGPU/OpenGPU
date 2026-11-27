@@ -8,32 +8,38 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-/** Protocol executor at the shared-CU boundary. It copies the shader ABI's
-  * input color/depth to outputs, but does not model instruction execution.
-  * Real CU arithmetic remains covered by the core-backed pipeline tests.
+/** Protocol executor at the shared-CU boundary. It copies the shader ABI's input color/depth to outputs, but does not
+  * model instruction execution. Real CU arithmetic remains covered by the core-backed pipeline tests.
   */
 class PersistentTileShaderFaultSpec extends AnyFlatSpec {
   import TilePassTestData._
   behavior of "persistent programmable pass failure ownership"
-  private val banked=sys.props.get("opengpu.bankedRenderer").contains("true")
+  private val banked = sys.props.get("opengpu.bankedRenderer").contains("true")
 
   for (parallel <- Seq(false, true)) {
     it should s"drain task/staging failures and reuse pass identities with parallel=$parallel" in {
       val gpu = GpuConfig(lanes = 4, warps = 2)
       val cap = gpu.lanes * gpu.warps
-      val cfg = GraphicsConfig(screenWidth = 16, screenHeight = 16,
-        tileSize = 16, tileAttachments = true)
+      val cfg = GraphicsConfig(screenWidth = 16, screenHeight = 16, tileSize = 16, tileAttachments = true)
       val poolConfig = SharedCuShaderConfig(2, parallelFragments = parallel)
-      simulate(new RenderPipeline(cfg, gpu, fragCore = true,
-        sharedShader = Some(poolConfig), persistentAttachments = true, tileStoreCredits = 8,
-        bankedAttachments=banked)) { dut =>
+      simulate(
+        new RenderPipeline(
+          cfg,
+          gpu,
+          fragCore = true,
+          sharedShader = Some(poolConfig),
+          persistentAttachments = true,
+          tileStoreCredits = 8,
+          bankedAttachments = banked
+        )
+      ) { dut =>
         def zeroInputs(d: Data): Unit = d match {
-          case r: Record => r.elements.values.foreach(zeroInputs)
-          case v: Vec[_] => v.foreach(zeroInputs)
+          case r: Record                                                     => r.elements.values.foreach(zeroInputs)
+          case v: Vec[_]                                                     => v.foreach(zeroInputs)
           case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b.poke(false.B)
           case s: SInt if DataMirror.directionOf(s) == ActualDirection.Input => s.poke(0.S)
           case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u.poke(0.U)
-          case _ => ()
+          case _                                                             => ()
         }
         zeroInputs(dut.io)
         val pool = dut.io.shared.get
@@ -49,8 +55,8 @@ class PersistentTileShaderFaultSpec extends AnyFlatSpec {
 
         val memory = mutable.LongMap.empty[Long]
         def word(a: Long): Long = memory.getOrElse(a, 0xdeadbeefL)
-        def line(a: Long): BigInt = (0 until 16).map(i =>
-          BigInt(word(a + 4 * i)) << (32 * i)).foldLeft(BigInt(0))(_ | _)
+        def line(a: Long): BigInt =
+          (0 until 16).map(i => BigInt(word(a + 4 * i)) << (32 * i)).foldLeft(BigInt(0))(_ | _)
         def writeLine(a: Long, data: BigInt, mask: BigInt): Unit = {
           for (i <- 0 until 16) {
             var value = word(a + 4 * i)
@@ -62,11 +68,9 @@ class PersistentTileShaderFaultSpec extends AnyFlatSpec {
             memory(a + 4 * i) = value
           }
         }
-        case class Staging(id: BigInt, addr: Long, write: Boolean, data: BigInt,
-          mask: BigInt, fault: Boolean, due: Int)
+        case class Staging(id: BigInt, addr: Long, write: Boolean, data: BigInt, mask: BigInt, fault: Boolean, due: Int)
         case class Store(addr: Long, data: Long, due: Int)
-        case class Task(id: BigInt, due: Int, bad: Boolean, needsTrap: Boolean,
-          var trapped: Boolean = false)
+        case class Task(id: BigInt, due: Int, bad: Boolean, needsTrap: Boolean, var trapped: Boolean = false)
         val staging = mutable.ArrayBuffer.empty[Staging]
         val stores = mutable.ArrayBuffer.empty[Store]
         val tasks = mutable.ArrayBuffer.empty[Task]
@@ -104,8 +108,12 @@ class PersistentTileShaderFaultSpec extends AnyFlatSpec {
           pool.trap.valid.poke(trap.nonEmpty.B)
           trap.foreach(t => pool.trap.bits.taskId.poke(t.id.U))
           val trapFire = trap.nonEmpty && pool.trap.ready.peek().litToBoolean
-          val complete = tasks.indices.filter(i => tasks(i).due <= cycle &&
-            (!tasks(i).needsTrap || tasks(i).trapped)).lastOption
+          val complete = tasks.indices
+            .filter(i =>
+              tasks(i).due <= cycle &&
+                (!tasks(i).needsTrap || tasks(i).trapped)
+            )
+            .lastOption
           pool.completion.valid.poke(complete.nonEmpty.B)
           complete.foreach { i =>
             pool.completion.bits.commandId.poke(tasks(i).id.U)
@@ -127,15 +135,23 @@ class PersistentTileShaderFaultSpec extends AnyFlatSpec {
           }
           val storeFire = storeReply.nonEmpty && dut.io.mem.resp.ready.peek().litToBoolean
 
-          if (dut.io.kernelWordMemReq.valid.peek().litToBoolean &&
-              dut.io.kernelWordMemReq.ready.peek().litToBoolean) {
+          if (
+            dut.io.kernelWordMemReq.valid.peek().litToBoolean &&
+            dut.io.kernelWordMemReq.ready.peek().litToBoolean
+          ) {
             val r = dut.io.kernelWordMemReq.bits
             val wr = r.isWrite.peek().litToBoolean
             val fault = !injected && ((phase == "write" && wr) || (phase == "read" && !wr))
             injected ||= fault
-            staging += Staging(r.transactionId.peek().litValue, r.address.peek().litValue.toLong,
-              wr, r.writeData.peek().litValue, r.byteMask.peek().litValue, fault,
-              cycle + (if (cycle % 2 == 0) 23 else 4))
+            staging += Staging(
+              r.transactionId.peek().litValue,
+              r.address.peek().litValue.toLong,
+              wr,
+              r.writeData.peek().litValue,
+              r.byteMask.peek().litValue,
+              fault,
+              cycle + (if (cycle % 2 == 0) 23 else 4)
+            )
           }
           if (pool.launch.valid.peek().litToBoolean && pool.launch.ready.peek().litToBoolean) {
             val id = pool.launch.bits.commandId.peek().litValue
@@ -156,8 +172,11 @@ class PersistentTileShaderFaultSpec extends AnyFlatSpec {
           if (dut.io.mem.req.valid.peek().litToBoolean && dut.io.mem.req.ready.peek().litToBoolean) {
             assert(ending && phase == "none", "failed or unfinished pass published an attachment")
             dut.io.mem.req.bits.write.expect(true.B)
-            stores += Store(dut.io.mem.req.bits.addr.peek().litValue.toLong,
-              dut.io.mem.req.bits.data.peek().litValue.toLong, cycle + 31)
+            stores += Store(
+              dut.io.mem.req.bits.addr.peek().litValue.toLong,
+              dut.io.mem.req.bits.data.peek().litValue.toLong,
+              cycle + 31
+            )
             externalWrites += 1
           }
           if (dut.io.shaderFault.peek().litToBoolean) faultPulses += 1
@@ -179,13 +198,24 @@ class PersistentTileShaderFaultSpec extends AnyFlatSpec {
           assert(p, s"timeout in $phase at cycle $cycle, tasks=${tasks.size}, staging=${staging.size}")
         }
 
-        val scenarios=if(banked)Seq(("none",0),("trap",1),("completion",2),("write",1),("read",2),("none",1),("none",2))
-          else Seq("none", "trap", "completion", "write", "read", "none").map(_->0)
-        for (((fault,mode), run) <- scenarios.zipWithIndex) {
+        val scenarios =
+          if (banked)
+            Seq(("none", 0), ("trap", 1), ("completion", 2), ("write", 1), ("read", 2), ("none", 1), ("none", 2))
+          else Seq("none", "trap", "completion", "write", "read", "none").map(_ -> 0)
+        for (((fault, mode), run) <- scenarios.zipWithIndex) {
           phase = fault; injected = false; ending = false; externalWrites = 0; faultPulses = 0
-          val p = Pass(mode=mode,width = 8, height = 8, originX = 0, originY = 0, tileLog2 = 3,
-            id = run, generation = run + 17, context = 100 + run)
-          for (depth <- Seq(false, true); y <- 0 until 8; x <- 0 until 8;s <- 0 until p.samples)
+          val p = Pass(
+            mode = mode,
+            width = 8,
+            height = 8,
+            originX = 0,
+            originY = 0,
+            tileLog2 = 3,
+            id = run,
+            generation = run + 17,
+            context = 100 + run
+          )
+          for (depth <- Seq(false, true); y <- 0 until 8; x <- 0 until 8; s <- 0 until p.samples)
             memory(p.address(x, y, s, depth)) = 0xdeadbeefL
           pokeDescriptor(pass.begin.bits, p)
           pass.begin.ready.expect(true.B); pass.begin.valid.poke(true.B)
@@ -195,9 +225,9 @@ class PersistentTileShaderFaultSpec extends AnyFlatSpec {
           for (drawIndex <- 0 until (if (fault == "none") 2 else 1)) {
             draw.poke(0.U.asTypeOf(new SceneTriangle(cfg)))
             draw.stateOverride.poke(true.B)
-            if(banked) {
-              draw.scissorEnable.poke(true.B);draw.scissorMinX.poke(1.U);draw.scissorMinY.poke(1.U)
-              draw.scissorMaxX.poke(7.U);draw.scissorMaxY.poke(7.U)
+            if (banked) {
+              draw.scissorEnable.poke(true.B); draw.scissorMinX.poke(1.U); draw.scissorMinY.poke(1.U)
+              draw.scissorMaxX.poke(7.U); draw.scissorMaxY.poke(7.U)
             }
             draw.depthTestEnable.poke(true.B); draw.depthWriteEnable.poke(true.B)
             draw.shaderPc.poke(0x1000.U); draw.shaderKernarg.poke(0x6000.U)
@@ -219,25 +249,33 @@ class PersistentTileShaderFaultSpec extends AnyFlatSpec {
             ending = true; pass.end.valid.poke(true.B); tick(); pass.end.valid.poke(false.B)
           }
           waitFor(pass.completion.valid.peek().litToBoolean)
-          pass.completion.bits.status.expect((if (fault == "none") TilePassStatus.success
-            else TilePassStatus.executionFault).U)
+          pass.completion.bits.status.expect(
+            (if (fault == "none") TilePassStatus.success
+             else TilePassStatus.executionFault).U
+          )
           pass.completion.bits.identity.context.expect(p.context.U)
           pass.completion.bits.identity.pass.expect(p.id.U)
           pass.completion.bits.identity.generation.expect(p.generation.U)
           assert(tasks.isEmpty && staging.isEmpty && stageReply.isEmpty && stores.isEmpty && storeReply.isEmpty)
           assert(injected == (fault != "none"))
-          assert(faultPulses == (if (fault == "none") 0 else if (fault == "trap") 2 else 1),
-            "lost a failure event or leaked one between pass owners")
-          for (depth <- Seq(false, true); y <- 0 until 8; x <- 0 until 8;s <- 0 until p.samples) {
-            val covered = if(banked)x>=1 && x<7 && y>=1 && y<7 else x > 0 && y > 0 && x + y <= 16
-            val expected = if (fault != "none") 0xdeadbeefL
+          assert(
+            faultPulses == (if (fault == "none") 0 else if (fault == "trap") 2 else 1),
+            "lost a failure event or leaked one between pass owners"
+          )
+          for (depth <- Seq(false, true); y <- 0 until 8; x <- 0 until 8; s <- 0 until p.samples) {
+            val covered = if (banked) x >= 1 && x < 7 && y >= 1 && y < 7 else x > 0 && y > 0 && x + y <= 16
+            val expected =
+              if (fault != "none") 0xdeadbeefL
               else if (depth) { if (covered) (p.depthClear & 0xff000000L) | 16L else p.depthClear }
-              else if (covered) ((200L + run) << 24) | 0x00283cffL else p.colorClear
-            assert(word(p.address(x, y, s, depth)) == expected,
-              s"$fault mode=$mode depth=$depth ($x,$y,$s): ${word(p.address(x,y,s,depth)).toHexString} != ${expected.toHexString}")
+              else if (covered) ((200L + run) << 24) | 0x00283cffL
+              else p.colorClear
+            assert(
+              word(p.address(x, y, s, depth)) == expected,
+              s"$fault mode=$mode depth=$depth ($x,$y,$s): ${word(p.address(x, y, s, depth)).toHexString} != ${expected.toHexString}"
+            )
           }
-          assert(externalWrites == (if (fault == "none") 128*p.samples else 0))
-          if(banked)info(s"BANKED_SHADER parallel=$parallel mode=$mode fault=$fault stores=$externalWrites PASS")
+          assert(externalWrites == (if (fault == "none") 128 * p.samples else 0))
+          if (banked) info(s"BANKED_SHADER parallel=$parallel mode=$mode fault=$fault stores=$externalWrites PASS")
           val completion = pass.completion.bits.peek().litValue
           for (_ <- 0 until 3) { tick(); assert(pass.completion.bits.peek().litValue == completion) }
           pass.completion.ready.poke(true.B); tick(); pass.completion.ready.poke(false.B)

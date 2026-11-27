@@ -10,27 +10,29 @@ import org.scalatest.DoNotDiscover
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-/** Opt-in shared-L2 fault qualification: one CU's store faults, the peers and
-  * the fabric stay healthy, and the faulted CU runs the program again. */
+/** Opt-in shared-L2 fault qualification: one CU's store faults, the peers and the fabric stay healthy, and the faulted
+  * CU runs the program again.
+  */
 @DoNotDiscover
 class GalliumSharedFaultQualification extends AnyFlatSpec {
   private def zero(d: Data): Unit = d match {
-    case r: Record => r.elements.values.foreach(zero)
-    case v: Vec[_] => v.foreach(zero)
+    case r: Record                                                     => r.elements.values.foreach(zero)
+    case v: Vec[_]                                                     => v.foreach(zero)
     case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b.poke(false.B)
     case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u.poke(0.U)
     case s: SInt if DataMirror.directionOf(s) == ActualDirection.Input => s.poke(0.S)
-    case _ => ()
+    case _                                                             => ()
   }
   private val mask32 = (BigInt(1) << 32) - 1
   private def expected(seed: BigInt, group: Int, local: Int): BigInt =
     (0 until 32).map(r => seed + (group << 16) + (local ^ 16) + r * 128).sum & mask32
 
   it should "isolate a shared-L2 store fault and reuse the faulted CU" in {
-    require(sys.props.get("opengpu.galliumSharedFaultQualification").contains("1"),
-      "explicit local qualification only")
-    val programs = GalliumSharedArtifacts.load(Paths.get(sys.props("opengpu.galliumSharedArtifacts")),
-      sys.props("opengpu.galliumSharedArtifactSha256"))
+    require(sys.props.get("opengpu.galliumSharedFaultQualification").contains("1"), "explicit local qualification only")
+    val programs = GalliumSharedArtifacts.load(
+      Paths.get(sys.props("opengpu.galliumSharedArtifacts")),
+      sys.props("opengpu.galliumSharedArtifactSha256")
+    )
     simulate(new GalliumSharedFourCuHarness) { top =>
       val ds = (0 until 4).map(i => top.io.compute(i))
       zero(top.io); top.reset.poke(true.B); top.clock.step(2); top.reset.poke(false.B)
@@ -61,10 +63,12 @@ class GalliumSharedFaultQualification extends AnyFlatSpec {
         val pageTables = mutable.Set.empty[BigInt]
         private val levels = mutable.Map.empty[(BigInt, BigInt), BigInt]
         def map(root: BigInt, virtual: BigInt, physical: BigInt, flags: Int): Unit = {
-          val level = levels.getOrElseUpdate((root, virtual >> 22), {
-            val a = root + 4096 * (1 + levels.keys.count(_._1 == root))
-            blank(a, 4096); pageTables += a; a
-          })
+          val level = levels.getOrElseUpdate(
+            (root, virtual >> 22), {
+              val a = root + 4096 * (1 + levels.keys.count(_._1 == root))
+              blank(a, 4096); pageTables += a; a
+            }
+          )
           put(root + (virtual >> 22) * 4, ((level >> 12) << 10) | 1)
           put(level + ((virtual >> 12) & 1023) * 4, ((physical >> 12) << 10) | flags)
         }
@@ -73,9 +77,22 @@ class GalliumSharedFaultQualification extends AnyFlatSpec {
           blank(codeP, 4096); words.zipWithIndex.foreach { case (w, i) => put(codeP + 4 * i, w) }
           Seq(2, 1, 1).zipWithIndex.foreach { case (n, i) => put(kernargP + 4 * i, BigInt(n)) }
           blank(tableP, 256)
-          Seq[(Int, BigInt)](0 -> StorageDescriptorLayout.magic, 1 -> 64, 2 -> 1,
-            3 -> context, 4 -> 7, 5 -> context, 6 -> 0, 7 -> 1, 8 -> 1, 9 -> 1,
-            10 -> outputV, 11 -> (outputV + 1024), 13 -> outputV, 14 -> (outputV + 4096))
+          Seq[(Int, BigInt)](
+            0 -> StorageDescriptorLayout.magic,
+            1 -> 64,
+            2 -> 1,
+            3 -> context,
+            4 -> 7,
+            5 -> context,
+            6 -> 0,
+            7 -> 1,
+            8 -> 1,
+            9 -> 1,
+            10 -> outputV,
+            11 -> (outputV + 1024),
+            13 -> outputV,
+            14 -> (outputV + 4096)
+          )
             .foreach { case (i, v) => put(tableP + 4 * i, v) }
           remember(outputP - 64, 4160)
           map(iRoot, pc, codeP, 0x4b); map(vRoot, kernargV, kernargP, 0x43)
@@ -96,13 +113,20 @@ class GalliumSharedFaultQualification extends AnyFlatSpec {
       val frozen = memory.toMap
       val expectedAll = units.flatMap(_.expectedWords).toMap
       require(expectedAll.size == 1024, "four CU outputs must be physically disjoint")
-      val knownPages = (units.flatMap(u => Seq(u.codeP, u.kernargP, u.tableP, u.outputP))
+      val knownPages = (units
+        .flatMap(u => Seq(u.codeP, u.kernargP, u.tableP, u.outputP))
         .map(p => p & ~BigInt(4095)) ++ units.flatMap(_.pageTables)).toSet
       val faultCu = 2
       val faultKeys = units(faultCu).expectedWords.keySet
 
-      case class Reply(id: BigInt, address: BigInt, value: BigInt, due: Int,
-                       write: Option[(BigInt, BigInt, BigInt)], fault: Boolean = false)
+      case class Reply(
+          id: BigInt,
+          address: BigInt,
+          value: BigInt,
+          due: Int,
+          write: Option[(BigInt, BigInt, BigInt)],
+          fault: Boolean = false
+      )
       val pending = mutable.ArrayBuffer.empty[Reply]
       var offered = Option.empty[Reply]
       val outstanding = mutable.Set.empty[BigInt]
@@ -129,8 +153,7 @@ class GalliumSharedFaultQualification extends AnyFlatSpec {
       var recoveryRequests = 0L
 
       def tick(): Unit = {
-        assert(totalCycles < GalliumSharedArtifacts.cycleBudget,
-          s"fault bounded cycles $totalCycles")
+        assert(totalCycles < GalliumSharedArtifacts.cycleBudget, s"fault bounded cycles $totalCycles")
         for (i <- 0 until 4) {
           val d = ds(i); val u = units(i)
           if (u.admission) {
@@ -186,12 +209,13 @@ class GalliumSharedFaultQualification extends AnyFlatSpec {
             if (r.fault) {
               assert(faultedId.contains(r.id) && phase == 1 && r.write.isDefined)
               faultsDelivered += 1
-            } else r.write.foreach { case (a, v, m) =>
-              val first = m.lowestSetBit; val at = a + first
-              assert(written(at) && !acknowledged(at))
-              acknowledged += at
-              for (i <- 0 until 64 if m.testBit(i)) memory(a + i) = ((v >> (8 * i)) & 255).toInt
-            }
+            } else
+              r.write.foreach { case (a, v, m) =>
+                val first = m.lowestSetBit; val at = a + first
+                assert(written(at) && !acknowledged(at))
+                acknowledged += at
+                for (i <- 0 until 64 if m.testBit(i)) memory(a + i) = ((v >> (8 * i)) & 255).toInt
+              }
             offered = None
           }
         }
@@ -213,8 +237,10 @@ class GalliumSharedFaultQualification extends AnyFlatSpec {
               if (wr) {
                 q.cachePolicy.expect(CachePolicy.uncached)
                 val m = q.byteMask.peek().litValue; val first = m.lowestSetBit; val at = a + first
-                assert(first >= 0 && (first & 3) == 0 && m == (BigInt(15) << first) &&
-                  expectedAll.contains(at) && (phase == 2 || !written(at)))
+                assert(
+                  first >= 0 && (first & 3) == 0 && m == (BigInt(15) << first) &&
+                    expectedAll.contains(at) && (phase == 2 || !written(at))
+                )
                 assert(((q.writeData.peek().litValue >> (8 * first)) & mask32) == expectedAll(at))
                 written += at
                 if (phase == 2 && units(faultCu).admission) recoveryRequests += 1
@@ -222,11 +248,16 @@ class GalliumSharedFaultQualification extends AnyFlatSpec {
                   a < units(faultCu).outputP + 4096 && faultedId.isEmpty
                 if (inject) {
                   faultedId = Some(id); faultAddress = Some(at)
-                  pending += Reply(id, a, BigInt(0), totalCycles + 17,
-                    Some((a, q.writeData.peek().litValue, m)), fault = true)
+                  pending += Reply(
+                    id,
+                    a,
+                    BigInt(0),
+                    totalCycles + 17,
+                    Some((a, q.writeData.peek().litValue, m)),
+                    fault = true
+                  )
                 } else {
-                  pending += Reply(id, a, BigInt(0), totalCycles + 17,
-                    Some((a, q.writeData.peek().litValue, m)))
+                  pending += Reply(id, a, BigInt(0), totalCycles + 17, Some((a, q.writeData.peek().litValue, m)))
                 }
               } else {
                 readPages += (a & ~BigInt(4095))
@@ -282,36 +313,41 @@ class GalliumSharedFaultQualification extends AnyFlatSpec {
           units(i).admission = true
         }
       }
-      until("completion")((0 until 4).forall(i =>
-        ds(i).completion.valid.peek().litToBoolean))
-      assert(faultsDelivered == 1 && trapState(faultCu) == 2 && trapAcceptedAt > 0,
-        "the injected store fault was not delivered and trapped")
+      until("completion")((0 until 4).forall(i => ds(i).completion.valid.peek().litToBoolean))
+      assert(
+        faultsDelivered == 1 && trapState(faultCu) == 2 && trapAcceptedAt > 0,
+        "the injected store fault was not delivered and trapped"
+      )
       assert(trapBits(faultCu).isDefined)
       assert(trapCause(faultCu).contains(BigInt(7)), "the store fault did not raise cause 7")
-      assert(faultAddress.isDefined && trapTval(faultCu).contains(
-        units(faultCu).outputV + (faultAddress.get - units(faultCu).outputP)),
-        "the trap did not report the faulted store's virtual address")
-      assert(trapLaneMask(faultCu).exists(_.bitCount == 1),
-        "the store fault did not identify exactly one lane")
+      assert(
+        faultAddress.isDefined && trapTval(faultCu).contains(
+          units(faultCu).outputV + (faultAddress.get - units(faultCu).outputP)
+        ),
+        "the trap did not report the faulted store's virtual address"
+      )
+      assert(trapLaneMask(faultCu).exists(_.bitCount == 1), "the store fault did not identify exactly one lane")
       assert(faultKeys(faultAddress.get) && !acknowledged(faultAddress.get))
       for (i <- 0 until 4) {
         ds(i).completion.bits.success.expect((i != faultCu).B)
         top.io.cuBusy(i).expect(false.B)
         if (i == faultCu) {
           assert(units(i).peakWarps > 0 && units(i).warpStarts > 0)
-          assert((acknowledged intersect faultKeys).size < faultKeys.size,
-            "the faulted CU completed its whole output")
+          assert((acknowledged intersect faultKeys).size < faultKeys.size, "the faulted CU completed its whole output")
         } else {
-          assert(units(i).peakWarps == 8 && units(i).warpStarts == 16 &&
-            units(i).maxBarrierWaiting > 0)
+          assert(
+            units(i).peakWarps == 8 && units(i).warpStarts == 16 &&
+              units(i).maxBarrierWaiting > 0
+          )
           assert(units(i).expectedWords.keySet.subsetOf(acknowledged))
         }
       }
       assert((acknowledged intersect expectedAll.keySet).size < expectedAll.size)
       top.io.drained.expect(true.B)
       assert(allActiveCycles > 0, "the four CUs never held warps simultaneously")
-      assert((0 until 4).forall(i =>
-        top.io.cuRequests(i).peek().litValue > 0 && top.io.cuResponses(i).peek().litValue > 0))
+      assert(
+        (0 until 4).forall(i => top.io.cuRequests(i).peek().litValue > 0 && top.io.cuResponses(i).peek().litValue > 0)
+      )
       assert(written.toSet.subsetOf(expectedAll.keySet))
       assert(descriptorAddresses == units.map(_.tableP).toSet)
       units.foreach { u =>
@@ -320,7 +356,9 @@ class GalliumSharedFaultQualification extends AnyFlatSpec {
         assert(missing.isEmpty, s"CU${u.index} did not read every page: ${missing.mkString(",")}")
       }
       val golden = mutable.Map.empty[BigInt, Int] ++ frozen
-      acknowledged.foreach { a => val v = expectedAll(a); for (i <- 0 until 4) golden(a + i) = ((v >> (8 * i)) & 255).toInt }
+      acknowledged.foreach { a =>
+        val v = expectedAll(a); for (i <- 0 until 4) golden(a + i) = ((v >> (8 * i)) & 255).toInt
+      }
       assert(memory.toMap == golden.toMap, "faulted run wrote an unexpected word")
 
       val held = (0 until 4).map(i => ds(i).completion.bits.peek().litValue)
@@ -368,18 +406,22 @@ class GalliumSharedFaultQualification extends AnyFlatSpec {
       }
       until("recovery completion")(ds(faultCu).completion.valid.peek().litToBoolean)
       ds(faultCu).completion.bits.success.expect(true.B)
-      assert(units(faultCu).warpStarts == startsBefore + 16,
-        "the recovered launch did not start both groups")
-      assert(recoveryRequests == faultKeys.size,
-        "the recovered launch did not issue one store per output word")
-      assert((0 until 4).forall(i => i == faultCu ||
-        top.io.cuRequests(i).peek().litValue == requestsBefore(i)),
-        "an idle CU issued memory traffic during recovery")
+      assert(units(faultCu).warpStarts == startsBefore + 16, "the recovered launch did not start both groups")
+      assert(recoveryRequests == faultKeys.size, "the recovered launch did not issue one store per output word")
+      assert(
+        (0 until 4).forall(i =>
+          i == faultCu ||
+            top.io.cuRequests(i).peek().litValue == requestsBefore(i)
+        ),
+        "an idle CU issued memory traffic during recovery"
+      )
       val golden2 = mutable.Map.empty[BigInt, Int] ++ frozen
       expectedAll.foreach { case (a, v) => for (i <- 0 until 4) golden2(a + i) = ((v >> (8 * i)) & 255).toInt }
       assert(memory.toMap == golden2.toMap, "the recovered launch did not produce the exact output")
-      assert(written.toSet == faultKeys && acknowledged == faultKeys,
-        "the recovered launch did not cover exactly its own outputs")
+      assert(
+        written.toSet == faultKeys && acknowledged == faultKeys,
+        "the recovered launch did not cover exactly its own outputs"
+      )
       ds(faultCu).completion.ready.poke(true.B); tick()
       ds(faultCu).completion.ready.poke(false.B)
       units(faultCu).admission = false
@@ -389,25 +431,31 @@ class GalliumSharedFaultQualification extends AnyFlatSpec {
         top.io.drained.expect(true.B)
       }
       val trap = trapBits(faultCu).get
-      info(s"GALLIUM_SHARED_FAULT PASS cus=4 faultCu=$faultCu faultsDelivered=$faultsDelivered " +
-        s"faultAddress=0x${faultAddress.get.toString(16)} trap=0x${trap.toString(16)} " +
-        s"trapAcceptedCycle=$trapAcceptedAt " +
-        s"recoveryRequests=$recoveryRequests recoveredWarpStarts=${units(faultCu).warpStarts - startsBefore} " +
-        s"healthyOutputs=768 recoveredOutputs=256 allActiveCycles=$allActiveCycles cycles=$totalCycles H7Complete=false")
+      info(
+        s"GALLIUM_SHARED_FAULT PASS cus=4 faultCu=$faultCu faultsDelivered=$faultsDelivered " +
+          s"faultAddress=0x${faultAddress.get.toString(16)} trap=0x${trap.toString(16)} " +
+          s"trapAcceptedCycle=$trapAcceptedAt " +
+          s"recoveryRequests=$recoveryRequests recoveredWarpStarts=${units(faultCu).warpStarts - startsBefore} " +
+          s"healthyOutputs=768 recoveredOutputs=256 allActiveCycles=$allActiveCycles cycles=$totalCycles H7Complete=false"
+      )
     }
   }
 }
 
 object QualifyGalliumSharedFault {
   def main(args: Array[String]): Unit = {
-    require(sys.props.get("opengpu.galliumSharedFaultQualification").contains("1"),
-      "explicit local qualification only")
-    require(args.length == 6 && args(0) == "--artifacts" && args(2) == "--manifest-sha256" && args(4) == "--reports",
-      "usage: --artifacts DIRECTORY --manifest-sha256 SHA256 --reports DIRECTORY")
+    require(sys.props.get("opengpu.galliumSharedFaultQualification").contains("1"), "explicit local qualification only")
+    require(
+      args.length == 6 && args(0) == "--artifacts" && args(2) == "--manifest-sha256" && args(4) == "--reports",
+      "usage: --artifacts DIRECTORY --manifest-sha256 SHA256 --reports DIRECTORY"
+    )
     GalliumSharedArtifacts.load(Paths.get(args(1)), args(3)) // before elaboration/cache lookup
     sys.props("opengpu.galliumSharedArtifacts") = args(1)
     sys.props("opengpu.galliumSharedArtifactSha256") = args(3)
-    require(org.scalatest.tools.Runner.run(Array("-s", classOf[GalliumSharedFaultQualification].getName,
-      "-oD", "-u", args(5))), "Gallium shared fault qualification failed")
+    require(
+      org.scalatest.tools.Runner
+        .run(Array("-s", classOf[GalliumSharedFaultQualification].getName, "-oD", "-u", args(5))),
+      "Gallium shared fault qualification failed"
+    )
   }
 }

@@ -3,8 +3,13 @@ package opengpu.system
 import chisel3._
 import chisel3.util._
 import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse, ShaderPayloadBinding, VectorTlbFlush}
-import opengpu.graphics.{FragmentPayloadPort, FragmentPerformanceEvents, ShaderPayloadPin,
-  TransformFeedbackPipelineIO, TypedTilePixelQuadCompletion}
+import opengpu.graphics.{
+  FragmentPayloadPort,
+  FragmentPerformanceEvents,
+  ShaderPayloadPin,
+  TransformFeedbackPipelineIO,
+  TypedTilePixelQuadCompletion
+}
 
 /** Common physical connections of the two tessellation command formats. */
 trait TessellationHostPhysicalPorts {

@@ -2,10 +2,9 @@ package opengpu.graphics
 
 import chisel3._
 
-/** Resolved per-draw fixed-function state: depth, blend, stencil, cull and
-  * sampler fields with no per-record override flag.  `DrawRenderState` and any
-  * other bundle that stores the state a draw actually runs with mixes this in,
-  * so the fields are declared once.
+/** Resolved per-draw fixed-function state: depth, blend, stencil, cull and sampler fields with no per-record override
+  * flag. `DrawRenderState` and any other bundle that stores the state a draw actually runs with mixes this in, so the
+  * fields are declared once.
   */
 trait HasResolvedDrawState extends Bundle {
   val depthTestEnable = Bool()
@@ -34,18 +33,21 @@ trait HasResolvedDrawState extends Bundle {
   val texMinLevel = UInt(4.W)
 }
 
-/** A command record's per-draw state: the resolved fields plus the record's
-  * override flag and the record-only source-over/lod inputs.  `SceneTriangle`
-  * (fixed-function records) and `VertexDrawCommand` (vertex-core records)
-  * both mix this in, so the pipeline resolves either with one helper.
+/** A command record's per-draw state: the resolved fields plus the record's override flag and the record-only
+  * source-over/lod inputs. `SceneTriangle` (fixed-function records) and `VertexDrawCommand` (vertex-core records) both
+  * mix this in, so the pipeline resolves either with one helper.
   */
 trait HasDrawState extends HasResolvedDrawState {
+
   /** Packed RGBA8 constant for opt-in legacy vertex blending. */
   val blendConstant = UInt(32.W)
+
   /** When set, this record's state fields override the global registers. */
   val stateOverride = Bool()
+
   /** Opt-in GLES pixel centers; legacy records retain integer anchors. */
   val pixelCenter = Bool()
+
   /** Optional promise: shader does not read these input SoA slices (0..5). */
   val fragInputSkip = UInt(6.W)
   val fragOutputSkip = UInt(4.W)

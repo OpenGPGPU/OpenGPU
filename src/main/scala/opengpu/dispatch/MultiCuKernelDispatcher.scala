@@ -4,26 +4,22 @@ import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
 
-/** Assigns tagged host commands to idle compute units and restores their tags
-  * on completion. Each CU may own one kernel, matching
-  * [[SingleCuKernelController]]'s execution contract.
+/** Assigns tagged host commands to idle compute units and restores their tags on completion. Each CU may own one
+  * kernel, matching [[SingleCuKernelController]]'s execution contract.
   */
 class MultiCuKernelDispatcher(
-  config: GpuConfig = GpuConfig(),
-  numComputeUnits: Int = 2,
-  commandIdWidth: Int = 8
+    config: GpuConfig = GpuConfig(),
+    numComputeUnits: Int = 2,
+    commandIdWidth: Int = 8
 ) extends Module {
   require(numComputeUnits > 0)
   require(commandIdWidth > 0)
 
   val io = IO(new Bundle {
-    val launch = Flipped(Decoupled(
-      new TaggedKernelLaunch(config, commandIdWidth)))
+    val launch = Flipped(Decoupled(new TaggedKernelLaunch(config, commandIdWidth)))
     val completion = Decoupled(new TaggedKernelCompletion(commandIdWidth))
-    val cuLaunch = Vec(numComputeUnits,
-      Decoupled(new KernelLaunch(config)))
-    val cuCompletion = Vec(numComputeUnits,
-      Flipped(Decoupled(new KernelCompletion)))
+    val cuLaunch = Vec(numComputeUnits, Decoupled(new KernelLaunch(config)))
+    val cuCompletion = Vec(numComputeUnits, Flipped(Decoupled(new KernelCompletion)))
     val busy = Output(UInt(numComputeUnits.W))
   })
 
@@ -36,7 +32,7 @@ class MultiCuKernelDispatcher(
   for (cu <- 0 until numComputeUnits) {
     io.cuLaunch(cu).valid := io.launch.valid && hasFree && selected === cu.U
     io.cuLaunch(cu).bits := io.launch.bits.launch
-    io.cuLaunch(cu).bits.invocations:=0.U.asTypeOf(io.cuLaunch(cu).bits.invocations)
+    io.cuLaunch(cu).bits.invocations := 0.U.asTypeOf(io.cuLaunch(cu).bits.invocations)
   }
   io.launch.ready := hasFree && io.cuLaunch(selected).ready
 
@@ -45,8 +41,7 @@ class MultiCuKernelDispatcher(
     commandIds(selected) := io.launch.bits.commandId
   }
 
-  private val completions = Module(
-    new RRArbiter(new TaggedKernelCompletion(commandIdWidth), numComputeUnits))
+  private val completions = Module(new RRArbiter(new TaggedKernelCompletion(commandIdWidth), numComputeUnits))
   for (cu <- 0 until numComputeUnits) {
     completions.io.in(cu).valid := io.cuCompletion(cu).valid && occupied(cu)
     completions.io.in(cu).bits.commandId := commandIds(cu)

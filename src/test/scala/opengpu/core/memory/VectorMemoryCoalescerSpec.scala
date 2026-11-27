@@ -41,8 +41,8 @@ class VectorMemoryCoalescerSpec extends AnyFlatSpec {
       dut.io.cacheResponse.valid.poke(true.B)
       dut.io.cacheResponse.bits.fault.poke(false.B)
       dut.io.cacheResponse.bits.pageFault.poke(false.B)
-      val firstLine = (0 until lineBytes).foldLeft(BigInt(0)) {
-        case (value, byte) => value | (BigInt(byte) << (byte * 8))
+      val firstLine = (0 until lineBytes).foldLeft(BigInt(0)) { case (value, byte) =>
+        value | (BigInt(byte) << (byte * 8))
       }
       dut.io.cacheResponse.bits.readData.poke(firstLine.U)
       dut.clock.step()
@@ -57,9 +57,8 @@ class VectorMemoryCoalescerSpec extends AnyFlatSpec {
       dut.io.cacheResponse.valid.poke(true.B)
       dut.io.cacheResponse.bits.fault.poke(true.B)
       dut.io.cacheResponse.bits.pageFault.poke(true.B)
-      val secondLine = (0 until lineBytes).foldLeft(BigInt(0)) {
-        case (value, byte) =>
-          value | (BigInt(0x10 + byte) << (byte * 8))
+      val secondLine = (0 until lineBytes).foldLeft(BigInt(0)) { case (value, byte) =>
+        value | (BigInt(0x10 + byte) << (byte * 8))
       }
       dut.io.cacheResponse.bits.readData.poke(secondLine.U)
       dut.clock.step()
@@ -161,9 +160,8 @@ class VectorMemoryCoalescerSpec extends AnyFlatSpec {
         dut.io.cacheRequest.valid.expect(true.B)
         dut.io.cacheRequest.bits.lineAddress.expect(line.U)
         dut.clock.step()
-        val contents = (0 until lineBytes).foldLeft(BigInt(0)) {
-          case (value, byte) =>
-            value | (BigInt(line + byte) << (byte * 8))
+        val contents = (0 until lineBytes).foldLeft(BigInt(0)) { case (value, byte) =>
+          value | (BigInt(line + byte) << (byte * 8))
         }
         dut.io.cacheResponse.valid.poke(true.B)
         dut.io.cacheResponse.bits.readData.poke(contents.U)

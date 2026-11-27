@@ -4,16 +4,23 @@ import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
 
-/** Keep namespace checking inside a leaf so hierarchical CU simulation does
-  * not need to access private signals across the CU boundary.
+/** Keep namespace checking inside a leaf so hierarchical CU simulation does not need to access private signals across
+  * the CU boundary.
   */
-class StorageResponseNamespaceGuard(imageAvailable: Boolean, computeUniformAvailable: Boolean = false, storageAvailable: Boolean = true, computeTextureAvailable: Boolean = false) extends Module {
+class StorageResponseNamespaceGuard(
+    imageAvailable: Boolean,
+    computeUniformAvailable: Boolean = false,
+    storageAvailable: Boolean = true,
+    computeTextureAvailable: Boolean = false
+) extends Module {
   val io = IO(new Bundle { val valid = Input(Bool()); val id = Input(UInt(4.W)) })
   when(io.valid) {
-    assert(io.id < (if(imageAvailable) 8 else 4).U || (storageAvailable.B && io.id >= 8.U && io.id <= 10.U) ||
-      (computeUniformAvailable.B && io.id >= 11.U && io.id <= 12.U) ||
-      (computeTextureAvailable.B && io.id >= 13.U),
-      "response outside CU/image/storage namespaces")
+    assert(
+      io.id < (if (imageAvailable) 8 else 4).U || (storageAvailable.B && io.id >= 8.U && io.id <= 10.U) ||
+        (computeUniformAvailable.B && io.id >= 11.U && io.id <= 12.U) ||
+        (computeTextureAvailable.B && io.id >= 13.U),
+      "response outside CU/image/storage namespaces"
+    )
   }
 }
 
@@ -31,9 +38,8 @@ class StorageInstructionRequest extends Bundle {
   val tag = UInt(32.W)
 }
 
-/** Captures a storage publication and its Sv32 owner for one CU task. The
-  * parent must retain that task's descriptor/data lease until completion and
-  * must connect the instruction and commit/fault paths before enabling it.
+/** Captures a storage publication and its Sv32 owner for one CU task. The parent must retain that task's
+  * descriptor/data lease until completion and must connect the instruction and commit/fault paths before enabling it.
   * IDs 0/1 are descriptor/data, and 2 belongs to the page walker.
   */
 class StorageCuService(config: GpuConfig = GpuConfig()) extends Module {
@@ -57,14 +63,12 @@ class StorageCuService(config: GpuConfig = GpuConfig()) extends Module {
   private val translation = Module(new TranslatedLineClient(config, 2, preserveCachePolicy = true))
   private val translationPageFault = RegInit(false.B)
   when(io.kernelStart) {
-    assert(!resource.io.busy && !translation.io.walkActive,
-      "storage owner changed before the previous task drained")
+    assert(!resource.io.busy && !translation.io.walkActive, "storage owner changed before the previous task drained")
     task := io.task
     satp := io.satp
   }
   when(io.kernelCompletion) {
-    assert(!resource.io.busy && !translation.io.walkActive,
-      "kernel completion escaped storage ownership")
+    assert(!resource.io.busy && !translation.io.walkActive, "kernel completion escaped storage ownership")
   }
   io.enabled := task.enabled
   io.busy := resource.io.busy || translation.io.walkActive

@@ -4,18 +4,17 @@ import chisel3._
 import chisel3.util._
 import opengpu.config.{CachePolicy, GpuConfig}
 
-/** One read line retained only within an explicitly bounded command job.
-  * Miss acceptance and lower-request acceptance coincide, so the surrounding
-  * translator captures the request's current address space on the same edge.
-  * Invalidation discards reuse, including fills already in flight; accepted
-  * requests and stalled word replies still complete normally.
+/** One read line retained only within an explicitly bounded command job. Miss acceptance and lower-request acceptance
+  * coincide, so the surrounding translator captures the request's current address space on the same edge. Invalidation
+  * discards reuse, including fills already in flight; accepted requests and stalled word replies still complete
+  * normally.
   */
-class BufferedCommandWordPort(config: GpuConfig = GpuConfig(),
-    maxOutstanding: Int = 4) extends Module {
+class BufferedCommandWordPort(config: GpuConfig = GpuConfig(), maxOutstanding: Int = 4) extends Module {
   require(maxOutstanding > 0)
   val io = IO(new Bundle {
     val port = new OmWordToLineIO(config, 64, maxOutstanding)
     val invalidate = Input(Bool())
+
     /** Fault status of the currently offered word, stable until out.fire. */
     val responseFault = Output(Bool())
   })
@@ -46,7 +45,7 @@ class BufferedCommandWordPort(config: GpuConfig = GpuConfig(),
   p.out.valid := state === State.respond
   p.out.bits := response
   io.responseFault := p.out.valid && responseFault
-  p.responseFault:=io.responseFault
+  p.responseFault := io.responseFault
 
   when(p.in.fire) {
     pendingAddress := p.in.bits.addr
@@ -65,15 +64,16 @@ class BufferedCommandWordPort(config: GpuConfig = GpuConfig(),
     }
   }
   when(p.memoryResponse.valid) {
-    assert(state === State.waitData && p.memoryResponse.bits.transactionId === 0.U,
-      "buffered command response must identify the outstanding line")
+    assert(
+      state === State.waitData && p.memoryResponse.bits.transactionId === 0.U,
+      "buffered command response must identify the outstanding line"
+    )
   }
   when(p.memoryResponse.fire) {
     responseFault := p.memoryResponse.bits.fault
     response.addr := pendingAddress
     response.write := pendingWrite
-    response.data := Mux(pendingWrite, 0.U,
-      (p.memoryResponse.bits.readData >> (pendingAddress(5, 2) << 5))(31, 0))
+    response.data := Mux(pendingWrite, 0.U, (p.memoryResponse.bits.readData >> (pendingAddress(5, 2) << 5))(31, 0))
     cachedAddress := pendingAddress(31, 6)
     cachedData := p.memoryResponse.bits.readData
     cached := fillEligible && !io.invalidate && !p.memoryResponse.bits.fault

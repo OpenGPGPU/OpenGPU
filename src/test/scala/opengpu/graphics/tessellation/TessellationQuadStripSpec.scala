@@ -35,7 +35,8 @@ class TessellationQuadStripSpec extends AnyFlatSpec {
       val shapes = Vector((1, 0), (1, 1), (1, 5), (5, 1), (3, 7), (7, 3), (64, 0), (64, 62), (1, 64))
       for ((o, in) <- shapes; rotation <- 0 until 4; clockwise <- Seq(false, true)) {
         val outside = (0 to o).map(i => rotate((one * i / o, BigInt(0)), rotation)).toVector
-        val inside = if (in == 0) Vector(rotate((one / 2, one / 4), rotation))
+        val inside =
+          if (in == 0) Vector(rotate((one / 2, one / 4), rotation))
           else (0 to in).map(i => rotate((one / 4 + (one / 2) * i / in, one / 4), rotation)).toVector
         begin(o, in, clockwise)
         var oi = 0; var ii = 0; var cycles = 0
@@ -54,7 +55,9 @@ class TessellationQuadStripSpec extends AnyFlatSpec {
           if (ready && d.io.out.valid.peek().litToBoolean) {
             val t = d.io.out.bits
             t.taskId.expect(51.U); t.sequence.expect(triangles.size.U)
-            triangles += (0 until 3).map(i => (t.vertices(i).u.peek().litValue, t.vertices(i).v.peek().litValue)).toVector
+            triangles += (0 until 3)
+              .map(i => (t.vertices(i).u.peek().litValue, t.vertices(i).v.peek().litValue))
+              .toVector
           }
           d.clock.step()
           if (outerFire) { oi += 1; outerOffered = false }
@@ -64,8 +67,10 @@ class TessellationQuadStripSpec extends AnyFlatSpec {
         assert(cycles < 10000 && oi == outside.size && ii == inside.size)
         assert(triangles.size == o + in)
         def containsEdge(a: Point, b: Point): Boolean = triangles.exists { t =>
-          (0 until 3).exists(i => (t(i) == a && t((i + 1) % 3) == b) ||
-            (t(i) == b && t((i + 1) % 3) == a))
+          (0 until 3).exists(i =>
+            (t(i) == a && t((i + 1) % 3) == b) ||
+              (t(i) == b && t((i + 1) % 3) == a)
+          )
         }
         assert(outside.zip(outside.drop(1)).forall { case (a, b) => containsEdge(a, b) })
         assert(inside.zip(inside.drop(1)).forall { case (a, b) => containsEdge(a, b) })

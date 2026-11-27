@@ -27,10 +27,10 @@ class PipelinedQuadTexUVSpec extends AnyFlatSpec {
         else if (i % 17 == 0) Vector.fill(3)(-(BigInt(1) << 63))
         else Vector.fill(3)(signed(BigInt(64, random), 64))
       }
-      val inverse = if (i % 17 == 0) Vector.fill(3)(-(BigInt(1) << 31))
+      val inverse =
+        if (i % 17 == 0) Vector.fill(3)(-(BigInt(1) << 31))
         else Vector.fill(3)(signed(BigInt(32, random), 32))
-      Input(edges, inverse, Vector(mask, BigInt(32, random), BigInt(0)),
-        Vector(BigInt(0), mask, BigInt(32, random)))
+      Input(edges, inverse, Vector(mask, BigInt(32, random), BigInt(0)), Vector(BigInt(0), mask, BigInt(32, random)))
     }
     simulate(new PipelinedQuadTexUV(config)) { d =>
       d.io.in.valid.poke(false.B); d.io.in.bits.poke(0.U.asTypeOf(d.io.in.bits)); d.io.out.ready.poke(false.B)
@@ -106,7 +106,9 @@ class PipelinedQuadTexUVSpec extends AnyFlatSpec {
         d.io.out.bits.coordinates(k).v.expect(inputs(23).result(k, inputs(23).v).U)
       }
       d.clock.step(); d.io.out.valid.expect(false.B); d.io.drained.expect(true.B)
-      info(s"PIPELINED_QUAD_UV packets=$received lanes=${received * 4} latency=${d.latency} II1=true helperUV=true signedEdges64=true unsignedUV32=true modularArithmetic=true completeFragmentAndSampleDepthOwnership=true fullStall=true resetHealthyReuse=true")
+      info(
+        s"PIPELINED_QUAD_UV packets=$received lanes=${received * 4} latency=${d.latency} II1=true helperUV=true signedEdges64=true unsignedUV32=true modularArithmetic=true completeFragmentAndSampleDepthOwnership=true fullStall=true resetHealthyReuse=true"
+      )
     }
   }
 
@@ -114,11 +116,30 @@ class PipelinedQuadTexUVSpec extends AnyFlatSpec {
     val config = GraphicsConfig()
     val random = new scala.util.Random(0x215ab4L)
     val bias = BigInt(1) << 31
-    val boundaries = Vector(-bias, BigInt(-131073), BigInt(-131072), BigInt(-65537), BigInt(-65536),
-      BigInt(-1), BigInt(0), BigInt(1), BigInt(65535), BigInt(65536), BigInt(65537),
-      BigInt(131071), BigInt(131072), bias - 1)
-    case class Packet(edges: Vector[Vector[BigInt]], inverse: Vector[BigInt],
-                      u: Vector[BigInt], v: Vector[BigInt], modeU: Int, modeV: Int) {
+    val boundaries = Vector(
+      -bias,
+      BigInt(-131073),
+      BigInt(-131072),
+      BigInt(-65537),
+      BigInt(-65536),
+      BigInt(-1),
+      BigInt(0),
+      BigInt(1),
+      BigInt(65535),
+      BigInt(65536),
+      BigInt(65537),
+      BigInt(131071),
+      BigInt(131072),
+      bias - 1
+    )
+    case class Packet(
+        edges: Vector[Vector[BigInt]],
+        inverse: Vector[BigInt],
+        u: Vector[BigInt],
+        v: Vector[BigInt],
+        modeU: Int,
+        modeV: Int
+    ) {
       def expected(lane: Int, values: Vector[BigInt], mode: Int): BigInt = {
         val weights = edges(lane).zip(inverse).map { case (e, w) => e * w }
         val numerator = weights.zip(values).map { case (w, value) => w * value }.sum
@@ -126,8 +147,10 @@ class PipelinedQuadTexUVSpec extends AnyFlatSpec {
         val quotient = numerator / denominator
         if (mode == 1) quotient.max(BigInt(0))
         else if (mode == 2) {
-          val floor = if (numerator % denominator != 0 && numerator.signum != denominator.signum)
-            quotient - 1 else quotient
+          val floor =
+            if (numerator % denominator != 0 && numerator.signum != denominator.signum)
+              quotient - 1
+            else quotient
           val phase = ((floor % 131072) + 131072) % 131072
           if (phase >= 65536) BigInt(131072) - phase else phase
         } else quotient
@@ -139,14 +162,21 @@ class PipelinedQuadTexUVSpec extends AnyFlatSpec {
       val winding = if ((i / 9) % 2 != 0) -1 else 1
       def axis(mode: Int): Vector[BigInt] = Vector.tabulate(3) { j =>
         if (i < boundaries.size) boundaries(i)
-        else if (mode != 0 && (i + j) % 3 == 0) boundaries((i + 2*j) % boundaries.size)
+        else if (mode != 0 && (i + j) % 3 == 0) boundaries((i + 2 * j) % boundaries.size)
         else if (mode != 0) BigInt(32, random) - bias
         else BigInt(32, random)
       }
-      Packet(Vector.fill(4)(Vector(BigInt(random.nextInt(10000) + 1),
-        BigInt(random.nextInt(10000)), BigInt(random.nextInt(10000))).map(_ * winding)),
+      Packet(
+        Vector.fill(4)(
+          Vector(BigInt(random.nextInt(10000) + 1), BigInt(random.nextInt(10000)), BigInt(random.nextInt(10000)))
+            .map(_ * winding)
+        ),
         Vector.fill(3)(BigInt(random.nextInt(262144) + 1)),
-        axis(modeU), axis(modeV), modeU, modeV)
+        axis(modeU),
+        axis(modeV),
+        modeU,
+        modeV
+      )
     }
     simulate(new PipelinedQuadTexUV(config, biasedClamp = true, mirroredRepeat = true)) { d =>
       d.io.in.valid.poke(false.B); d.io.in.bits.poke(0.U.asTypeOf(d.io.in.bits)); d.io.out.ready.poke(false.B)

@@ -14,6 +14,7 @@ class TessellationQuadInteriorTask extends Bundle {
 class TessellationQuadInteriorVertex extends Bundle {
   val taskId = UInt(32.W)
   val sequence = UInt(12.W)
+
   /** Grid indices are topological identities, even if coordinates coincide. */
   val uIndex = UInt(7.W)
   val vIndex = UInt(7.W)
@@ -22,16 +23,16 @@ class TessellationQuadInteriorVertex extends Bundle {
 }
 class TessellationQuadInteriorCompletion extends Bundle {
   val taskId = UInt(32.W)
+
   /** At most 63 * 63 interior grid vertices. */
   val emitted = UInt(12.W)
   val status = UInt(3.W)
   val discarded = Bool()
 }
 
-/** Stream the interior grid vertices of a quad patch in row-major order.
-  * The first inner level controls v subdivisions and the second controls u.
-  * This supplies grid vertices only; connecting them to triangles and to the
-  * independently subdivided outer boundary is the caller's responsibility.
+/** Stream the interior grid vertices of a quad patch in row-major order. The first inner level controls v subdivisions
+  * and the second controls u. This supplies grid vertices only; connecting them to triangles and to the independently
+  * subdivided outer boundary is the caller's responsibility.
   */
 class TessellationQuadInterior extends Module {
   val io = IO(new Bundle {
@@ -90,7 +91,8 @@ class TessellationQuadInterior extends Module {
       .elsewhen(levels.io.out.bits.discard) { result.discarded := true.B; state := State.complete }
       .elsewhen(levels.io.out.bits.inner(0).segments <= 1.U || levels.io.out.bits.inner(1).segments <= 1.U) {
         state := State.complete
-      }.otherwise { state := State.vOffer }
+      }
+      .otherwise { state := State.vOffer }
   }
   when(edge.io.in.fire) { state := Mux(state === State.vOffer, State.vWait, State.uWait) }
   when(edge.io.out.fire) {
@@ -106,7 +108,8 @@ class TessellationQuadInterior extends Module {
         uIndex := 1.U
         when(vIndex +& 1.U === prepared.inner(0).segments) { state := State.complete }
           .otherwise { vIndex := vIndex + 1.U; state := State.vOffer }
-      }.otherwise { uIndex := uIndex + 1.U; state := State.uOffer }
+      }
+      .otherwise { uIndex := uIndex + 1.U; state := State.uOffer }
   }
   when(io.completion.fire) { state := State.idle }
 }

@@ -5,26 +5,18 @@ import opengpu.config.GpuConfig
 import opengpu.core.GpuComputeUnitCore
 import opengpu.core.backend.FpuBackend
 import opengpu.core.backend.issue.FpuIssueStage
-import opengpu.core.backend.register.{
-  ScalarRegisterMacroManager,
-  ScalarRegisterManager,
-  VectorRegisterFile
-}
+import opengpu.core.backend.register.{ScalarRegisterMacroManager, ScalarRegisterManager, VectorRegisterFile}
 import opengpu.core.backend.scoreboard.RegisterScoreboard
 import opengpu.core.execute.fpu.Fp32FmaLane
 import opengpu.core.frontend.decode.{DecodePipe, FullInstructionDecoder}
 import opengpu.core.frontend.warp.WarpScheduler
 import opengpu.core.memory.BankedSharedMemory
-import opengpu.core.vector.{
-  VectorConfigurationUnit,
-  VectorIntegerAlu,
-  VectorMultiplyAlu
-}
+import opengpu.core.vector.{VectorConfigurationUnit, VectorIntegerAlu, VectorMultiplyAlu}
 
 /** Emits the real project decoder RTL used by timing experiments.
   *
-  * Generated files are intentionally placed under timing/generated so every
-  * ChipAgent input can be inspected and reproduced.
+  * Generated files are intentionally placed under timing/generated so every ChipAgent input can be inspected and
+  * reproduced.
   */
 object EmitTimingRtl {
   def main(args: Array[String]): Unit = {

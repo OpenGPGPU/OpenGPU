@@ -9,8 +9,8 @@ class VectorFEstimateAluSpec extends AnyFlatSpec {
   behavior of "VectorFEstimateAlu"
 
   private def run(
-    config: GpuConfig,
-    request: VectorFpuRequest => Unit
+      config: GpuConfig,
+      request: VectorFpuRequest => Unit
   ): (Vector[BigInt], BigInt) = {
     var data = Vector.fill(config.lanes)(BigInt(0))
     var flags = BigInt(0)
@@ -41,10 +41,10 @@ class VectorFEstimateAluSpec extends AnyFlatSpec {
   }
 
   private def configure(
-    bits: VectorFpuRequest,
-    config: GpuConfig,
-    vs1Field: Int,
-    vs2: Seq[String]
+      bits: VectorFpuRequest,
+      config: GpuConfig,
+      vs1Field: Int,
+      vs2: Seq[String]
   ): Unit = {
     bits.warpId.poke(0.U)
     bits.vd.poke(3.U)
@@ -61,9 +61,12 @@ class VectorFEstimateAluSpec extends AnyFlatSpec {
 
   it should "execute vfrec7 per lane" in {
     val config = GpuConfig(lanes = 2)
-    val (data, flags) = run(config, { bits =>
-      configure(bits, config, 5, Seq("h3f800000", "h40400000"))
-    })
+    val (data, flags) = run(
+      config,
+      { bits =>
+        configure(bits, config, 5, Seq("h3f800000", "h40400000"))
+      }
+    )
     assert(data(0) == BigInt("3f7f0000", 16))
     assert(data(1) == BigInt("3eaa0000", 16))
     assert(flags == 0)
@@ -71,9 +74,12 @@ class VectorFEstimateAluSpec extends AnyFlatSpec {
 
   it should "execute vfrsqrt7 per lane" in {
     val config = GpuConfig(lanes = 2)
-    val (data, flags) = run(config, { bits =>
-      configure(bits, config, 4, Seq("h40800000", "h3f800000"))
-    })
+    val (data, flags) = run(
+      config,
+      { bits =>
+        configure(bits, config, 4, Seq("h40800000", "h3f800000"))
+      }
+    )
     assert(data(0) == BigInt("3eff0000", 16))
     assert(data(1) == BigInt("3f7f0000", 16))
     assert(flags == 0)
@@ -81,11 +87,14 @@ class VectorFEstimateAluSpec extends AnyFlatSpec {
 
   it should "report DZ for reciprocal zero lanes and preserve masked lanes" in {
     val config = GpuConfig(lanes = 2)
-    val (data, flags) = run(config, { bits =>
-      configure(bits, config, 5, Seq("h00000000", "h7f800000"))
-      bits.activeMask.poke("b01".U)
-      bits.oldVd(1).poke("h22222222".U)
-    })
+    val (data, flags) = run(
+      config,
+      { bits =>
+        configure(bits, config, 5, Seq("h00000000", "h7f800000"))
+        bits.activeMask.poke("b01".U)
+        bits.oldVd(1).poke("h22222222".U)
+      }
+    )
     assert(data(0) == BigInt("7f800000", 16))
     assert(data(1) == BigInt("22222222", 16))
     assert((flags & BigInt("08", 16)) != 0)
@@ -93,9 +102,12 @@ class VectorFEstimateAluSpec extends AnyFlatSpec {
 
   it should "raise NV for negative vfrsqrt7 lanes" in {
     val config = GpuConfig(lanes = 2)
-    val (data, flags) = run(config, { bits =>
-      configure(bits, config, 4, Seq("hbf800000", "h3f800000"))
-    })
+    val (data, flags) = run(
+      config,
+      { bits =>
+        configure(bits, config, 4, Seq("hbf800000", "h3f800000"))
+      }
+    )
     assert(data(0) == BigInt("7fc00000", 16))
     assert(data(1) == BigInt("3f7f0000", 16))
     assert((flags & BigInt("10", 16)) != 0)

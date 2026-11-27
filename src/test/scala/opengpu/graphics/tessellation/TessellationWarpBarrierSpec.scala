@@ -35,12 +35,12 @@ class TessellationWarpBarrierHarness extends Module {
 
 class TessellationWarpBarrierSpec extends AnyFlatSpec {
   private def zero(d: Data): Unit = d match {
-    case r: Record => r.elements.values.foreach(zero)
-    case v: Vec[_] => v.foreach(zero)
+    case r: Record                                                     => r.elements.values.foreach(zero)
+    case v: Vec[_]                                                     => v.foreach(zero)
     case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b.poke(false.B)
     case s: SInt if DataMirror.directionOf(s) == ActualDirection.Input => s.poke(0.S)
     case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u.poke(0.U)
-    case _ => ()
+    case _                                                             => ()
   }
   it should "reject overlapping masks and hold an offered arrival during cancellation" in {
     simulate(new TessellationWarpBarrier(2, 16)) { d =>
@@ -56,11 +56,14 @@ class TessellationWarpBarrierSpec extends AnyFlatSpec {
       d.io.resume.ready.poke(true.B); d.clock.step(); d.io.resume.ready.poke(false.B)
       d.io.arrive.valid.expect(true.B); val held = d.io.arrive.bits.peek().litValue
       d.io.cancel.poke(true.B); d.clock.step(); d.io.cancel.poke(false.B)
-      for (_ <- 0 until 3) { d.io.arrive.valid.expect(true.B); assert(d.io.arrive.bits.peek().litValue == held); d.clock.step() }
+      for (_ <- 0 until 3) {
+        d.io.arrive.valid.expect(true.B); assert(d.io.arrive.bits.peek().litValue == held); d.clock.step()
+      }
       d.io.arrive.ready.poke(true.B); d.clock.step(); d.io.arrive.ready.poke(false.B)
       n = 0; while (!d.io.resume.valid.peek().litToBoolean && n < 8) { d.clock.step(); n += 1 }
       d.io.resume.valid.expect(true.B); d.io.resume.bits.warp.expect(0.U); d.io.resume.bits.status.expect(2.U)
-      d.io.resume.ready.poke(true.B); d.clock.step(); d.io.resume.ready.poke(false.B); d.clock.step(3); d.io.busy.expect(false.B)
+      d.io.resume.ready.poke(true.B); d.clock.step(); d.io.resume.ready.poke(false.B); d.clock.step(3);
+      d.io.busy.expect(false.B)
       park(1, 24)
       n = 0; while (!d.io.resume.valid.peek().litToBoolean && n < 8) { d.clock.step(); n += 1 }
       d.io.resume.valid.expect(true.B); d.io.resume.bits.status.expect(1.U)
@@ -70,7 +73,8 @@ class TessellationWarpBarrierSpec extends AnyFlatSpec {
     simulate(new TessellationWarpBarrierHarness) { d =>
       zero(d.io); d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
       def begin(): Unit = {
-        val t = d.io.begin.bits; t.taskId.poke(8.U); t.layout.inputVertices.poke(1.U); t.layout.inputComponents.poke(1.U)
+        val t = d.io.begin.bits; t.taskId.poke(8.U); t.layout.inputVertices.poke(1.U);
+        t.layout.inputComponents.poke(1.U)
         t.layout.outputVertices.poke(32.U); t.layout.outputComponents.poke(1.U); t.layout.patchComponents.poke(0.U)
         d.io.begin.valid.poke(true.B); d.io.begin.ready.expect(true.B); d.clock.step(); d.io.begin.valid.poke(false.B)
         d.io.opened.valid.expect(true.B); d.io.opened.bits.expect(0.U); d.io.opened.ready.poke(true.B); d.clock.step()
@@ -89,7 +93,9 @@ class TessellationWarpBarrierSpec extends AnyFlatSpec {
             val w = d.io.resume.bits.warp.peek().litValue.toInt
             assert(!seen(w)); d.io.resume.bits.status.expect(0.U); d.io.resume.bits.barrierId.expect(id.U)
             d.io.resume.bits.epoch.expect(epoch.U)
-            if (seen.isEmpty) for (_ <- 0 until 3) { d.clock.step(); d.io.resume.valid.expect(true.B); d.io.resume.bits.warp.expect(w.U) }
+            if (seen.isEmpty) for (_ <- 0 until 3) {
+              d.clock.step(); d.io.resume.valid.expect(true.B); d.io.resume.bits.warp.expect(w.U)
+            }
             d.io.resume.ready.poke(true.B); d.clock.step(); d.io.resume.ready.poke(false.B); seen += w
           } else d.clock.step()
           cycles += 1
@@ -106,7 +112,8 @@ class TessellationWarpBarrierSpec extends AnyFlatSpec {
         d.io.finish.bits.poke(i.U); d.io.finish.valid.poke(true.B); d.io.finish.ready.expect(true.B); d.clock.step()
       }
       d.io.finish.valid.poke(false.B); d.io.result.valid.expect(true.B); d.io.result.bits.status.expect(0.U)
-      d.io.result.bits.barriers.expect(2.U); d.io.result.ready.poke(true.B); d.clock.step(); d.io.result.ready.poke(false.B)
+      d.io.result.bits.barriers.expect(2.U); d.io.result.ready.poke(true.B); d.clock.step();
+      d.io.result.ready.poke(false.B)
       d.io.close.valid.poke(true.B); d.io.close.ready.expect(true.B); d.clock.step(); d.io.close.valid.poke(false.B)
       begin(); park(0, 0, 20); d.clock.step(4); d.io.cancel.poke(true.B); d.clock.step(); d.io.cancel.poke(false.B)
       var cycles = 0
@@ -114,7 +121,8 @@ class TessellationWarpBarrierSpec extends AnyFlatSpec {
       d.io.resume.valid.expect(true.B); d.io.resume.bits.warp.expect(0.U); d.io.resume.bits.status.expect(2.U)
       d.io.resume.ready.poke(true.B); d.clock.step(); d.io.resume.ready.poke(false.B)
       cycles = 0; while (!d.io.result.valid.peek().litToBoolean && cycles < 30) { d.clock.step(); cycles += 1 }
-      d.io.result.valid.expect(true.B); d.io.result.bits.status.expect(2.U); d.io.result.ready.poke(true.B); d.clock.step()
+      d.io.result.valid.expect(true.B); d.io.result.bits.status.expect(2.U); d.io.result.ready.poke(true.B);
+      d.clock.step()
       d.io.result.ready.poke(false.B); d.io.close.valid.poke(true.B); d.io.close.ready.expect(true.B); d.clock.step()
       d.io.close.valid.poke(false.B); d.clock.step(3); d.io.busy.expect(false.B)
 

@@ -5,9 +5,8 @@ import chisel3.util._
 import opengpu.config.GpuConfig
 import opengpu.core.backend.VectorCommitRequest
 
-/** Storage vector instructions with task-captured descriptors and translated
-  * lower memory. The enclosing CU must route only storage opcodes here and
-  * retain its publication and VM lease through command completion.
+/** Storage vector instructions with task-captured descriptors and translated lower memory. The enclosing CU must route
+  * only storage opcodes here and retain its publication and VM lease through command completion.
   */
 class StorageVectorCuService(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {

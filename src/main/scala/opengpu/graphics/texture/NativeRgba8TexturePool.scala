@@ -5,20 +5,26 @@ import chisel3.util._
 import opengpu.config.GpuConfig
 import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse, VectorTlbFlush}
 
-/** One texture cluster per CU pair. The stage supplies the one-hot ownership
-  * mask from its SharedCuGraphicsPort; a held offer and every accepted lease
-  * keep their placement even if the external task selector later changes.
-  * All clusters share one VM/publication epoch. Physical data and PTW ports
-  * retain separate per-cluster ID spaces for the enclosing memory fabric.
+/** One texture cluster per CU pair. The stage supplies the one-hot ownership mask from its SharedCuGraphicsPort; a held
+  * offer and every accepted lease keep their placement even if the external task selector later changes. All clusters
+  * share one VM/publication epoch. Physical data and PTW ports retain separate per-cluster ID spaces for the enclosing
+  * memory fabric.
   */
-class NativeRgba8TexturePool(config: GpuConfig = GpuConfig(), numComputeUnits: Int = 4,
-    clients: Int = 4, p: TextureImageAddressConfig = TextureImageAddressConfig(),
-    useBlackBoxes: Boolean = false, maxOutstandingPerClient: Int = 1,
-    sharedOutstandingRows: Int = 0) extends Module {
+class NativeRgba8TexturePool(
+    config: GpuConfig = GpuConfig(),
+    numComputeUnits: Int = 4,
+    clients: Int = 4,
+    p: TextureImageAddressConfig = TextureImageAddressConfig(),
+    useBlackBoxes: Boolean = false,
+    maxOutstandingPerClient: Int = 1,
+    sharedOutstandingRows: Int = 0
+) extends Module {
   require(numComputeUnits >= 1 && numComputeUnits <= 16 && clients >= 1 && clients <= 16)
   require(isPow2(maxOutstandingPerClient) && maxOutstandingPerClient <= 32 && clients * maxOutstandingPerClient <= 128)
-  require(sharedOutstandingRows == 0 || (isPow2(sharedOutstandingRows) && sharedOutstandingRows <= 128 &&
-    sharedOutstandingRows >= clients * 4 && maxOutstandingPerClient == 1))
+  require(
+    sharedOutstandingRows == 0 || (isPow2(sharedOutstandingRows) && sharedOutstandingRows <= 128 &&
+      sharedOutstandingRows >= clients * 4 && maxOutstandingPerClient == 1)
+  )
   val clusters: Int = (numComputeUnits + 1) / 2
   private val clusterBits = math.max(1, log2Ceil(clusters))
   val io = IO(new Bundle {
@@ -32,8 +38,9 @@ class NativeRgba8TexturePool(config: GpuConfig = GpuConfig(), numComputeUnits: I
     val invalidate = Input(Bool()); val cancel = Input(Bool()); val busy = Output(Bool())
   })
   if (sharedOutstandingRows > 0) {
-    val shared = Module(new NativeRgba8TextureSharedPool(config, numComputeUnits, clients, p,
-      useBlackBoxes, sharedOutstandingRows))
+    val shared = Module(
+      new NativeRgba8TextureSharedPool(config, numComputeUnits, clients, p, useBlackBoxes, sharedOutstandingRows)
+    )
     io.client <> shared.io.client; shared.io.cuMask := io.cuMask
     io.memoryRequest <> shared.io.memoryRequest; shared.io.memoryResponse <> io.memoryResponse
     io.pageWalk <> shared.io.pageWalk; shared.io.pageWalkResponse <> io.pageWalkResponse
@@ -69,7 +76,7 @@ class NativeRgba8TexturePool(config: GpuConfig = GpuConfig(), numComputeUnits: I
     }
     for (c <- 0 until clients) {
       val client = io.client(c)
-      val affinity = if(clusters == 1) 0.U else (PriorityEncoder(io.cuMask(c)) >> 1)
+      val affinity = if (clusters == 1) 0.U else (PriorityEncoder(io.cuMask(c)) >> 1)
       val target = Mux(offerLocked(c), offerDestination(c), affinity)
       val readies = Wire(Vec(clusters, Bool()))
       val valids = Wire(Vec(clusters, Bool()))
@@ -109,11 +116,16 @@ class NativeRgba8TexturePool(config: GpuConfig = GpuConfig(), numComputeUnits: I
       }
       client.request.ready := !leased(c) && ((io.cancel && offerLocked(c)) || (allow && readies.asUInt.orR))
       client.response.valid := leased(c) && (localCancel(c) || valids.asUInt.orR)
-      client.response.bits := Mux(localCancel(c), cancelledReply(c),
-        if(clusters == 1) responses(0) else responses(destination(c)))
+      client.response.bits := Mux(
+        localCancel(c),
+        cancelledReply(c),
+        if (clusters == 1) responses(0) else responses(destination(c))
+      )
     }
   } else {
-    val pool = Module(new NativeRgba8TextureCreditPool(config, numComputeUnits, clients, p, useBlackBoxes, maxOutstandingPerClient))
+    val pool = Module(
+      new NativeRgba8TextureCreditPool(config, numComputeUnits, clients, p, useBlackBoxes, maxOutstandingPerClient)
+    )
     io <> pool.io
   }
 }

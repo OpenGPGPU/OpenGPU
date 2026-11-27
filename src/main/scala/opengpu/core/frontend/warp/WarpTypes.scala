@@ -5,11 +5,10 @@ import opengpu.config.GpuConfig
 
 /** Command that allocates a hardware warp slot.
   *
-  * The dispatcher (WarpContextInitializer) snapshots the target slot before
-  * initializing its registers and names it explicitly here. The scheduler must
-  * launch exactly this slot: a concurrent `finish` can free a lower slot while
-  * initialization is in flight, so re-deriving the lowest free slot at
-  * `launch.fire` would mismatch the initialized context.
+  * The dispatcher (WarpContextInitializer) snapshots the target slot before initializing its registers and names it
+  * explicitly here. The scheduler must launch exactly this slot: a concurrent `finish` can free a lower slot while
+  * initialization is in flight, so re-deriving the lowest free slot at `launch.fire` would mismatch the initialized
+  * context.
   */
 class WarpLaunch(config: GpuConfig) extends Bundle {
   val invocations = new opengpu.core.memory.WarpInvocationPolicy(config)

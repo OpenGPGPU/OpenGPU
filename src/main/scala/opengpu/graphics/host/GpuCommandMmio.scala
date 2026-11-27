@@ -35,32 +35,36 @@ object GpuCommandMmioRegs {
   val COMPLETION_BYTES_LO = 0x128
   val COMPLETION_BYTES_HI = 0x12c
   val COMPLETION_POP = 0x130
-  /** W1P bit0: request a safe unified-command reset.  The hardware stops
-    * accepting and dispatching new commands, drains in-flight work and memory
-    * transactions, resets the command-path state, then raises the completion
-    * event.  Lives outside the contiguous staging bank (MSAA_CONFIG owns
-    * 0x134); the AXI top routes this one address here explicitly. */
+
+  /** W1P bit0: request a safe unified-command reset. The hardware stops accepting and dispatching new commands, drains
+    * in-flight work and memory transactions, resets the command-path state, then raises the completion event. Lives
+    * outside the contiguous staging bank (MSAA_CONFIG owns 0x134); the AXI top routes this one address here explicitly.
+    */
   val RESET = 0x138
-  /** MSAA sample mode staged for a typed resolve submission (bits 1:0; 0/1/2).
-    * Placed past `RenderHostRegs.END` (0x148), which was previously invalid, so
-    * the AXI top routes this one address here as well. */
+
+  /** MSAA sample mode staged for a typed resolve submission (bits 1:0; 0/1/2). Placed past `RenderHostRegs.END`
+    * (0x148), which was previously invalid, so the AXI top routes this one address here as well.
+    */
   val SAMPLE_MODE = 0x148
-  /** Sv32 `satp` for the vector data and instruction MMUs.  Bit 31 enables
-    * translation; bits 30:22 are the ASID and bits 19:0 the root page-table
-    * PPN.  Changing either requires a TLB flush. */
+
+  /** Sv32 `satp` for the vector data and instruction MMUs. Bit 31 enables translation; bits 30:22 are the ASID and bits
+    * 19:0 the root page-table PPN. Changing either requires a TLB flush.
+    */
   val VECTOR_SATP = 0x14c
   val INSTRUCTION_SATP = 0x150
+
   /** `satp` fields (bits 30:22 ASID, bit 31 enable), mirrored in gpu_abi.h. */
   val SATP_ENABLE = 0x80000000L
   val SATP_ASID_SHIFT = 22
   val SATP_ASID_MASK = 0x1ff
-  /** Write-1 TLB control.  Bit 0 invalidates every entry (a full flush).
-    * Bit 1 requests an ASID-scoped flush: entries whose ASID equals bits
-    * [11:3] are dropped while global mappings and other address spaces stay
-    * warm.  Bit 2 requests a VPN-scoped flush: entries whose virtual page
-    * number equals bits [31:12] are dropped.  Bits 1 and 2 may be combined to
-    * drop only the one mapping.  A full flush dominates the scoped bits. */
+
+  /** Write-1 TLB control. Bit 0 invalidates every entry (a full flush). Bit 1 requests an ASID-scoped flush: entries
+    * whose ASID equals bits [11:3] are dropped while global mappings and other address spaces stay warm. Bit 2 requests
+    * a VPN-scoped flush: entries whose virtual page number equals bits [31:12] are dropped. Bits 1 and 2 may be
+    * combined to drop only the one mapping. A full flush dominates the scoped bits.
+    */
   val TLB_FLUSH = 0x154
+
   /** Write-1 `TLB_FLUSH` fields, mirrored in `driver/gpu_abi.h`. */
   val TLB_FLUSH_FULL = 1
   val TLB_FLUSH_ASID = 1 << 1
@@ -69,13 +73,14 @@ object GpuCommandMmioRegs {
   val TLB_FLUSH_VPN = 1 << 2
   val TLB_FLUSH_VPN_SHIFT = 12
   val TLB_FLUSH_VPN_MASK = 0xfffff
+
   /** Read-only shader lanes/warps/kernarg banks/execution CUs, one byte each. */
   val SHADER_CONFIG = 0x158
   val END = 0x15c
 }
 
-/** Opt-in image command staging, between the uniform and blend discovery blocks.
-  * The magic identifies this transport only; it does not advertise API support.
+/** Opt-in image command staging, between the uniform and blend discovery blocks. The magic identifies this transport
+  * only; it does not advertise API support.
   */
 object ShaderImageCommandMmioRegs {
   val base = 0x3e0
@@ -124,7 +129,6 @@ object AtomicCounterCommandMmioRegs {
   val controlMask = BigInt("00000301", 16)
 }
 
-
 /** Internal compute uniform publication staging; not an API capability. */
 object ComputeUniformCommandMmioRegs {
   val base = 0x440
@@ -158,19 +162,19 @@ object ComputeTextureCommandMmioRegs {
 
 /** Register-programmed bridge to the ordered unified GPU command stream. */
 class GpuCommandMmio(
-  config: GpuConfig = GpuConfig(),
-  commandIdWidth: Int = 8,
-  queueDepth: Int = 4,
-  shaderComputeUnits: Int = 1,
-  shaderKernargBanks: Int = 2,
-  protectVmState: Boolean = false,
-  nativeCompletionInfo: Boolean = false,
-  imageAvailable: Boolean = false,
-  storageAvailable: Boolean = false,
-  computeUniformAvailable: Boolean = false,
-  computeTextureAvailable: Boolean = false,
-  atomicCounterAvailable: Boolean = false,
-  jointTessellationCompletion: Boolean = false
+    config: GpuConfig = GpuConfig(),
+    commandIdWidth: Int = 8,
+    queueDepth: Int = 4,
+    shaderComputeUnits: Int = 1,
+    shaderKernargBanks: Int = 2,
+    protectVmState: Boolean = false,
+    nativeCompletionInfo: Boolean = false,
+    imageAvailable: Boolean = false,
+    storageAvailable: Boolean = false,
+    computeUniformAvailable: Boolean = false,
+    computeTextureAvailable: Boolean = false,
+    atomicCounterAvailable: Boolean = false,
+    jointTessellationCompletion: Boolean = false
 ) extends Module {
   require(commandIdWidth > 0 && commandIdWidth <= 8)
   require(queueDepth > 0)
@@ -180,47 +184,64 @@ class GpuCommandMmio(
   require(!computeTextureAvailable || protectVmState, "compute texture commands retain protected VM ownership")
   require(!atomicCounterAvailable || protectVmState, "atomic counter commands retain protected VM ownership")
   require(!jointTessellationCompletion || (nativeCompletionInfo && protectVmState))
-  private val detailWords = if (jointTessellationCompletion) TessellationJointHostProtocol.completionWords
+  private val detailWords =
+    if (jointTessellationCompletion) TessellationJointHostProtocol.completionWords
     else NativeBinnedCompletionInfo.wordCount
-  private val shaderConfigWord = ShaderResourceConfig.encode(
-    config.lanes, config.warps, shaderKernargBanks, shaderComputeUnits)
+  private val shaderConfigWord =
+    ShaderResourceConfig.encode(config.lanes, config.warps, shaderKernargBanks, shaderComputeUnits)
 
   val io = IO(new Bundle {
     val reg = new Bundle {
       val req = Flipped(Decoupled(new RenderHostRegRequest(11)))
       val resp = Decoupled(new RenderHostRegResponse)
     }
-    val command = Decoupled(new GpuCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable, atomicCounterAvailable))
-    val completion = Flipped(Decoupled(
-      new GpuCommandResult(commandIdWidth)))
-    val completionDetails=if(nativeCompletionInfo)Some(Input(Vec(detailWords,UInt(32.W))))else None
+    val command = Decoupled(
+      new GpuCommand(
+        config,
+        commandIdWidth,
+        imageAvailable,
+        storageAvailable,
+        computeUniformAvailable,
+        computeTextureAvailable,
+        atomicCounterAvailable
+      )
+    )
+    val completion = Flipped(Decoupled(new GpuCommandResult(commandIdWidth)))
+    val completionDetails = if (nativeCompletionInfo) Some(Input(Vec(detailWords, UInt(32.W)))) else None
     val completionEvent = Output(Bool())
-    /** Held from a RESET request until the system's command path reports a
-      * completed drain and state reset via `resetDone`.  While active this
-      * bridge drops staged commands, rejects submissions and discards late
-      * completions. */
+
+    /** Held from a RESET request until the system's command path reports a completed drain and state reset via
+      * `resetDone`. While active this bridge drops staged commands, rejects submissions and discards late completions.
+      */
     val resetActive = Output(Bool())
-    /** Single-cycle pulse from the system: every in-flight command and memory
-      * transaction has drained and the command-path state has been reset. */
+
+    /** Single-cycle pulse from the system: every in-flight command and memory transaction has drained and the
+      * command-path state has been reset.
+      */
     val resetDone = Input(Bool())
-    /** Every external owner/translation/memory client has retired. Local
-      * staged commands and the software completion slot are checked here. */
+
+    /** Every external owner/translation/memory client has retired. Local staged commands and the software completion
+      * slot are checked here.
+      */
     val vmContextIdle = if (protectVmState) Some(Input(Bool())) else None
-    /** Includes local staged commands, held/incoming completions and reset,
-      * in addition to all external context owners. */
+
+    /** Includes local staged commands, held/incoming completions and reset, in addition to all external context owners.
+      */
     val vmStateWriteAllowed = if (protectVmState) Some(Output(Bool())) else None
+
     /** Current Sv32 page-table base/ASID for the vector and instruction MMUs. */
     val vectorSatp = Output(UInt(32.W))
     val instructionSatp = Output(UInt(32.W))
-    /** One-cycle TLB flush programmed through `TLB_FLUSH`.  Both validity
-      * bits clear is a full flush; the scoped fields select the entries. */
+
+    /** One-cycle TLB flush programmed through `TLB_FLUSH`. Both validity bits clear is a full flush; the scoped fields
+      * select the entries.
+      */
     val tlbFlush = Output(Valid(new VectorTlbFlush(config)))
   })
 
   private def merge(old: UInt, data: UInt, strb: UInt): UInt =
     Cat((0 until 4).reverse.map { byte =>
-      Mux(strb(byte), data(8 * byte + 7, 8 * byte),
-        old(8 * byte + 7, 8 * byte))
+      Mux(strb(byte), data(8 * byte + 7, 8 * byte), old(8 * byte + 7, 8 * byte))
     })
 
   private val commandId = RegInit(0.U(32.W))
@@ -250,12 +271,16 @@ class GpuCommandMmio(
   private val submitOverflow = RegInit(false.B)
   private val resetActive = RegInit(false.B)
   private val resetRejected = RegInit(false.B)
-  private val imageWords = if (imageAvailable)
-    Some(RegInit(VecInit(Seq.fill(7)(0.U(32.W))))) else None
-  private val imageAddress = if (imageAvailable)
-    io.reg.req.bits.addr >= ShaderImageCommandMmioRegs.base.U &&
+  private val imageWords =
+    if (imageAvailable)
+      Some(RegInit(VecInit(Seq.fill(7)(0.U(32.W)))))
+    else None
+  private val imageAddress =
+    if (imageAvailable)
+      io.reg.req.bits.addr >= ShaderImageCommandMmioRegs.base.U &&
       io.reg.req.bits.addr < ShaderImageCommandMmioRegs.end.U &&
-      io.reg.req.bits.addr(1, 0) === 0.U else false.B
+      io.reg.req.bits.addr(1, 0) === 0.U
+    else false.B
   private val imageWriteOk = WireDefault(false.B)
   imageWords.foreach { words =>
     val index = ((io.reg.req.bits.addr - ShaderImageCommandMmioRegs.base.U) >> 2)(2, 0)
@@ -269,12 +294,16 @@ class GpuCommandMmio(
     }
   }
 
-  private val storageWords = if (storageAvailable)
-    Some(RegInit(VecInit(Seq.fill(7)(0.U(32.W))))) else None
-  private val storageAddress = if (storageAvailable)
-    io.reg.req.bits.addr >= StorageCommandMmioRegs.base.U &&
+  private val storageWords =
+    if (storageAvailable)
+      Some(RegInit(VecInit(Seq.fill(7)(0.U(32.W)))))
+    else None
+  private val storageAddress =
+    if (storageAvailable)
+      io.reg.req.bits.addr >= StorageCommandMmioRegs.base.U &&
       io.reg.req.bits.addr < StorageCommandMmioRegs.end.U &&
-      io.reg.req.bits.addr(1, 0) === 0.U else false.B
+      io.reg.req.bits.addr(1, 0) === 0.U
+    else false.B
   private val storageWriteOk = WireDefault(false.B)
   storageWords.foreach { words =>
     val index = ((io.reg.req.bits.addr - StorageCommandMmioRegs.base.U) >> 2)(2, 0)
@@ -288,12 +317,16 @@ class GpuCommandMmio(
     }
   }
 
-  private val atomicCounterWords = if (atomicCounterAvailable)
-    Some(RegInit(VecInit(Seq.fill(7)(0.U(32.W))))) else None
-  private val atomicCounterAddress = if (atomicCounterAvailable)
-    io.reg.req.bits.addr >= AtomicCounterCommandMmioRegs.base.U &&
+  private val atomicCounterWords =
+    if (atomicCounterAvailable)
+      Some(RegInit(VecInit(Seq.fill(7)(0.U(32.W)))))
+    else None
+  private val atomicCounterAddress =
+    if (atomicCounterAvailable)
+      io.reg.req.bits.addr >= AtomicCounterCommandMmioRegs.base.U &&
       io.reg.req.bits.addr < AtomicCounterCommandMmioRegs.end.U &&
-      io.reg.req.bits.addr(1, 0) === 0.U else false.B
+      io.reg.req.bits.addr(1, 0) === 0.U
+    else false.B
   private val atomicCounterWriteOk = WireDefault(false.B)
   atomicCounterWords.foreach { words =>
     val index = ((io.reg.req.bits.addr - AtomicCounterCommandMmioRegs.base.U) >> 2)(2, 0)
@@ -307,12 +340,16 @@ class GpuCommandMmio(
     }
   }
 
-  private val computeUniformWords = if (computeUniformAvailable)
-    Some(RegInit(VecInit(Seq.fill(8)(0.U(32.W))))) else None
-  private val computeUniformAddress = if (computeUniformAvailable)
-    io.reg.req.bits.addr >= ComputeUniformCommandMmioRegs.base.U &&
+  private val computeUniformWords =
+    if (computeUniformAvailable)
+      Some(RegInit(VecInit(Seq.fill(8)(0.U(32.W)))))
+    else None
+  private val computeUniformAddress =
+    if (computeUniformAvailable)
+      io.reg.req.bits.addr >= ComputeUniformCommandMmioRegs.base.U &&
       io.reg.req.bits.addr < ComputeUniformCommandMmioRegs.end.U &&
-      io.reg.req.bits.addr(1, 0) === 0.U else false.B
+      io.reg.req.bits.addr(1, 0) === 0.U
+    else false.B
   private val computeUniformWriteOk = WireDefault(false.B)
   computeUniformWords.foreach { words =>
     val index = ((io.reg.req.bits.addr - ComputeUniformCommandMmioRegs.base.U) >> 2)(3, 0)
@@ -326,12 +363,16 @@ class GpuCommandMmio(
     }
   }
 
-  private val computeTextureWords = if (computeTextureAvailable)
-    Some(RegInit(VecInit(Seq.fill(5)(0.U(32.W))))) else None
-  private val computeTextureAddress = if (computeTextureAvailable)
-    io.reg.req.bits.addr >= ComputeTextureCommandMmioRegs.base.U &&
+  private val computeTextureWords =
+    if (computeTextureAvailable)
+      Some(RegInit(VecInit(Seq.fill(5)(0.U(32.W)))))
+    else None
+  private val computeTextureAddress =
+    if (computeTextureAvailable)
+      io.reg.req.bits.addr >= ComputeTextureCommandMmioRegs.base.U &&
       io.reg.req.bits.addr < ComputeTextureCommandMmioRegs.end.U &&
-      io.reg.req.bits.addr(1, 0) === 0.U else false.B
+      io.reg.req.bits.addr(1, 0) === 0.U
+    else false.B
   private val computeTextureWriteOk = WireDefault(false.B)
   computeTextureWords.foreach { words =>
     val index = ((io.reg.req.bits.addr - ComputeTextureCommandMmioRegs.base.U) >> 2)(2, 0)
@@ -344,8 +385,20 @@ class GpuCommandMmio(
     }
   }
 
-  private val queue = Module(new Queue(
-    new GpuCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable, atomicCounterAvailable), queueDepth))
+  private val queue = Module(
+    new Queue(
+      new GpuCommand(
+        config,
+        commandIdWidth,
+        imageAvailable,
+        storageAvailable,
+        computeUniformAvailable,
+        computeTextureAvailable,
+        atomicCounterAvailable
+      ),
+      queueDepth
+    )
+  )
 
   private val wFire = io.reg.req.fire && io.reg.req.bits.isWrite
   private val resetRequest = wFire &&
@@ -462,16 +515,17 @@ class GpuCommandMmio(
 
   private val completionValid = RegInit(false.B)
   private val completion = Reg(new GpuCommandResult(commandIdWidth))
-  private val completionDetails=if(nativeCompletionInfo)Some(Reg(Vec(detailWords,UInt(32.W))))else None
+  private val completionDetails = if (nativeCompletionInfo) Some(Reg(Vec(detailWords, UInt(32.W)))) else None
   private val popCompletion = wFire &&
     io.reg.req.bits.addr === GpuCommandMmioRegs.COMPLETION_POP.U &&
     io.reg.req.bits.data(0)
   private val vmWriteAllowed = io.vmContextIdle.getOrElse(true.B) &&
-    (if (protectVmState) queue.io.count === 0.U && !completionValid &&
-      !io.completion.valid && !resetActive else true.B)
+    (if (protectVmState)
+       queue.io.count === 0.U && !completionValid &&
+       !io.completion.valid && !resetActive
+     else true.B)
   io.vmStateWriteAllowed.foreach(_ := vmWriteAllowed)
-  private val vmMutation = io.reg.req.bits.isWrite && (
-    io.reg.req.bits.addr === GpuCommandMmioRegs.VECTOR_SATP.U ||
+  private val vmMutation = io.reg.req.bits.isWrite && (io.reg.req.bits.addr === GpuCommandMmioRegs.VECTOR_SATP.U ||
     io.reg.req.bits.addr === GpuCommandMmioRegs.INSTRUCTION_SATP.U ||
     io.reg.req.bits.addr === GpuCommandMmioRegs.TLB_FLUSH.U)
   // Completions arriving mid-reset belong to the aborted stream; consume and
@@ -480,10 +534,12 @@ class GpuCommandMmio(
   io.completionEvent := (io.completion.fire && !resetActive && !resetRequest) || io.resetDone
   when(io.completion.fire && !resetActive && !resetRequest) {
     completion := io.completion.bits
-    completionDetails.foreach(_:=io.completionDetails.get)
+    completionDetails.foreach(_ := io.completionDetails.get)
     completionValid := true.B
-  }.elsewhen(popCompletion || resetRequest ||
-    (io.completion.fire && resetActive)) {
+  }.elsewhen(
+    popCompletion || resetRequest ||
+      (io.completion.fire && resetActive)
+  ) {
     completionValid := false.B
   }
 
@@ -540,14 +596,12 @@ class GpuCommandMmio(
       }
       is(GpuCommandMmioRegs.VECTOR_SATP.U) {
         when(vmWriteAllowed) {
-          vectorSatp := merge(vectorSatp, io.reg.req.bits.data,
-                              io.reg.req.bits.strb)
+          vectorSatp := merge(vectorSatp, io.reg.req.bits.data, io.reg.req.bits.strb)
         }
       }
       is(GpuCommandMmioRegs.INSTRUCTION_SATP.U) {
         when(vmWriteAllowed) {
-          instructionSatp := merge(instructionSatp, io.reg.req.bits.data,
-                                   io.reg.req.bits.strb)
+          instructionSatp := merge(instructionSatp, io.reg.req.bits.data, io.reg.req.bits.strb)
         }
       }
       is(GpuCommandMmioRegs.TLB_FLUSH.U) {
@@ -574,70 +628,87 @@ class GpuCommandMmio(
 
   // Preserve every legacy field position. The fourth opcode bit uses reserved
   // bit16, rather than shifting status/success into a different ABI layout.
-  private val legacyCompletionMeta = Cat(completion.success, completion.status,
-    completion.opcode(2, 0), completion.commandId)
+  private val legacyCompletionMeta =
+    Cat(completion.success, completion.status, completion.opcode(2, 0), completion.commandId)
   private val completionMeta = Cat(0.U(15.W), completion.opcode(3), legacyCompletionMeta.pad(16))
   // Bit 5 reports whether VM register writes would currently be rejected.
   // Older devices read this reserved bit as zero (no readiness indication).
-  private val status = Cat(
-    0.U(26.W), !vmWriteAllowed, resetRejected, resetActive, submitOverflow,
-    completionValid, queue.io.enq.ready)
-  private val readData = MuxLookup(io.reg.req.bits.addr, 0.U(32.W))(Seq(
-    GpuCommandMmioRegs.COMMAND_ID.U -> commandId,
-    GpuCommandMmioRegs.OPCODE.U -> opcode,
-    GpuCommandMmioRegs.KERNEL_PC.U -> kernelPc,
-    GpuCommandMmioRegs.KERNARG.U -> kernarg,
-    GpuCommandMmioRegs.GRID_X.U -> grid(0),
-    GpuCommandMmioRegs.GRID_Y.U -> grid(1),
-    GpuCommandMmioRegs.GRID_Z.U -> grid(2),
-    GpuCommandMmioRegs.LOCAL_X.U -> local(0),
-    GpuCommandMmioRegs.LOCAL_Y.U -> local(1),
-    GpuCommandMmioRegs.LOCAL_Z.U -> local(2),
-    GpuCommandMmioRegs.FLAGS.U -> flags,
-    GpuCommandMmioRegs.DMA_DEPENDENCY.U -> dmaDependency,
-    GpuCommandMmioRegs.SOURCE.U -> source,
-    GpuCommandMmioRegs.DESTINATION.U -> destination,
-    GpuCommandMmioRegs.BYTES.U -> bytes,
-    GpuCommandMmioRegs.PATTERN.U -> pattern,
-    GpuCommandMmioRegs.WIDTH.U -> width,
-    GpuCommandMmioRegs.HEIGHT.U -> height,
-    GpuCommandMmioRegs.SOURCE_STRIDE.U -> sourceStride,
-    GpuCommandMmioRegs.DESTINATION_STRIDE.U -> destinationStride,
-    GpuCommandMmioRegs.WAIT_EVENT.U -> waitEvent,
-    GpuCommandMmioRegs.SIGNAL_EVENT.U -> signalEvent,
-    GpuCommandMmioRegs.SAMPLE_MODE.U -> sampleMode,
-    GpuCommandMmioRegs.VECTOR_SATP.U -> vectorSatp,
-    GpuCommandMmioRegs.INSTRUCTION_SATP.U -> instructionSatp,
-    GpuCommandMmioRegs.SHADER_CONFIG.U -> shaderConfigWord.U(32.W),
-    GpuCommandMmioRegs.STATUS.U -> status,
-    GpuCommandMmioRegs.COMPLETION.U -> completionMeta,
-    GpuCommandMmioRegs.COMPLETION_BYTES_LO.U -> completion.bytesProcessed(31, 0),
-    GpuCommandMmioRegs.COMPLETION_BYTES_HI.U -> completion.bytesProcessed(63, 32))++
-    completionDetails.toSeq.flatMap(ws => ws.zipWithIndex.map { case (word, index) =>
-      TessellationJointHostProtocol.completionAddress(index).U -> Mux(completionValid && !resetActive, word, 0.U)
-    }) ++
-    imageWords.toSeq.flatMap(ws => ws.zipWithIndex.map { case (word, i) =>
-      (ShaderImageCommandMmioRegs.base + i * 4).U -> word
-    } :+ (ShaderImageCommandMmioRegs.MAGIC.U -> ShaderImageCommandMmioRegs.magic.U(32.W))) ++
-    storageWords.toSeq.flatMap(ws => ws.zipWithIndex.map { case (word, i) =>
-      (StorageCommandMmioRegs.base + i * 4).U -> word
-    } :+ (StorageCommandMmioRegs.MAGIC.U -> StorageCommandMmioRegs.magic.U(32.W))) ++
-    atomicCounterWords.toSeq.flatMap(ws => ws.zipWithIndex.map { case (word, i) =>
-      (AtomicCounterCommandMmioRegs.base + i * 4).U -> word
-    } :+ (AtomicCounterCommandMmioRegs.MAGIC.U -> AtomicCounterCommandMmioRegs.magic.U(32.W))) ++
-    computeUniformWords.toSeq.flatMap(ws => ws.zipWithIndex.map { case (word, i) =>
-      (ComputeUniformCommandMmioRegs.base + i * 4).U -> word
-    } :+ (ComputeUniformCommandMmioRegs.MAGIC.U -> ComputeUniformCommandMmioRegs.magic.U(32.W))) ++
-    computeTextureWords.toSeq.flatMap(ws => ws.zipWithIndex.map { case (word, i) =>
-      (ComputeTextureCommandMmioRegs.base + i * 4).U -> word
-    } :+ (ComputeTextureCommandMmioRegs.MAGIC.U -> ComputeTextureCommandMmioRegs.magic.U(32.W))))
+  private val status =
+    Cat(0.U(26.W), !vmWriteAllowed, resetRejected, resetActive, submitOverflow, completionValid, queue.io.enq.ready)
+  private val readData = MuxLookup(io.reg.req.bits.addr, 0.U(32.W))(
+    Seq(
+      GpuCommandMmioRegs.COMMAND_ID.U -> commandId,
+      GpuCommandMmioRegs.OPCODE.U -> opcode,
+      GpuCommandMmioRegs.KERNEL_PC.U -> kernelPc,
+      GpuCommandMmioRegs.KERNARG.U -> kernarg,
+      GpuCommandMmioRegs.GRID_X.U -> grid(0),
+      GpuCommandMmioRegs.GRID_Y.U -> grid(1),
+      GpuCommandMmioRegs.GRID_Z.U -> grid(2),
+      GpuCommandMmioRegs.LOCAL_X.U -> local(0),
+      GpuCommandMmioRegs.LOCAL_Y.U -> local(1),
+      GpuCommandMmioRegs.LOCAL_Z.U -> local(2),
+      GpuCommandMmioRegs.FLAGS.U -> flags,
+      GpuCommandMmioRegs.DMA_DEPENDENCY.U -> dmaDependency,
+      GpuCommandMmioRegs.SOURCE.U -> source,
+      GpuCommandMmioRegs.DESTINATION.U -> destination,
+      GpuCommandMmioRegs.BYTES.U -> bytes,
+      GpuCommandMmioRegs.PATTERN.U -> pattern,
+      GpuCommandMmioRegs.WIDTH.U -> width,
+      GpuCommandMmioRegs.HEIGHT.U -> height,
+      GpuCommandMmioRegs.SOURCE_STRIDE.U -> sourceStride,
+      GpuCommandMmioRegs.DESTINATION_STRIDE.U -> destinationStride,
+      GpuCommandMmioRegs.WAIT_EVENT.U -> waitEvent,
+      GpuCommandMmioRegs.SIGNAL_EVENT.U -> signalEvent,
+      GpuCommandMmioRegs.SAMPLE_MODE.U -> sampleMode,
+      GpuCommandMmioRegs.VECTOR_SATP.U -> vectorSatp,
+      GpuCommandMmioRegs.INSTRUCTION_SATP.U -> instructionSatp,
+      GpuCommandMmioRegs.SHADER_CONFIG.U -> shaderConfigWord.U(32.W),
+      GpuCommandMmioRegs.STATUS.U -> status,
+      GpuCommandMmioRegs.COMPLETION.U -> completionMeta,
+      GpuCommandMmioRegs.COMPLETION_BYTES_LO.U -> completion.bytesProcessed(31, 0),
+      GpuCommandMmioRegs.COMPLETION_BYTES_HI.U -> completion.bytesProcessed(63, 32)
+    ) ++
+      completionDetails.toSeq.flatMap(ws =>
+        ws.zipWithIndex.map { case (word, index) =>
+          TessellationJointHostProtocol.completionAddress(index).U -> Mux(completionValid && !resetActive, word, 0.U)
+        }
+      ) ++
+      imageWords.toSeq.flatMap(ws =>
+        ws.zipWithIndex.map { case (word, i) =>
+          (ShaderImageCommandMmioRegs.base + i * 4).U -> word
+        } :+ (ShaderImageCommandMmioRegs.MAGIC.U -> ShaderImageCommandMmioRegs.magic.U(32.W))
+      ) ++
+      storageWords.toSeq.flatMap(ws =>
+        ws.zipWithIndex.map { case (word, i) =>
+          (StorageCommandMmioRegs.base + i * 4).U -> word
+        } :+ (StorageCommandMmioRegs.MAGIC.U -> StorageCommandMmioRegs.magic.U(32.W))
+      ) ++
+      atomicCounterWords.toSeq.flatMap(ws =>
+        ws.zipWithIndex.map { case (word, i) =>
+          (AtomicCounterCommandMmioRegs.base + i * 4).U -> word
+        } :+ (AtomicCounterCommandMmioRegs.MAGIC.U -> AtomicCounterCommandMmioRegs.magic.U(32.W))
+      ) ++
+      computeUniformWords.toSeq.flatMap(ws =>
+        ws.zipWithIndex.map { case (word, i) =>
+          (ComputeUniformCommandMmioRegs.base + i * 4).U -> word
+        } :+ (ComputeUniformCommandMmioRegs.MAGIC.U -> ComputeUniformCommandMmioRegs.magic.U(32.W))
+      ) ++
+      computeTextureWords.toSeq.flatMap(ws =>
+        ws.zipWithIndex.map { case (word, i) =>
+          (ComputeTextureCommandMmioRegs.base + i * 4).U -> word
+        } :+ (ComputeTextureCommandMmioRegs.MAGIC.U -> ComputeTextureCommandMmioRegs.magic.U(32.W))
+      )
+  )
 
   io.reg.req.ready := true.B
   io.reg.resp.valid := io.reg.req.valid && !io.reg.req.bits.isWrite
   io.reg.resp.bits.data := readData
-  val detailAddress=if(nativeCompletionInfo)io.reg.req.bits.addr>=NativeBinnedCompletionInfo.base.U && io.reg.req.bits.addr<NativeBinnedCompletionInfo.end.U else false.B
-  val jointDetailAddress = if (jointTessellationCompletion)
-    io.reg.req.bits.addr >= TessellationJointHostProtocol.completionTailBase.U &&
+  val detailAddress = if (nativeCompletionInfo)
+    io.reg.req.bits.addr >= NativeBinnedCompletionInfo.base.U && io.reg.req.bits.addr < NativeBinnedCompletionInfo.end.U
+  else false.B
+  val jointDetailAddress =
+    if (jointTessellationCompletion)
+      io.reg.req.bits.addr >= TessellationJointHostProtocol.completionTailBase.U &&
       io.reg.req.bits.addr < TessellationJointHostProtocol.completionTailEnd.U
     else false.B
   io.reg.resp.bits.ok := ((io.reg.req.bits.addr >= GpuCommandMmioRegs.COMMAND_ID.U &&
@@ -647,5 +718,6 @@ class GpuCommandMmio(
     (storageAddress && (!io.reg.req.bits.isWrite || storageWriteOk)) ||
     (atomicCounterAddress && (!io.reg.req.bits.isWrite || atomicCounterWriteOk)) ||
     (computeUniformAddress && (!io.reg.req.bits.isWrite || computeUniformWriteOk)) ||
-    (computeTextureAddress && (!io.reg.req.bits.isWrite || computeTextureWriteOk))) && io.reg.req.bits.addr(1,0)===0.U
+    (computeTextureAddress && (!io.reg.req.bits.isWrite || computeTextureWriteOk))) && io.reg.req.bits
+    .addr(1, 0) === 0.U
 }

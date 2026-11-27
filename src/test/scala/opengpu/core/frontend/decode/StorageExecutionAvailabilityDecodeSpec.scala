@@ -8,11 +8,20 @@ import org.scalatest.flatspec.AnyFlatSpec
 class StorageExecutionAvailabilityDecodeSpec extends AnyFlatSpec {
   for (available <- Seq(false, true)) {
     it should s"admit exact storage encodings only with task permission available=$available" in {
-      simulate(new FullInstructionDecoder(GpuConfig(), textureAvailable = false,
-        nativeResourcesAvailable = false, imageAvailable = true, storageAvailable = available)) { d =>
+      simulate(
+        new FullInstructionDecoder(
+          GpuConfig(),
+          textureAvailable = false,
+          nativeResourcesAvailable = false,
+          imageAvailable = true,
+          storageAvailable = available
+        )
+      ) { d =>
         d.io.imageEnabled.get.poke(false.B)
-        for (enabled <- Seq(false, true); fn <- 14 to 16; form <- 0 until 8;
-             vd <- Seq(0, 7); vs1 <- Seq(0, 1); vs2 <- Seq(0, 1); vm <- Seq(0, 1)) {
+        for (
+          enabled <- Seq(false, true); fn <- 14 to 16; form <- 0 until 8;
+          vd <- Seq(0, 7); vs1 <- Seq(0, 1); vs2 <- Seq(0, 1); vm <- Seq(0, 1)
+        ) {
           d.io.storageEnabled.foreach(_.poke(enabled.B))
           val instruction = (BigInt(fn) << 26) | (BigInt(vm) << 25) | (BigInt(vs2) << 20) |
             (BigInt(vs1) << 15) | (BigInt(form) << 12) | (BigInt(vd) << 7) | 0x2b

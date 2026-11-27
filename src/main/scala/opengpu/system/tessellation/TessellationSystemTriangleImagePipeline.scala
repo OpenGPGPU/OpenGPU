@@ -5,548 +5,1093 @@ import chisel3._
 import chisel3.util._
 import chisel3.reflect.DataMirror
 import opengpu.config.GpuConfig
-import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse,ShaderPayloadBinding}
+import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse, ShaderPayloadBinding}
 import opengpu.graphics._
 
-class TessellationSystemTriangleImageCompletion(p:VertexShaderStageConfig) extends Bundle {
-  val identity=new GraphicsWorkIdentity;val status=UInt(3.W)
+class TessellationSystemTriangleImageCompletion(p: VertexShaderStageConfig) extends Bundle {
+  val identity = new GraphicsWorkIdentity; val status = UInt(3.W)
+
   /** 0 success/cancel, 1 admission, 2 triangle/bins, 3 image execution/publication. */
-  val faultStage=UInt(2.W);val faultTileValid=Bool();val faultTile=UInt(32.W)
-  val faultAddress=UInt(32.W)
-  val source=new TessellationSystemTriangleBinCompletion(p)
-  val tiles=UInt(64.W);val primitives=UInt(64.W)
-  val loadBytes=UInt(64.W);val storedBytes=UInt(64.W);val resolvedBytes=UInt(64.W)
+  val faultStage = UInt(2.W); val faultTileValid = Bool(); val faultTile = UInt(32.W)
+  val faultAddress = UInt(32.W)
+  val source = new TessellationSystemTriangleBinCompletion(p)
+  val tiles = UInt(64.W); val primitives = UInt(64.W)
+  val loadBytes = UInt(64.W); val storedBytes = UInt(64.W); val resolvedBytes = UInt(64.W)
 }
 object TessellationSystemTriangleImagePipeline {
-  def memoryTransactions(engines:Int,writeCredits:Int,pagedCapacity:Int,tessellationUniforms:Boolean=false):Int=
-    memoryTransactions(engines,writeCredits,pagedCapacity,tessellationUniforms,false)
-  def memoryTransactions(engines:Int,writeCredits:Int,pagedCapacity:Int,tessellationUniforms:Boolean,nativeGeometryAvailable:Boolean):Int=
-    1<<log2Ceil(VertexBinPipeline.binTransactions(engines,writeCredits,pagedCapacity)+32*engines+(if(tessellationUniforms)2 else 0)+(if(nativeGeometryAvailable)1 else 0))
-  def payloadPins(engines:Int,ownedVertexSource:Boolean=false):Int=payloadPins(engines,ownedVertexSource,false)
-  def payloadPins(engines:Int,ownedVertexSource:Boolean,nativeGeometryAvailable:Boolean):Int={
+  def memoryTransactions(
+      engines: Int,
+      writeCredits: Int,
+      pagedCapacity: Int,
+      tessellationUniforms: Boolean = false
+  ): Int =
+    memoryTransactions(engines, writeCredits, pagedCapacity, tessellationUniforms, false)
+  def memoryTransactions(
+      engines: Int,
+      writeCredits: Int,
+      pagedCapacity: Int,
+      tessellationUniforms: Boolean,
+      nativeGeometryAvailable: Boolean
+  ): Int =
+    1 << log2Ceil(
+      VertexBinPipeline.binTransactions(
+        engines,
+        writeCredits,
+        pagedCapacity
+      ) + 32 * engines + (if (tessellationUniforms) 2 else 0) + (if (nativeGeometryAvailable) 1 else 0)
+    )
+  def payloadPins(engines: Int, ownedVertexSource: Boolean = false): Int =
+    payloadPins(engines, ownedVertexSource, false)
+  def payloadPins(engines: Int, ownedVertexSource: Boolean, nativeGeometryAvailable: Boolean): Int = {
     require(!nativeGeometryAvailable || ownedVertexSource)
-    4+2*engines+4*engines+(if(ownedVertexSource){if(nativeGeometryAvailable)6 else 4}else 0)
+    4 + 2 * engines + 4 * engines + (if (ownedVertexSource) { if (nativeGeometryAvailable) 6 else 4 }
+                                     else 0)
   }
 }
 
-/** Controlled-triangle window-bin records feed independent typed image engines.
-  * Version-3 directories report every tile, including empty tiles. Control, evaluation and fragment tasks share an external
-  * CU pool. This internal physical-address component is not a native
-  * descriptor/MMU interface.
+/** Controlled-triangle window-bin records feed independent typed image engines. Version-3 directories report every
+  * tile, including empty tiles. Control, evaluation and fragment tasks share an external CU pool. This internal
+  * physical-address component is not a native descriptor/MMU interface.
   */
-class TessellationSystemTriangleImagePipeline(config:GpuConfig=GpuConfig(),p:VertexShaderStageConfig=VertexShaderStageConfig(),
-    f:FragmentShaderConfig=FragmentShaderConfig(),shared:SharedCuShaderConfig=SharedCuShaderConfig(4),
-    g:GraphicsConfig=GraphicsConfig(),viewport:Fp32ViewportConfig=Fp32ViewportConfig(),engines:Int=2,
-    pageBytes:Int=4096,writeCredits:Int=8,tileSlots:Int=8,pagedCapacity:Int=0,
-    storage:TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes:Boolean=false,
-    payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,transformFeedback:Boolean=false,externalImages:Boolean=false,
-    fragmentImageAvailable:Boolean=false,sampleShading:Boolean=false,tessellationUniforms:Boolean=false,evaluationPatchAvailable:Boolean=false,
-    ownedVertexSource:Boolean=false,primitiveIdInput:Boolean=false,tessellationInfoAvailable:Boolean=false,nativeGeometryAvailable:Boolean=false,allowEmptyStates:Boolean=false) extends Module {
+class TessellationSystemTriangleImagePipeline(
+    config: GpuConfig = GpuConfig(),
+    p: VertexShaderStageConfig = VertexShaderStageConfig(),
+    f: FragmentShaderConfig = FragmentShaderConfig(),
+    shared: SharedCuShaderConfig = SharedCuShaderConfig(4),
+    g: GraphicsConfig = GraphicsConfig(),
+    viewport: Fp32ViewportConfig = Fp32ViewportConfig(),
+    engines: Int = 2,
+    pageBytes: Int = 4096,
+    writeCredits: Int = 8,
+    tileSlots: Int = 8,
+    pagedCapacity: Int = 0,
+    storage: TypedTileColorConfig = TypedTileColorConfig(),
+    useSramBlackBoxes: Boolean = false,
+    payload: Option[ShaderPayloadConfig] = None,
+    payloadOwner: Int = 0,
+    transformFeedback: Boolean = false,
+    externalImages: Boolean = false,
+    fragmentImageAvailable: Boolean = false,
+    sampleShading: Boolean = false,
+    tessellationUniforms: Boolean = false,
+    evaluationPatchAvailable: Boolean = false,
+    ownedVertexSource: Boolean = false,
+    primitiveIdInput: Boolean = false,
+    tessellationInfoAvailable: Boolean = false,
+    nativeGeometryAvailable: Boolean = false,
+    allowEmptyStates: Boolean = false
+) extends Module {
   // Preserve the complete previous JVM constructor with native GS disabled.
   // Retain the GS-topic constructor with independent empty-state admission off.
-  def this(config:GpuConfig,p:VertexShaderStageConfig,f:FragmentShaderConfig,shared:SharedCuShaderConfig,g:GraphicsConfig,viewport:Fp32ViewportConfig,engines:Int,pageBytes:Int,writeCredits:Int,tileSlots:Int,pagedCapacity:Int,storage:TypedTileColorConfig,useSramBlackBoxes:Boolean,payload:Option[ShaderPayloadConfig],payloadOwner:Int,transformFeedback:Boolean,externalImages:Boolean,fragmentImageAvailable:Boolean,sampleShading:Boolean,tessellationUniforms:Boolean,evaluationPatchAvailable:Boolean,ownedVertexSource:Boolean,primitiveIdInput:Boolean,tessellationInfoAvailable:Boolean,nativeGeometryAvailable:Boolean) =
-    this(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages,fragmentImageAvailable,sampleShading,tessellationUniforms,evaluationPatchAvailable,ownedVertexSource,primitiveIdInput,tessellationInfoAvailable,nativeGeometryAvailable,false)
+  def this(
+      config: GpuConfig,
+      p: VertexShaderStageConfig,
+      f: FragmentShaderConfig,
+      shared: SharedCuShaderConfig,
+      g: GraphicsConfig,
+      viewport: Fp32ViewportConfig,
+      engines: Int,
+      pageBytes: Int,
+      writeCredits: Int,
+      tileSlots: Int,
+      pagedCapacity: Int,
+      storage: TypedTileColorConfig,
+      useSramBlackBoxes: Boolean,
+      payload: Option[ShaderPayloadConfig],
+      payloadOwner: Int,
+      transformFeedback: Boolean,
+      externalImages: Boolean,
+      fragmentImageAvailable: Boolean,
+      sampleShading: Boolean,
+      tessellationUniforms: Boolean,
+      evaluationPatchAvailable: Boolean,
+      ownedVertexSource: Boolean,
+      primitiveIdInput: Boolean,
+      tessellationInfoAvailable: Boolean,
+      nativeGeometryAvailable: Boolean
+  ) =
+    this(
+      config,
+      p,
+      f,
+      shared,
+      g,
+      viewport,
+      engines,
+      pageBytes,
+      writeCredits,
+      tileSlots,
+      pagedCapacity,
+      storage,
+      useSramBlackBoxes,
+      payload,
+      payloadOwner,
+      transformFeedback,
+      externalImages,
+      fragmentImageAvailable,
+      sampleShading,
+      tessellationUniforms,
+      evaluationPatchAvailable,
+      ownedVertexSource,
+      primitiveIdInput,
+      tessellationInfoAvailable,
+      nativeGeometryAvailable,
+      false
+    )
 
-  def this(config:GpuConfig,p:VertexShaderStageConfig,f:FragmentShaderConfig,shared:SharedCuShaderConfig,g:GraphicsConfig,viewport:Fp32ViewportConfig,engines:Int,pageBytes:Int,writeCredits:Int,tileSlots:Int,pagedCapacity:Int,storage:TypedTileColorConfig,useSramBlackBoxes:Boolean,payload:Option[ShaderPayloadConfig],payloadOwner:Int,transformFeedback:Boolean,externalImages:Boolean,fragmentImageAvailable:Boolean,sampleShading:Boolean,tessellationUniforms:Boolean,evaluationPatchAvailable:Boolean,ownedVertexSource:Boolean,primitiveIdInput:Boolean,tessellationInfoAvailable:Boolean) =
-    this(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages,fragmentImageAvailable,sampleShading,tessellationUniforms,evaluationPatchAvailable,ownedVertexSource,primitiveIdInput,tessellationInfoAvailable,false,false)
+  def this(
+      config: GpuConfig,
+      p: VertexShaderStageConfig,
+      f: FragmentShaderConfig,
+      shared: SharedCuShaderConfig,
+      g: GraphicsConfig,
+      viewport: Fp32ViewportConfig,
+      engines: Int,
+      pageBytes: Int,
+      writeCredits: Int,
+      tileSlots: Int,
+      pagedCapacity: Int,
+      storage: TypedTileColorConfig,
+      useSramBlackBoxes: Boolean,
+      payload: Option[ShaderPayloadConfig],
+      payloadOwner: Int,
+      transformFeedback: Boolean,
+      externalImages: Boolean,
+      fragmentImageAvailable: Boolean,
+      sampleShading: Boolean,
+      tessellationUniforms: Boolean,
+      evaluationPatchAvailable: Boolean,
+      ownedVertexSource: Boolean,
+      primitiveIdInput: Boolean,
+      tessellationInfoAvailable: Boolean
+  ) =
+    this(
+      config,
+      p,
+      f,
+      shared,
+      g,
+      viewport,
+      engines,
+      pageBytes,
+      writeCredits,
+      tileSlots,
+      pagedCapacity,
+      storage,
+      useSramBlackBoxes,
+      payload,
+      payloadOwner,
+      transformFeedback,
+      externalImages,
+      fragmentImageAvailable,
+      sampleShading,
+      tessellationUniforms,
+      evaluationPatchAvailable,
+      ownedVertexSource,
+      primitiveIdInput,
+      tessellationInfoAvailable,
+      false,
+      false
+    )
 
   // Preserve the previous full JVM constructor with the language service disabled.
-  def this(config:GpuConfig,p:VertexShaderStageConfig,f:FragmentShaderConfig,shared:SharedCuShaderConfig,g:GraphicsConfig,viewport:Fp32ViewportConfig,engines:Int,pageBytes:Int,writeCredits:Int,tileSlots:Int,pagedCapacity:Int,storage:TypedTileColorConfig,useSramBlackBoxes:Boolean,payload:Option[ShaderPayloadConfig],payloadOwner:Int,transformFeedback:Boolean,externalImages:Boolean,fragmentImageAvailable:Boolean,sampleShading:Boolean,tessellationUniforms:Boolean,evaluationPatchAvailable:Boolean,ownedVertexSource:Boolean,primitiveIdInput:Boolean) =
-    this(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages,fragmentImageAvailable,sampleShading,tessellationUniforms,evaluationPatchAvailable,ownedVertexSource,primitiveIdInput,false,false)
+  def this(
+      config: GpuConfig,
+      p: VertexShaderStageConfig,
+      f: FragmentShaderConfig,
+      shared: SharedCuShaderConfig,
+      g: GraphicsConfig,
+      viewport: Fp32ViewportConfig,
+      engines: Int,
+      pageBytes: Int,
+      writeCredits: Int,
+      tileSlots: Int,
+      pagedCapacity: Int,
+      storage: TypedTileColorConfig,
+      useSramBlackBoxes: Boolean,
+      payload: Option[ShaderPayloadConfig],
+      payloadOwner: Int,
+      transformFeedback: Boolean,
+      externalImages: Boolean,
+      fragmentImageAvailable: Boolean,
+      sampleShading: Boolean,
+      tessellationUniforms: Boolean,
+      evaluationPatchAvailable: Boolean,
+      ownedVertexSource: Boolean,
+      primitiveIdInput: Boolean
+  ) =
+    this(
+      config,
+      p,
+      f,
+      shared,
+      g,
+      viewport,
+      engines,
+      pageBytes,
+      writeCredits,
+      tileSlots,
+      pagedCapacity,
+      storage,
+      useSramBlackBoxes,
+      payload,
+      payloadOwner,
+      transformFeedback,
+      externalImages,
+      fragmentImageAvailable,
+      sampleShading,
+      tessellationUniforms,
+      evaluationPatchAvailable,
+      ownedVertexSource,
+      primitiveIdInput,
+      false,
+      false
+    )
 
   // Preserve the previous full JVM constructor; it never enables ABI8/9.
-  def this(config:GpuConfig,p:VertexShaderStageConfig,f:FragmentShaderConfig,shared:SharedCuShaderConfig,
-      g:GraphicsConfig,viewport:Fp32ViewportConfig,engines:Int,pageBytes:Int,
-      writeCredits:Int,tileSlots:Int,pagedCapacity:Int,storage:TypedTileColorConfig,
-      useSramBlackBoxes:Boolean,payload:Option[ShaderPayloadConfig],payloadOwner:Int,transformFeedback:Boolean,
-      externalImages:Boolean,fragmentImageAvailable:Boolean,sampleShading:Boolean,tessellationUniforms:Boolean,
-      evaluationPatchAvailable:Boolean,ownedVertexSource:Boolean) =
-    this(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages,fragmentImageAvailable,sampleShading,tessellationUniforms,evaluationPatchAvailable,ownedVertexSource,false,false,false)
+  def this(
+      config: GpuConfig,
+      p: VertexShaderStageConfig,
+      f: FragmentShaderConfig,
+      shared: SharedCuShaderConfig,
+      g: GraphicsConfig,
+      viewport: Fp32ViewportConfig,
+      engines: Int,
+      pageBytes: Int,
+      writeCredits: Int,
+      tileSlots: Int,
+      pagedCapacity: Int,
+      storage: TypedTileColorConfig,
+      useSramBlackBoxes: Boolean,
+      payload: Option[ShaderPayloadConfig],
+      payloadOwner: Int,
+      transformFeedback: Boolean,
+      externalImages: Boolean,
+      fragmentImageAvailable: Boolean,
+      sampleShading: Boolean,
+      tessellationUniforms: Boolean,
+      evaluationPatchAvailable: Boolean,
+      ownedVertexSource: Boolean
+  ) =
+    this(
+      config,
+      p,
+      f,
+      shared,
+      g,
+      viewport,
+      engines,
+      pageBytes,
+      writeCredits,
+      tileSlots,
+      pagedCapacity,
+      storage,
+      useSramBlackBoxes,
+      payload,
+      payloadOwner,
+      transformFeedback,
+      externalImages,
+      fragmentImageAvailable,
+      sampleShading,
+      tessellationUniforms,
+      evaluationPatchAvailable,
+      ownedVertexSource,
+      false,
+      false,
+      false
+    )
 
-  require(!nativeGeometryAvailable || !transformFeedback,"native GS and transform feedback are mutually exclusive")
-  require(!nativeGeometryAvailable || ownedVertexSource,"native GS requires the original-VS router")
-  require(engines>=1 && engines<=4 && p.varyings==f.varyings && f.colors==4)
-  payload.foreach(q=>require(payloadOwner>=0 && payloadOwner+engines<q.owners))
-  private val sharedConfig=shared;private val payloadConfig=payload
-  private val idWidth=shared.taskIdWidth;private val cus=shared.numComputeUnits
-  private val binSlots=VertexBinPipeline.binTransactions(engines,writeCredits,pagedCapacity)
-  val memoryTransactions=TessellationSystemTriangleImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity,tessellationUniforms,nativeGeometryAvailable)
-  private val replaySharedConfig=shared
-  val io=IO(new Bundle {
-    val inputPatchBinding=if(tessellationInfoAvailable)Some(Input(Valid(new TessellationInputPatchBinding)))else None
-    val images=if(externalImages)Some(Flipped(Vec(engines,new TypedReplayTileImagePipelineIO(config,p,replaySharedConfig,payloadConfig,fragmentImageAvailable=fragmentImageAvailable))))else None
-    val begin=Flipped(Decoupled(new TypedVertexBinImageDescriptor))
-    val task=Flipped(Decoupled(new TessellationSystemTriangleBinTask(config,p,idWidth)))
-    val taskCompletion=Decoupled(new TessellationSystemTriangleBinTaskCompletion)
-    val end=Flipped(Decoupled(Bool()))
-    val primitiveDone=Vec(engines,Decoupled(new TypedReplayPrimitiveCompletion))
-    val out=Vec(engines,Decoupled(new TypedTilePixelQuadCompletion))
-    val tileDone=Vec(engines,Decoupled(new TypedVertexBinImageTileCompletion))
-    val completion=Decoupled(new TessellationSystemTriangleImageCompletion(p))
-    val opened=Decoupled(UInt(2.W));val load=Flipped(Decoupled(new TessellationPatchAccess))
-    val seal=Flipped(Decoupled(Bool()))
-    val inspect=Flipped(Decoupled(new TessellationPatchAccess));val reply=Decoupled(new TessellationContextReply)
-    val shared=Flipped(new SharedCuGraphicsPort(config,idWidth,cus,geometryAvailable=true,tessellationAvailable=true,imageAvailable=fragmentImageAvailable,evaluationPatchAvailable=evaluationPatchAvailable,tessellationInfoAvailable=tessellationInfoAvailable))
+  require(!nativeGeometryAvailable || !transformFeedback, "native GS and transform feedback are mutually exclusive")
+  require(!nativeGeometryAvailable || ownedVertexSource, "native GS requires the original-VS router")
+  require(engines >= 1 && engines <= 4 && p.varyings == f.varyings && f.colors == 4)
+  payload.foreach(q => require(payloadOwner >= 0 && payloadOwner + engines < q.owners))
+  private val sharedConfig = shared; private val payloadConfig = payload
+  private val idWidth = shared.taskIdWidth; private val cus = shared.numComputeUnits
+  private val binSlots = VertexBinPipeline.binTransactions(engines, writeCredits, pagedCapacity)
+  val memoryTransactions = TessellationSystemTriangleImagePipeline.memoryTransactions(
+    engines,
+    writeCredits,
+    pagedCapacity,
+    tessellationUniforms,
+    nativeGeometryAvailable
+  )
+  private val replaySharedConfig = shared
+  val io = IO(new Bundle {
+    val inputPatchBinding =
+      if (tessellationInfoAvailable) Some(Input(Valid(new TessellationInputPatchBinding))) else None
+    val images =
+      if (externalImages)
+        Some(
+          Flipped(
+            Vec(
+              engines,
+              new TypedReplayTileImagePipelineIO(
+                config,
+                p,
+                replaySharedConfig,
+                payloadConfig,
+                fragmentImageAvailable = fragmentImageAvailable
+              )
+            )
+          )
+        )
+      else None
+    val begin = Flipped(Decoupled(new TypedVertexBinImageDescriptor))
+    val task = Flipped(Decoupled(new TessellationSystemTriangleBinTask(config, p, idWidth)))
+    val taskCompletion = Decoupled(new TessellationSystemTriangleBinTaskCompletion)
+    val end = Flipped(Decoupled(Bool()))
+    val primitiveDone = Vec(engines, Decoupled(new TypedReplayPrimitiveCompletion))
+    val out = Vec(engines, Decoupled(new TypedTilePixelQuadCompletion))
+    val tileDone = Vec(engines, Decoupled(new TypedVertexBinImageTileCompletion))
+    val completion = Decoupled(new TessellationSystemTriangleImageCompletion(p))
+    val opened = Decoupled(UInt(2.W)); val load = Flipped(Decoupled(new TessellationPatchAccess))
+    val seal = Flipped(Decoupled(Bool()))
+    val inspect = Flipped(Decoupled(new TessellationPatchAccess)); val reply = Decoupled(new TessellationContextReply)
+    val shared = Flipped(
+      new SharedCuGraphicsPort(
+        config,
+        idWidth,
+        cus,
+        geometryAvailable = true,
+        tessellationAvailable = true,
+        imageAvailable = fragmentImageAvailable,
+        evaluationPatchAvailable = evaluationPatchAvailable,
+        tessellationInfoAvailable = tessellationInfoAvailable
+      )
+    )
+
     /** Ordinary VS capability only; admission and the actual producer belong to the parent. */
-    val vertexShared=if(ownedVertexSource)Some(new SharedCuGraphicsPort(config,idWidth,cus))else None
+    val vertexShared = if (ownedVertexSource) Some(new SharedCuGraphicsPort(config, idWidth, cus)) else None
+
     /** Independent scalar GS logical client; it has no payload or TCS/TES permissions. */
-    val geometryTask=if(nativeGeometryAvailable)Some(Flipped(Decoupled(new TessellationSystemTriangleGeometryBinTask(config,p,idWidth))))else None
-    val geometryTaskCompletion=if(nativeGeometryAvailable)Some(Decoupled(new TessellationSystemTriangleGeometryBinTaskCompletion(config,p,idWidth)))else None
-    val geometryCompletion=if(nativeGeometryAvailable)Some(Decoupled(new TessellationGeometryImageResult(new TessellationSystemTriangleImageCompletion(p))))else None
-    val geometryInvalidate=if(nativeGeometryAvailable)Some(Flipped(Decoupled(new opengpu.core.memory.CacheLineInvalidate(config))))else None
-    val geometryInvalidateDone=if(nativeGeometryAvailable)Some(Decoupled(new opengpu.core.memory.CacheLineInvalidate(config)))else None
-    val geometryTransportDrained=if(nativeGeometryAvailable)Some(Output(Bool()))else None
-    val geometryCancel=if(nativeGeometryAvailable)Some(Output(Bool()))else None
+    val geometryTask =
+      if (nativeGeometryAvailable)
+        Some(Flipped(Decoupled(new TessellationSystemTriangleGeometryBinTask(config, p, idWidth))))
+      else None
+    val geometryTaskCompletion =
+      if (nativeGeometryAvailable)
+        Some(Decoupled(new TessellationSystemTriangleGeometryBinTaskCompletion(config, p, idWidth)))
+      else None
+    val geometryCompletion =
+      if (nativeGeometryAvailable)
+        Some(Decoupled(new TessellationGeometryImageResult(new TessellationSystemTriangleImageCompletion(p))))
+      else None
+    val geometryInvalidate =
+      if (nativeGeometryAvailable) Some(Flipped(Decoupled(new opengpu.core.memory.CacheLineInvalidate(config))))
+      else None
+    val geometryInvalidateDone =
+      if (nativeGeometryAvailable) Some(Decoupled(new opengpu.core.memory.CacheLineInvalidate(config))) else None
+    val geometryTransportDrained = if (nativeGeometryAvailable) Some(Output(Bool())) else None
+    val geometryCancel = if (nativeGeometryAvailable) Some(Output(Bool())) else None
+
     /** Inner VS/TCS/TES router credits only, not complete patch or frame retirement. */
-    val vertexRouterDrained=if(ownedVertexSource)Some(Output(Bool()))else None
-    val vertexPayload=if(ownedVertexSource)payloadConfig.map(q=>Flipped(new FragmentPayloadPort(config,q)))else None
-    /** Owner 0 is reserved so image engine e can use fragment owner e+1, matching
-      * TypedVertexBinImagePipeline. Triangle tessellation does not consume a payload lease.
+    val vertexRouterDrained = if (ownedVertexSource) Some(Output(Bool())) else None
+    val vertexPayload =
+      if (ownedVertexSource) payloadConfig.map(q => Flipped(new FragmentPayloadPort(config, q))) else None
+
+    /** Owner 0 is reserved so image engine e can use fragment owner e+1, matching TypedVertexBinImagePipeline. Triangle
+      * tessellation does not consume a payload lease.
       */
-    val payload=payloadConfig.map(q=>Vec(engines+1,new FragmentPayloadPort(config,q)))
-    val poolPayload=payloadConfig.map(q=>Output(Valid(new ShaderPayloadBinding(config,q))))
-    val payloadPins=payloadConfig.map(q=>Output(Vec(TessellationSystemTriangleImagePipeline.payloadPins(engines,ownedVertexSource,nativeGeometryAvailable),Valid(new ShaderPayloadPin(q)))))
-    val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,memoryTransactions))
-    val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,memoryTransactions)))
-    val feedback=if(transformFeedback)Some(new TransformFeedbackPipelineIO(config))else None
-    val fragmentEvents=Output(new FragmentPerformanceEvents)
-    val cancel=Input(Bool());val busy=Output(Bool())
+    val payload = payloadConfig.map(q => Vec(engines + 1, new FragmentPayloadPort(config, q)))
+    val poolPayload = payloadConfig.map(q => Output(Valid(new ShaderPayloadBinding(config, q))))
+    val payloadPins = payloadConfig.map(q =>
+      Output(
+        Vec(
+          TessellationSystemTriangleImagePipeline.payloadPins(engines, ownedVertexSource, nativeGeometryAvailable),
+          Valid(new ShaderPayloadPin(q))
+        )
+      )
+    )
+    val memoryRequest = Decoupled(new ComputeMemoryRequest(config, 64, memoryTransactions))
+    val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64, memoryTransactions)))
+    val feedback = if (transformFeedback) Some(new TransformFeedbackPipelineIO(config)) else None
+    val fragmentEvents = Output(new FragmentPerformanceEvents)
+    val cancel = Input(Bool()); val busy = Output(Bool())
   })
-  private val source=Module(new TessellationSystemTriangleImageBinSource(config,p,idWidth,cus,g,viewport,engines,pageBytes,writeCredits,
-    tileSlots,pagedCapacity,useSramBlackBoxes,rendererCredits=true,transformFeedback=transformFeedback,tessellationUniforms=tessellationUniforms,evaluationPatchAvailable=evaluationPatchAvailable,tessellationInfoAvailable=tessellationInfoAvailable,nativeGeometryAvailable=nativeGeometryAvailable))
-  val recordBytes=source.recordBytes
-  private val images:Seq[TypedReplayTileImagePipelineIO]=if(externalImages)io.images.get.toSeq else
-    Seq.tabulate(engines)(e=>Module(new TypedReplayTileImagePipeline(config,p,f,shared,g,storage,
-      engine=e,useSramBlackBoxes=useSramBlackBoxes,payload=payload,payloadOwner=payloadOwner+e,fragmentImageAvailable=fragmentImageAvailable,geometryInput=nativeGeometryAvailable,sampleShading=sampleShading,primitiveIdInput=primitiveIdInput,allowEmptyStates=allowEmptyStates)).io)
-  for(phase<-0 until 6)io.fragmentEvents.phaseWorkers(phase):=
-    images.map(_.fragmentEvents.phaseWorkers(phase)).reduce(_+&_)
-  io.fragmentEvents.stagingOutstanding:=images.map(_.fragmentEvents.stagingOutstanding).reduce(_+&_)
-  io.fragmentEvents.stagingBlocked:=images.map(_.fragmentEvents.stagingBlocked).reduce(_ || _)
-  io.fragmentEvents.outputBlocked:=images.map(_.fragmentEvents.outputBlocked).reduce(_ || _)
-  private val mux=Module(new GeometryFragmentShaderRouter(config,cus,idWidth,payload,tessellationAvailable=true,imageAvailable=fragmentImageAvailable,evaluationPatchAvailable=evaluationPatchAvailable,tessellationInfoAvailable=tessellationInfoAvailable))
-  private val router=Module(new SharedShaderTaskRouter(config,cus,engines,idWidth,shaderPayload=payload,imageAvailable=fragmentImageAvailable))
-  private val vertexRouter=if(ownedVertexSource)Some(Module(new TessellationVertexShaderRouter(config,cus,idWidth,payload,
-    tessellationAvailable=true,evaluationPatchAvailable=evaluationPatchAvailable,tessellationInfoAvailable=tessellationInfoAvailable,nativeGeometryAvailable=nativeGeometryAvailable)))else None
-  private val geometryAccepting=WireDefault(false.B)
-  if(ownedVertexSource){
-    val inner=vertexRouter.get
-    inner.io.patch<>source.io.shared;inner.io.vertex<>io.vertexShared.get
-    if(nativeGeometryAvailable){
-      inner.io.geometry.get<>source.io.geometryShared.get
-      inner.io.geometry.get.launch.valid:=source.io.geometryShared.get.launch.valid && geometryAccepting
-      source.io.geometryShared.get.launch.ready:=inner.io.geometry.get.launch.ready && geometryAccepting
+  private val source = Module(
+    new TessellationSystemTriangleImageBinSource(
+      config,
+      p,
+      idWidth,
+      cus,
+      g,
+      viewport,
+      engines,
+      pageBytes,
+      writeCredits,
+      tileSlots,
+      pagedCapacity,
+      useSramBlackBoxes,
+      rendererCredits = true,
+      transformFeedback = transformFeedback,
+      tessellationUniforms = tessellationUniforms,
+      evaluationPatchAvailable = evaluationPatchAvailable,
+      tessellationInfoAvailable = tessellationInfoAvailable,
+      nativeGeometryAvailable = nativeGeometryAvailable
+    )
+  )
+  val recordBytes = source.recordBytes
+  private val images: Seq[TypedReplayTileImagePipelineIO] =
+    if (externalImages) io.images.get.toSeq
+    else
+      Seq.tabulate(engines)(e =>
+        Module(
+          new TypedReplayTileImagePipeline(
+            config,
+            p,
+            f,
+            shared,
+            g,
+            storage,
+            engine = e,
+            useSramBlackBoxes = useSramBlackBoxes,
+            payload = payload,
+            payloadOwner = payloadOwner + e,
+            fragmentImageAvailable = fragmentImageAvailable,
+            geometryInput = nativeGeometryAvailable,
+            sampleShading = sampleShading,
+            primitiveIdInput = primitiveIdInput,
+            allowEmptyStates = allowEmptyStates
+          )
+        ).io
+      )
+  for (phase <- 0 until 6)
+    io.fragmentEvents.phaseWorkers(phase) :=
+      images.map(_.fragmentEvents.phaseWorkers(phase)).reduce(_ +& _)
+  io.fragmentEvents.stagingOutstanding := images.map(_.fragmentEvents.stagingOutstanding).reduce(_ +& _)
+  io.fragmentEvents.stagingBlocked := images.map(_.fragmentEvents.stagingBlocked).reduce(_ || _)
+  io.fragmentEvents.outputBlocked := images.map(_.fragmentEvents.outputBlocked).reduce(_ || _)
+  private val mux = Module(
+    new GeometryFragmentShaderRouter(
+      config,
+      cus,
+      idWidth,
+      payload,
+      tessellationAvailable = true,
+      imageAvailable = fragmentImageAvailable,
+      evaluationPatchAvailable = evaluationPatchAvailable,
+      tessellationInfoAvailable = tessellationInfoAvailable
+    )
+  )
+  private val router = Module(
+    new SharedShaderTaskRouter(
+      config,
+      cus,
+      engines,
+      idWidth,
+      shaderPayload = payload,
+      imageAvailable = fragmentImageAvailable
+    )
+  )
+  private val vertexRouter =
+    if (ownedVertexSource)
+      Some(
+        Module(
+          new TessellationVertexShaderRouter(
+            config,
+            cus,
+            idWidth,
+            payload,
+            tessellationAvailable = true,
+            evaluationPatchAvailable = evaluationPatchAvailable,
+            tessellationInfoAvailable = tessellationInfoAvailable,
+            nativeGeometryAvailable = nativeGeometryAvailable
+          )
+        )
+      )
+    else None
+  private val geometryAccepting = WireDefault(false.B)
+  if (ownedVertexSource) {
+    val inner = vertexRouter.get
+    inner.io.patch <> source.io.shared; inner.io.vertex <> io.vertexShared.get
+    if (nativeGeometryAvailable) {
+      inner.io.geometry.get <> source.io.geometryShared.get
+      inner.io.geometry.get.launch.valid := source.io.geometryShared.get.launch.valid && geometryAccepting
+      source.io.geometryShared.get.launch.ready := inner.io.geometry.get.launch.ready && geometryAccepting
     }
-    if(fragmentImageAvailable)GeometryFragmentShaderRouter.connectWithoutImages(mux.io.geometry,inner.io.pool)
-    else inner.io.pool<>mux.io.geometry
-    io.vertexRouterDrained.get:=inner.io.drained
-  }else{
-    if(fragmentImageAvailable) GeometryFragmentShaderRouter.connectWithoutImages(mux.io.geometry,source.io.shared)
-    else source.io.shared<>mux.io.geometry
+    if (fragmentImageAvailable) GeometryFragmentShaderRouter.connectWithoutImages(mux.io.geometry, inner.io.pool)
+    else inner.io.pool <> mux.io.geometry
+    io.vertexRouterDrained.get := inner.io.drained
+  } else {
+    if (fragmentImageAvailable) GeometryFragmentShaderRouter.connectWithoutImages(mux.io.geometry, source.io.shared)
+    else source.io.shared <> mux.io.geometry
   }
-  source.io.trap.ready:=true.B;source.io.invalidate.valid:=false.B
-  source.io.invalidate.bits:=0.U.asTypeOf(source.io.invalidate.bits);source.io.invalidateDone.ready:=true.B
-  for(cu<-0 until cus){
-    source.io.texture(cu).scalar.ready:=true.B;source.io.texture(cu).vector.ready:=true.B
-    source.io.texture(cu).scalarWriteback.valid:=false.B
-    source.io.texture(cu).scalarWriteback.bits:=0.U.asTypeOf(source.io.texture(cu).scalarWriteback.bits)
-    source.io.texture(cu).vectorWriteback.valid:=false.B
-    source.io.texture(cu).vectorWriteback.bits:=0.U.asTypeOf(source.io.texture(cu).vectorWriteback.bits)
+  source.io.trap.ready := true.B; source.io.invalidate.valid := false.B
+  source.io.invalidate.bits := 0.U.asTypeOf(source.io.invalidate.bits); source.io.invalidateDone.ready := true.B
+  for (cu <- 0 until cus) {
+    source.io.texture(cu).scalar.ready := true.B; source.io.texture(cu).vector.ready := true.B
+    source.io.texture(cu).scalarWriteback.valid := false.B
+    source.io.texture(cu).scalarWriteback.bits := 0.U.asTypeOf(source.io.texture(cu).scalarWriteback.bits)
+    source.io.texture(cu).vectorWriteback.valid := false.B
+    source.io.texture(cu).vectorWriteback.bits := 0.U.asTypeOf(source.io.texture(cu).vectorWriteback.bits)
   }
-  mux.io.fragment<>router.io.pool;io.shared<>mux.io.pool
-  private val tileQueues=Seq.fill(engines)(Module(new Queue(new TypedVertexBinImageTileCompletion,1)))
-  private object State extends ChiselEnum {val idle,validate,scan,sourceOffer,run,closing,finish,complete=Value}
-  private val phase=RegInit(State.idle);private val descriptor=Reg(new TypedVertexBinImageDescriptor)
-  private val columns=Reg(UInt(17.W));private val scanX=Reg(UInt(17.W));private val scanY=Reg(UInt(17.W))
-  private val sourceOffered=RegInit(false.B);private val sourceStarted=RegInit(false.B);private val sourceDone=RegInit(false.B)
-  private val sourceResult=Reg(new TessellationSystemTriangleBinCompletion(p));private val result=Reg(new TessellationSystemTriangleImageCompletion(p))
-  private val localGeometryTask=if(nativeGeometryAvailable)Some(Reg(new TessellationSystemTriangleGeometryBinTaskCompletion(config,p,idWidth)))else None
-  private val geometryResult=Reg(new TessellationGeometryImageResult(new TessellationSystemTriangleImageCompletion(p)))
-  private val gsPublished=RegInit(0.U(158.W));private val gsReceived=RegInit(0.U(161.W));private val gsDropped=RegInit(0.U(161.W))
-  private val gsAdmitted=RegInit(0.U(97.W));private val gsTasks=RegInit(0.U(64.W));private val gsNext=RegInit(0.U(64.W));private val gsBinNext=RegInit(0.U(33.W))
-  private val geometryTaskFault=source.io.geometryTaskCompletion.map(x=>x.valid && x.bits.status=/=0.U).getOrElse(false.B)
-  private val tasks=RegInit(0.U(64.W));private val localTaskValid=RegInit(false.B);private val localTask=Reg(new TessellationSystemTriangleBinTaskCompletion)
-  private val owned=RegInit(VecInit(Seq.fill(engines)(false.B)));private val tile=Reg(Vec(engines,UInt(32.W)))
-  private val imageBinding=Reg(Vec(engines,new TypedReplayTileDescriptor))
-  private val imageOffered=RegInit(VecInit(Seq.fill(engines)(false.B)))
-  private val imageStarted=RegInit(VecInit(Seq.fill(engines)(false.B)))
-  private val imageDone=RegInit(VecInit(Seq.fill(engines)(false.B)))
-  private val endSent=RegInit(VecInit(Seq.fill(engines)(false.B)))
-  private val haveBin=RegInit(VecInit(Seq.fill(engines)(false.B)))
-  private val binResult=Reg(Vec(engines,new WindowPrimitiveTileCompletion))
-  private val imageResult=Reg(Vec(engines,new TypedReplayTileCompletion))
-  private val tileCounts=RegInit(VecInit(Seq.fill(engines)(0.U(64.W))))
-  private val primitiveCounts=RegInit(VecInit(Seq.fill(engines)(0.U(64.W))))
-  private val loads=RegInit(VecInit(Seq.fill(engines)(0.U(64.W))))
-  private val stores=RegInit(VecInit(Seq.fill(engines)(0.U(64.W))))
-  private val resolves=RegInit(VecInit(Seq.fill(engines)(0.U(64.W))))
-  private val contexts=Reg(Vec(engines+1,UInt(32.W)))
-  private val status=RegInit(0.U(3.W));private val faultStage=RegInit(0.U(2.W))
-  private val faultTileValid=RegInit(false.B);private val faultTile=Reg(UInt(32.W))
-  private val faultAddress=RegInit(0.U(32.W))
-  private val externalCancel=io.cancel || io.feedback.map(_.cancel).getOrElse(false.B) || io.payload.map(v=>VecInit(v.map(_.cancel)).asUInt.orR).getOrElse(false.B)
-  private val sourceFailure=(source.io.completion.valid && source.io.completion.bits.status=/=0.U) ||
-    (source.io.taskCompletion.valid && source.io.taskCompletion.bits.status=/=0.U) || geometryTaskFault
-  private val imageFailure=images.map(i=>i.completion.valid && i.completion.bits.status=/=0.U).reduce(_ || _)
-  private val stop=status=/=0.U || externalCancel || sourceFailure || imageFailure
-  private val running=phase===State.run || phase===State.closing
-  private val active=phase=/=State.idle && phase=/=State.complete
-  private val geometryTransportDrained=WireDefault(true.B)
-  private val geometrySourceDrained=if(nativeGeometryAvailable)source.io.taskDrained else true.B
-  private val geometryReady=geometrySourceDrained && geometryTransportDrained
-  private val geometryExecutionDrained=WireDefault(true.B)
-  if(nativeGeometryAvailable){geometryAccepting:=active;io.geometryCancel.get:=active && stop}
-  private val feedbackReady=io.feedback.map(f=> !f.busy && !f.command.valid && !f.cancel).getOrElse(true.B)
-  if(transformFeedback){
-    val scope=Reg(new TransformFeedbackScope)
-    when(io.task.fire){scope:=io.feedback.get.scope}
-    TransformFeedbackPipelineIO.forward(io.feedback.get,source.io.feedback.get,
-      Mux(io.task.fire,io.feedback.get.scope,scope),phase===State.idle && !externalCancel)
+  mux.io.fragment <> router.io.pool; io.shared <> mux.io.pool
+  private val tileQueues = Seq.fill(engines)(Module(new Queue(new TypedVertexBinImageTileCompletion, 1)))
+  private object State extends ChiselEnum {
+    val idle, validate, scan, sourceOffer, run, closing, finish, complete = Value
   }
-  private def primary(code:UInt):Bool=code=/=0.U && code=/=4.U
-  private val tileCode=Mux(source.io.tileDone.bits.recordStatus=/=0.U,source.io.tileDone.bits.recordStatus,source.io.tileDone.bits.bins.status)
-  private val childPrimary=(source.io.completion.fire && primary(source.io.completion.bits.status)) ||
+  private val phase = RegInit(State.idle); private val descriptor = Reg(new TypedVertexBinImageDescriptor)
+  private val columns = Reg(UInt(17.W)); private val scanX = Reg(UInt(17.W)); private val scanY = Reg(UInt(17.W))
+  private val sourceOffered = RegInit(false.B); private val sourceStarted = RegInit(false.B);
+  private val sourceDone = RegInit(false.B)
+  private val sourceResult = Reg(new TessellationSystemTriangleBinCompletion(p));
+  private val result = Reg(new TessellationSystemTriangleImageCompletion(p))
+  private val localGeometryTask =
+    if (nativeGeometryAvailable) Some(Reg(new TessellationSystemTriangleGeometryBinTaskCompletion(config, p, idWidth)))
+    else None
+  private val geometryResult = Reg(
+    new TessellationGeometryImageResult(new TessellationSystemTriangleImageCompletion(p))
+  )
+  private val gsPublished = RegInit(0.U(158.W)); private val gsReceived = RegInit(0.U(161.W));
+  private val gsDropped = RegInit(0.U(161.W))
+  private val gsAdmitted = RegInit(0.U(97.W)); private val gsTasks = RegInit(0.U(64.W));
+  private val gsNext = RegInit(0.U(64.W)); private val gsBinNext = RegInit(0.U(33.W))
+  private val geometryTaskFault =
+    source.io.geometryTaskCompletion.map(x => x.valid && x.bits.status =/= 0.U).getOrElse(false.B)
+  private val tasks = RegInit(0.U(64.W)); private val localTaskValid = RegInit(false.B);
+  private val localTask = Reg(new TessellationSystemTriangleBinTaskCompletion)
+  private val owned = RegInit(VecInit(Seq.fill(engines)(false.B))); private val tile = Reg(Vec(engines, UInt(32.W)))
+  private val imageBinding = Reg(Vec(engines, new TypedReplayTileDescriptor))
+  private val imageOffered = RegInit(VecInit(Seq.fill(engines)(false.B)))
+  private val imageStarted = RegInit(VecInit(Seq.fill(engines)(false.B)))
+  private val imageDone = RegInit(VecInit(Seq.fill(engines)(false.B)))
+  private val endSent = RegInit(VecInit(Seq.fill(engines)(false.B)))
+  private val haveBin = RegInit(VecInit(Seq.fill(engines)(false.B)))
+  private val binResult = Reg(Vec(engines, new WindowPrimitiveTileCompletion))
+  private val imageResult = Reg(Vec(engines, new TypedReplayTileCompletion))
+  private val tileCounts = RegInit(VecInit(Seq.fill(engines)(0.U(64.W))))
+  private val primitiveCounts = RegInit(VecInit(Seq.fill(engines)(0.U(64.W))))
+  private val loads = RegInit(VecInit(Seq.fill(engines)(0.U(64.W))))
+  private val stores = RegInit(VecInit(Seq.fill(engines)(0.U(64.W))))
+  private val resolves = RegInit(VecInit(Seq.fill(engines)(0.U(64.W))))
+  private val contexts = Reg(Vec(engines + 1, UInt(32.W)))
+  private val status = RegInit(0.U(3.W)); private val faultStage = RegInit(0.U(2.W))
+  private val faultTileValid = RegInit(false.B); private val faultTile = Reg(UInt(32.W))
+  private val faultAddress = RegInit(0.U(32.W))
+  private val externalCancel = io.cancel || io.feedback.map(_.cancel).getOrElse(false.B) || io.payload
+    .map(v => VecInit(v.map(_.cancel)).asUInt.orR)
+    .getOrElse(false.B)
+  private val sourceFailure = (source.io.completion.valid && source.io.completion.bits.status =/= 0.U) ||
+    (source.io.taskCompletion.valid && source.io.taskCompletion.bits.status =/= 0.U) || geometryTaskFault
+  private val imageFailure = images.map(i => i.completion.valid && i.completion.bits.status =/= 0.U).reduce(_ || _)
+  private val stop = status =/= 0.U || externalCancel || sourceFailure || imageFailure
+  private val running = phase === State.run || phase === State.closing
+  private val active = phase =/= State.idle && phase =/= State.complete
+  private val geometryTransportDrained = WireDefault(true.B)
+  private val geometrySourceDrained = if (nativeGeometryAvailable) source.io.taskDrained else true.B
+  private val geometryReady = geometrySourceDrained && geometryTransportDrained
+  private val geometryExecutionDrained = WireDefault(true.B)
+  if (nativeGeometryAvailable) { geometryAccepting := active; io.geometryCancel.get := active && stop }
+  private val feedbackReady = io.feedback.map(f => !f.busy && !f.command.valid && !f.cancel).getOrElse(true.B)
+  if (transformFeedback) {
+    val scope = Reg(new TransformFeedbackScope)
+    when(io.task.fire) { scope := io.feedback.get.scope }
+    TransformFeedbackPipelineIO.forward(
+      io.feedback.get,
+      source.io.feedback.get,
+      Mux(io.task.fire, io.feedback.get.scope, scope),
+      phase === State.idle && !externalCancel
+    )
+  }
+  private def primary(code: UInt): Bool = code =/= 0.U && code =/= 4.U
+  private val tileCode = Mux(
+    source.io.tileDone.bits.recordStatus =/= 0.U,
+    source.io.tileDone.bits.recordStatus,
+    source.io.tileDone.bits.bins.status
+  )
+  private val childPrimary = (source.io.completion.fire && primary(source.io.completion.bits.status)) ||
     (source.io.taskCompletion.valid && primary(source.io.taskCompletion.bits.status)) ||
-    source.io.geometryTaskCompletion.map(x=>x.valid && primary(x.bits.status)).getOrElse(false.B) ||
-    (source.io.tileDone.fire && !stop && primary(tileCode)) || images.map(i=>i.completion.fire && primary(i.completion.bits.status)).reduce(_ || _)
-  private val tileSize=1.U(17.W)<<descriptor.bins.producer.tileLog2
-  private def fail(code:UInt,stage:Int,tileValid:Bool=false.B,which:UInt=0.U):Unit=
-    when(status===0.U && !externalCancel){
-      status:=code;faultStage:=stage.U;faultTileValid:=tileValid;faultTile:=which;faultAddress:=0.U
+    source.io.geometryTaskCompletion.map(x => x.valid && primary(x.bits.status)).getOrElse(false.B) ||
+    (source.io.tileDone.fire && !stop && primary(tileCode)) || images
+      .map(i => i.completion.fire && primary(i.completion.bits.status))
+      .reduce(_ || _)
+  private val tileSize = 1.U(17.W) << descriptor.bins.producer.tileLog2
+  private def fail(code: UInt, stage: Int, tileValid: Bool = false.B, which: UInt = 0.U): Unit =
+    when(status === 0.U && !externalCancel) {
+      status := code; faultStage := stage.U; faultTileValid := tileValid; faultTile := which; faultAddress := 0.U
     }
-  private def failChild(code:UInt,stage:Int,tileValid:Bool=false.B,which:UInt=0.U,address:UInt=0.U):Unit=
-    when((status===0.U && (!externalCancel || primary(code))) || (status===4.U && primary(code))){
-      status:=code;faultStage:=stage.U;faultTileValid:=tileValid;faultTile:=which
-      faultAddress:=Mux(primary(code),address,0.U)
+  private def failChild(
+      code: UInt,
+      stage: Int,
+      tileValid: Bool = false.B,
+      which: UInt = 0.U,
+      address: UInt = 0.U
+  ): Unit =
+    when((status === 0.U && (!externalCancel || primary(code))) || (status === 4.U && primary(code))) {
+      status := code; faultStage := stage.U; faultTileValid := tileValid; faultTile := which
+      faultAddress := Mux(primary(code), address, 0.U)
     }
-  private def overlap(a:UInt,b:UInt,c:UInt,d:UInt):Bool=a<b && c<d && a<d && c<b
-  private def legalSpan(a:UInt,b:UInt):Bool=a(5,0)===0.U && b(5,0)===0.U && b>=a && b<=(BigInt(1)<<32).U
-  private def imageFor(x:UInt,y:UInt):TypedTileImageDescriptor={
-    val d=WireDefault(descriptor.image);val c=d.pixels.colors
-    c.originX:=x.zext;c.originY:=y.zext
-    c.tileWidth:=(descriptor.bins.producer.screenWidth-x).min(tileSize)
-    c.tileHeight:=(descriptor.bins.producer.screenHeight-y).min(tileSize)
+  private def overlap(a: UInt, b: UInt, c: UInt, d: UInt): Bool = a < b && c < d && a < d && c < b
+  private def legalSpan(a: UInt, b: UInt): Bool =
+    a(5, 0) === 0.U && b(5, 0) === 0.U && b >= a && b <= (BigInt(1) << 32).U
+  private def imageFor(x: UInt, y: UInt): TypedTileImageDescriptor = {
+    val d = WireDefault(descriptor.image); val c = d.pixels.colors
+    c.originX := x.zext; c.originY := y.zext
+    c.tileWidth := (descriptor.bins.producer.screenWidth - x).min(tileSize)
+    c.tileHeight := (descriptor.bins.producer.screenHeight - y).min(tileSize)
     d
   }
-  private def bindingFor(id:UInt):TypedReplayTileDescriptor={
-    val d=Wire(new TypedReplayTileDescriptor);d:=0.U.asTypeOf(d)
-    val x=(id(15,0)%columns)<<descriptor.bins.producer.tileLog2
-    val y=(id(15,0)/columns)<<descriptor.bins.producer.tileLog2
-    d.image:=imageFor(x,y);d.tile:=id;d.states:=descriptor.states;d.engines:=engines.U
-    d.scratchStride:=descriptor.scratchStride;d.scratch:=descriptor.scratch
-    d.protectedMemory(0).base:=descriptor.bins.producer.arena.base;d.protectedMemory(0).limit:=descriptor.bins.producer.arena.limit
-    d.protectedMemory(1).base:=descriptor.bins.bins.pool.base;d.protectedMemory(1).limit:=descriptor.bins.bins.pool.limit
-    d.protectedMemory(2).base:=(if(pagedCapacity>0)descriptor.bins.bins.directoryBase else 0.U)
-    d.protectedMemory(2).limit:=(if(pagedCapacity>0)descriptor.bins.bins.directoryLimit else 0.U)
+  private def bindingFor(id: UInt): TypedReplayTileDescriptor = {
+    val d = Wire(new TypedReplayTileDescriptor); d := 0.U.asTypeOf(d)
+    val x = (id(15, 0) % columns) << descriptor.bins.producer.tileLog2
+    val y = (id(15, 0) / columns) << descriptor.bins.producer.tileLog2
+    d.image := imageFor(x, y); d.tile := id; d.states := descriptor.states; d.engines := engines.U
+    d.scratchStride := descriptor.scratchStride; d.scratch := descriptor.scratch
+    d.protectedMemory(0).base := descriptor.bins.producer.arena.base;
+    d.protectedMemory(0).limit := descriptor.bins.producer.arena.limit
+    d.protectedMemory(1).base := descriptor.bins.bins.pool.base;
+    d.protectedMemory(1).limit := descriptor.bins.bins.pool.limit
+    d.protectedMemory(2).base := (if (pagedCapacity > 0) descriptor.bins.bins.directoryBase else 0.U)
+    d.protectedMemory(2).limit := (if (pagedCapacity > 0) descriptor.bins.bins.directoryLimit else 0.U)
     d
   }
-  io.begin.ready:=phase===State.idle && !externalCancel && feedbackReady && geometryReady && geometrySourceDrained
-  io.busy:=phase=/=State.idle || io.feedback.map(_.busy).getOrElse(false.B) || !geometryReady || !geometrySourceDrained
-  io.completion.valid:=phase===State.complete && (!nativeGeometryAvailable).B;io.completion.bits:=result
-  private val frameReportFire=if(nativeGeometryAvailable)io.geometryCompletion.get.fire else io.completion.fire
-  if(nativeGeometryAvailable) {
-    io.geometryCompletion.get.valid:=phase===State.complete;io.geometryCompletion.get.bits:=geometryResult
-    io.geometryCompletion.get.bits.image:=result
-    source.io.geometryInvalidate.get<>io.geometryInvalidate.get
-    io.geometryInvalidateDone.get<>source.io.geometryInvalidateDone.get
+  io.begin.ready := phase === State.idle && !externalCancel && feedbackReady && geometryReady && geometrySourceDrained
+  io.busy := phase =/= State.idle || io.feedback
+    .map(_.busy)
+    .getOrElse(false.B) || !geometryReady || !geometrySourceDrained
+  io.completion.valid := phase === State.complete && (!nativeGeometryAvailable).B; io.completion.bits := result
+  private val frameReportFire = if (nativeGeometryAvailable) io.geometryCompletion.get.fire else io.completion.fire
+  if (nativeGeometryAvailable) {
+    io.geometryCompletion.get.valid := phase === State.complete; io.geometryCompletion.get.bits := geometryResult
+    io.geometryCompletion.get.bits.image := result
+    source.io.geometryInvalidate.get <> io.geometryInvalidate.get
+    io.geometryInvalidateDone.get <> source.io.geometryInvalidateDone.get
   }
-  source.io.begin.valid:=sourceOffered;source.io.begin.bits:=descriptor.bins
-  when(source.io.begin.fire){sourceOffered:=false.B;sourceStarted:=true.B}
-  source.io.cancel:=sourceStarted && !sourceDone && stop
-  source.io.completion.ready:=sourceStarted && !sourceDone
-  when(source.io.completion.fire){sourceDone:=true.B;sourceResult:=source.io.completion.bits
-    when(source.io.completion.bits.status=/=0.U){failChild(source.io.completion.bits.status,2)}}
+  source.io.begin.valid := sourceOffered; source.io.begin.bits := descriptor.bins
+  when(source.io.begin.fire) { sourceOffered := false.B; sourceStarted := true.B }
+  source.io.cancel := sourceStarted && !sourceDone && stop
+  source.io.completion.ready := sourceStarted && !sourceDone
+  when(source.io.completion.fire) {
+    sourceDone := true.B; sourceResult := source.io.completion.bits
+    when(source.io.completion.bits.status =/= 0.U) { failChild(source.io.completion.bits.status, 2) }
+  }
 
-  if(nativeGeometryAvailable){
-    val incoming=io.geometryTask.get;val offered=source.io.geometryTask.get;val actual=source.io.geometryTaskCompletion.get
-    val legal=descriptor.states.base.pad(64)+(incoming.bits.state.pad(64)<<9)+512.U<=descriptor.states.limit &&
-      incoming.bits.raster.sampleMode===descriptor.image.pixels.colors.sampleMode
-    io.task.ready:=false.B;source.io.task.valid:=false.B;source.io.task.bits:=0.U.asTypeOf(source.io.task.bits)
-    io.taskCompletion.valid:=false.B;io.taskCompletion.bits:=0.U.asTypeOf(io.taskCompletion.bits);source.io.taskCompletion.ready:=true.B
-    incoming.ready:=active && phase=/=State.finish && !localTaskValid && !actual.valid &&
-      ((phase===State.run && !stop && offered.ready) || stop)
-    offered.valid:=incoming.valid && incoming.ready && legal && !stop;offered.bits:=incoming.bits
-    when(incoming.fire){tasks:=tasks+1.U;when(!legal || stop){
-      localGeometryTask.get:=0.U.asTypeOf(localGeometryTask.get);localGeometryTask.get.task:=incoming.bits
-      localGeometryTask.get.status:=Mux(!legal,1.U,Mux(status=/=0.U,status,4.U));localTaskValid:=true.B
-      when(!legal){fail(1.U,1)}}}
-    io.geometryTaskCompletion.get.valid:=localTaskValid || actual.valid
-    io.geometryTaskCompletion.get.bits:=Mux(localTaskValid,localGeometryTask.get,actual.bits)
-    actual.ready:=io.geometryTaskCompletion.get.ready && !localTaskValid
-    when(io.geometryTaskCompletion.get.fire){
-      when(localTaskValid){localTaskValid:=false.B}
-      .otherwise{gsTasks:=gsTasks+1.U;gsReceived:=gsReceived+actual.bits.received;gsDropped:=gsDropped+actual.bits.dropped
-        gsAdmitted:=gsAdmitted+actual.bits.admitted;gsBinNext:=actual.bits.nextSequence
-        when(actual.bits.publicationValid){gsPublished:=gsPublished+actual.bits.actualGsPublished;gsNext:=actual.bits.nextGsSequence}}
+  if (nativeGeometryAvailable) {
+    val incoming = io.geometryTask.get; val offered = source.io.geometryTask.get;
+    val actual = source.io.geometryTaskCompletion.get
+    val legal =
+      descriptor.states.base.pad(64) + (incoming.bits.state.pad(64) << 9) + 512.U <= descriptor.states.limit &&
+        incoming.bits.raster.sampleMode === descriptor.image.pixels.colors.sampleMode
+    io.task.ready := false.B; source.io.task.valid := false.B; source.io.task.bits := 0.U.asTypeOf(source.io.task.bits)
+    io.taskCompletion.valid := false.B; io.taskCompletion.bits := 0.U.asTypeOf(io.taskCompletion.bits);
+    source.io.taskCompletion.ready := true.B
+    incoming.ready := active && phase =/= State.finish && !localTaskValid && !actual.valid &&
+      ((phase === State.run && !stop && offered.ready) || stop)
+    offered.valid := incoming.valid && incoming.ready && legal && !stop; offered.bits := incoming.bits
+    when(incoming.fire) {
+      tasks := tasks + 1.U;
+      when(!legal || stop) {
+        localGeometryTask.get := 0.U.asTypeOf(localGeometryTask.get); localGeometryTask.get.task := incoming.bits
+        localGeometryTask.get.status := Mux(!legal, 1.U, Mux(status =/= 0.U, status, 4.U)); localTaskValid := true.B
+        when(!legal) { fail(1.U, 1) }
+      }
     }
-    when(actual.valid && actual.bits.status=/=0.U){failChild(actual.bits.status,2)}
-    io.end.ready:=sourceStarted && !sourceDone && (phase===State.run || phase===State.closing) &&
+    io.geometryTaskCompletion.get.valid := localTaskValid || actual.valid
+    io.geometryTaskCompletion.get.bits := Mux(localTaskValid, localGeometryTask.get, actual.bits)
+    actual.ready := io.geometryTaskCompletion.get.ready && !localTaskValid
+    when(io.geometryTaskCompletion.get.fire) {
+      when(localTaskValid) { localTaskValid := false.B }
+        .otherwise {
+          gsTasks := gsTasks + 1.U; gsReceived := gsReceived + actual.bits.received;
+          gsDropped := gsDropped + actual.bits.dropped
+          gsAdmitted := gsAdmitted + actual.bits.admitted; gsBinNext := actual.bits.nextSequence
+          when(actual.bits.publicationValid) {
+            gsPublished := gsPublished + actual.bits.actualGsPublished; gsNext := actual.bits.nextGsSequence
+          }
+        }
+    }
+    when(actual.valid && actual.bits.status =/= 0.U) { failChild(actual.bits.status, 2) }
+    io.end.ready := sourceStarted && !sourceDone && (phase === State.run || phase === State.closing) &&
       !incoming.valid && !localTaskValid && source.io.end.ready
-  }else{
-    val taskLegal=descriptor.states.base.pad(64)+(io.task.bits.state.pad(64)<<9)+512.U<=descriptor.states.limit &&
-      io.task.bits.raster.sampleMode===descriptor.image.pixels.colors.sampleMode
-    io.task.ready:=phase===State.run && !stop && !localTaskValid && source.io.task.ready
-    source.io.task.valid:=io.task.valid && io.task.ready && taskLegal;source.io.task.bits:=io.task.bits
-    when(io.task.fire){tasks:=tasks+1.U;when(!taskLegal){
-      localTask:=0.U.asTypeOf(localTask);localTask.status:=1.U;localTaskValid:=true.B;fail(1.U,1)}}
-    io.taskCompletion.valid:=localTaskValid || source.io.taskCompletion.valid
-    io.taskCompletion.bits:=Mux(localTaskValid,localTask,source.io.taskCompletion.bits)
-    source.io.taskCompletion.ready:=io.taskCompletion.ready && !localTaskValid
-    when(io.taskCompletion.fire && localTaskValid){localTaskValid:=false.B}
-    when(source.io.taskCompletion.valid && source.io.taskCompletion.bits.status=/=0.U){failChild(source.io.taskCompletion.bits.status,2)}
-    io.end.ready:=phase===State.run && !stop && !io.task.valid && !localTaskValid && source.io.end.ready
+  } else {
+    val taskLegal =
+      descriptor.states.base.pad(64) + (io.task.bits.state.pad(64) << 9) + 512.U <= descriptor.states.limit &&
+        io.task.bits.raster.sampleMode === descriptor.image.pixels.colors.sampleMode
+    io.task.ready := phase === State.run && !stop && !localTaskValid && source.io.task.ready
+    source.io.task.valid := io.task.valid && io.task.ready && taskLegal; source.io.task.bits := io.task.bits
+    when(io.task.fire) {
+      tasks := tasks + 1.U;
+      when(!taskLegal) {
+        localTask := 0.U.asTypeOf(localTask); localTask.status := 1.U; localTaskValid := true.B; fail(1.U, 1)
+      }
+    }
+    io.taskCompletion.valid := localTaskValid || source.io.taskCompletion.valid
+    io.taskCompletion.bits := Mux(localTaskValid, localTask, source.io.taskCompletion.bits)
+    source.io.taskCompletion.ready := io.taskCompletion.ready && !localTaskValid
+    when(io.taskCompletion.fire && localTaskValid) { localTaskValid := false.B }
+    when(source.io.taskCompletion.valid && source.io.taskCompletion.bits.status =/= 0.U) {
+      failChild(source.io.taskCompletion.bits.status, 2)
+    }
+    io.end.ready := phase === State.run && !stop && !io.task.valid && !localTaskValid && source.io.end.ready
   }
-  source.io.end.valid:=io.end.valid && io.end.ready;source.io.end.bits:=io.end.bits
+  source.io.end.valid := io.end.valid && io.end.ready; source.io.end.bits := io.end.bits
 
-  io.opened<>source.io.opened;source.io.load<>io.load;source.io.seal<>io.seal
-  source.io.inspect<>io.inspect;io.reply<>source.io.reply
-  private def tieInputs(d:Data):Unit=d match {
-    case r:Record=>r.elements.values.foreach(tieInputs)
-    case v:Vec[_]=>v.foreach(tieInputs)
-    case b:Bool if DataMirror.directionOf(b)==(if(externalImages)ActualDirection.Output else ActualDirection.Input)=>b:=false.B
-    case s:SInt if DataMirror.directionOf(s)==(if(externalImages)ActualDirection.Output else ActualDirection.Input)=>s:=0.S
-    case u:UInt if DataMirror.directionOf(u)==(if(externalImages)ActualDirection.Output else ActualDirection.Input)=>u:=0.U
-    case _=>()
+  io.opened <> source.io.opened; source.io.load <> io.load; source.io.seal <> io.seal
+  source.io.inspect <> io.inspect; io.reply <> source.io.reply
+  private def tieInputs(d: Data): Unit = d match {
+    case r: Record => r.elements.values.foreach(tieInputs)
+    case v: Vec[_] => v.foreach(tieInputs)
+    case b: Bool
+        if DataMirror.directionOf(b) == (if (externalImages) ActualDirection.Output else ActualDirection.Input) =>
+      b := false.B
+    case s: SInt
+        if DataMirror.directionOf(s) == (if (externalImages) ActualDirection.Output else ActualDirection.Input) =>
+      s := 0.S
+    case u: UInt
+        if DataMirror.directionOf(u) == (if (externalImages) ActualDirection.Output else ActualDirection.Input) =>
+      u := 0.U
+    case _ => ()
   }
-  payload.foreach{_=>
-    if(ownedVertexSource){
-      val vertex=io.vertexPayload.get;val store=io.payload.get(0);val inner=vertexRouter.get
-      store<>vertex
-      vertex.context:=contexts(0)
+  payload.foreach { _ =>
+    if (ownedVertexSource) {
+      val vertex = io.vertexPayload.get; val store = io.payload.get(0); val inner = vertexRouter.get
+      store <> vertex
+      vertex.context := contexts(0)
       // Preserve cancellation. The parent must gate producer cancel until its VS task is accepted.
-      vertex.cancel:=store.cancel
-      inner.io.clientPayload.get(0):=0.U.asTypeOf(inner.io.clientPayload.get(0))
-      inner.io.clientPayload.get(1):=vertex.task
-      mux.io.clientPayload.get(0):=inner.io.poolPayload.get
-      val pinBase=TessellationSystemTriangleImagePipeline.payloadPins(engines)
-      for(i<-0 until (if(nativeGeometryAvailable)6 else 4))io.payloadPins.get(pinBase+i):=inner.io.payloadPins.get(i)
-    }else{
-      val idle=io.payload.get(0)
-      idle.control.valid:=false.B;idle.control.bits:=0.U.asTypeOf(idle.control.bits)
-      idle.request.valid:=false.B;idle.request.bits:=0.U.asTypeOf(idle.request.bits)
-      idle.controlResponse.ready:=true.B;idle.response.ready:=true.B
-      idle.task.valid:=false.B;idle.task.bits:=0.U.asTypeOf(idle.task.bits)
-      mux.io.clientPayload.get(0):=0.U.asTypeOf(mux.io.clientPayload.get(0))
+      vertex.cancel := store.cancel
+      inner.io.clientPayload.get(0) := 0.U.asTypeOf(inner.io.clientPayload.get(0))
+      inner.io.clientPayload.get(1) := vertex.task
+      mux.io.clientPayload.get(0) := inner.io.poolPayload.get
+      val pinBase = TessellationSystemTriangleImagePipeline.payloadPins(engines)
+      for (i <- 0 until (if (nativeGeometryAvailable) 6 else 4))
+        io.payloadPins.get(pinBase + i) := inner.io.payloadPins.get(i)
+    } else {
+      val idle = io.payload.get(0)
+      idle.control.valid := false.B; idle.control.bits := 0.U.asTypeOf(idle.control.bits)
+      idle.request.valid := false.B; idle.request.bits := 0.U.asTypeOf(idle.request.bits)
+      idle.controlResponse.ready := true.B; idle.response.ready := true.B
+      idle.task.valid := false.B; idle.task.bits := 0.U.asTypeOf(idle.task.bits)
+      mux.io.clientPayload.get(0) := 0.U.asTypeOf(mux.io.clientPayload.get(0))
     }
-    mux.io.clientPayload.get(1):=router.io.poolPayload.get
-    io.poolPayload.get:=mux.io.poolPayload.get
-    for(i<-0 until 4)io.payloadPins.get(i):=mux.io.payloadPins.get(i)
-    for(i<-0 until 2*engines)io.payloadPins.get(4+i):=router.io.payloadPins.get(i)
+    mux.io.clientPayload.get(1) := router.io.poolPayload.get
+    io.poolPayload.get := mux.io.poolPayload.get
+    for (i <- 0 until 4) io.payloadPins.get(i) := mux.io.payloadPins.get(i)
+    for (i <- 0 until 2 * engines) io.payloadPins.get(4 + i) := router.io.payloadPins.get(i)
   }
-  private val doneEngine=source.io.tileDone.bits.bins.engine
-  private val canTakeBin=Wire(Vec(engines,Bool()))
-  source.io.tileDone.ready:=VecInit((0 until engines).map(e=>doneEngine===e.U && canTakeBin(e))).asUInt.orR
-  for((image,e)<-images.zipWithIndex){
-    val queue=tileQueues(e);val incoming=source.io.tileDone.valid && doneEngine===e.U
-    val first=source.io.out(e).valid || incoming
-    val binCode=Mux(source.io.tileDone.bits.recordStatus=/=0.U,source.io.tileDone.bits.recordStatus,source.io.tileDone.bits.bins.status)
-    val candidate=Mux(source.io.out(e).valid,source.io.out(e).bits.source.tile,source.io.tileDone.bits.bins.tile)
-    source.io.rendererPermit.get(e):=running && !owned(e) && queue.io.enq.ready
-    canTakeBin(e):=running && !haveBin(e) && (owned(e) || queue.io.enq.ready)
-    when(running && !owned(e) && first && queue.io.enq.ready){
-      owned(e):=true.B;tile(e):=candidate;imageStarted(e):=false.B;imageDone(e):=false.B;endSent(e):=false.B
-      imageResult(e):=0.U.asTypeOf(imageResult(e))
-      when(!stop && (!incoming || binCode===0.U)){when(candidate<descriptor.bins.bins.tileCount){imageBinding(e):=bindingFor(candidate);imageOffered(e):=true.B}
-        .otherwise{fail(7.U,2,true.B,candidate)}}
+  private val doneEngine = source.io.tileDone.bits.bins.engine
+  private val canTakeBin = Wire(Vec(engines, Bool()))
+  source.io.tileDone.ready := VecInit((0 until engines).map(e => doneEngine === e.U && canTakeBin(e))).asUInt.orR
+  for ((image, e) <- images.zipWithIndex) {
+    val queue = tileQueues(e); val incoming = source.io.tileDone.valid && doneEngine === e.U
+    val first = source.io.out(e).valid || incoming
+    val binCode = Mux(
+      source.io.tileDone.bits.recordStatus =/= 0.U,
+      source.io.tileDone.bits.recordStatus,
+      source.io.tileDone.bits.bins.status
+    )
+    val candidate = Mux(source.io.out(e).valid, source.io.out(e).bits.source.tile, source.io.tileDone.bits.bins.tile)
+    source.io.rendererPermit.get(e) := running && !owned(e) && queue.io.enq.ready
+    canTakeBin(e) := running && !haveBin(e) && (owned(e) || queue.io.enq.ready)
+    when(running && !owned(e) && first && queue.io.enq.ready) {
+      owned(e) := true.B; tile(e) := candidate; imageStarted(e) := false.B; imageDone(e) := false.B;
+      endSent(e) := false.B
+      imageResult(e) := 0.U.asTypeOf(imageResult(e))
+      when(!stop && (!incoming || binCode === 0.U)) {
+        when(candidate < descriptor.bins.bins.tileCount) {
+          imageBinding(e) := bindingFor(candidate); imageOffered(e) := true.B
+        }
+          .otherwise { fail(7.U, 2, true.B, candidate) }
+      }
     }
-    when(source.io.tileDone.fire && doneEngine===e.U){
-      when(owned(e)){assert(tile(e)===source.io.tileDone.bits.bins.tile,"image owner received another tile's bin result")}
-      binResult(e):=source.io.tileDone.bits;haveBin(e):=true.B
-      when(!stop && binCode=/=0.U && binCode=/=4.U){failChild(binCode,2,true.B,source.io.tileDone.bits.bins.tile)}
+    when(source.io.tileDone.fire && doneEngine === e.U) {
+      when(owned(e)) {
+        assert(tile(e) === source.io.tileDone.bits.bins.tile, "image owner received another tile's bin result")
+      }
+      binResult(e) := source.io.tileDone.bits; haveBin(e) := true.B
+      when(!stop && binCode =/= 0.U && binCode =/= 4.U) {
+        failChild(binCode, 2, true.B, source.io.tileDone.bits.bins.tile)
+      }
     }
-    image.begin.valid:=imageOffered(e);image.begin.bits:=imageBinding(e)
-    when(image.begin.fire){imageOffered(e):=false.B;imageStarted(e):=true.B}
-    image.in.valid:=running && owned(e) && imageStarted(e) && !imageDone(e) && source.io.out(e).valid && !stop
-    image.in.bits:=source.io.out(e).bits
-    source.io.out(e).ready:=running && (stop || (owned(e) && imageStarted(e) && !imageDone(e) && image.in.ready))
-    when(image.in.fire){assert(image.in.bits.source.tile===tile(e),"image consumed another tile's record")}
-    image.end.valid:=owned(e) && haveBin(e) && imageStarted(e) && !endSent(e) && !stop && image.end.ready
-    image.end.bits:=true.B;when(image.end.fire){endSent(e):=true.B}
-    image.cancel:=imageStarted(e) && stop
-    io.primitiveDone(e)<>image.primitiveDone;io.out(e)<>image.out
-    image.completion.ready:=imageStarted(e) && !imageDone(e)
-    when(image.completion.fire){imageDone(e):=true.B;imageResult(e):=image.completion.bits
-      when(image.completion.bits.status=/=0.U){
-        failChild(image.completion.bits.status,3,true.B,tile(e),image.completion.bits.faultAddress)
-      }}
-    router.io.clients(e)<>image.shared
-    payload.foreach{_=>
-      tieInputs(image.payload.get(0));io.payload.get(e+1)<>image.payload.get(1)
-      image.payload.get(1).context:=contexts(e+1);image.payload.get(1).cancel:=imageStarted(e) && io.payload.get(e+1).cancel
-      router.io.clientPayload.get(e):=image.poolPayload.get
-      for(i<-0 until 4)io.payloadPins.get(4+2*engines+e*4+i):=image.payloadPins.get(i)
+    image.begin.valid := imageOffered(e); image.begin.bits := imageBinding(e)
+    when(image.begin.fire) { imageOffered(e) := false.B; imageStarted(e) := true.B }
+    image.in.valid := running && owned(e) && imageStarted(e) && !imageDone(e) && source.io.out(e).valid && !stop
+    image.in.bits := source.io.out(e).bits
+    source.io.out(e).ready := running && (stop || (owned(e) && imageStarted(e) && !imageDone(e) && image.in.ready))
+    when(image.in.fire) { assert(image.in.bits.source.tile === tile(e), "image consumed another tile's record") }
+    image.end.valid := owned(e) && haveBin(e) && imageStarted(e) && !endSent(e) && !stop && image.end.ready
+    image.end.bits := true.B; when(image.end.fire) { endSent(e) := true.B }
+    image.cancel := imageStarted(e) && stop
+    io.primitiveDone(e) <> image.primitiveDone; io.out(e) <> image.out
+    image.completion.ready := imageStarted(e) && !imageDone(e)
+    when(image.completion.fire) {
+      imageDone(e) := true.B; imageResult(e) := image.completion.bits
+      when(image.completion.bits.status =/= 0.U) {
+        failChild(image.completion.bits.status, 3, true.B, tile(e), image.completion.bits.faultAddress)
+      }
     }
-    queue.io.enq.valid:=owned(e) && haveBin(e) && !imageOffered(e) && (!imageStarted(e) || (imageDone(e) && !image.busy))
-    queue.io.enq.bits:=0.U.asTypeOf(queue.io.enq.bits);queue.io.enq.bits.engine:=e.U
-    queue.io.enq.bits.source:=binResult(e);queue.io.enq.bits.renderStarted:=imageStarted(e);queue.io.enq.bits.image:=imageResult(e)
-    queue.io.enq.bits.status:=Mux(binResult(e).recordStatus=/=0.U,binResult(e).recordStatus,
-      Mux(binResult(e).bins.status=/=0.U,binResult(e).bins.status,Mux(imageResult(e).status=/=0.U,imageResult(e).status,Mux(stop,4.U,0.U))))
-    io.tileDone(e)<>queue.io.deq
-    when(queue.io.enq.fire){owned(e):=false.B;haveBin(e):=false.B;imageStarted(e):=false.B;imageDone(e):=false.B
-      tileCounts(e):=tileCounts(e)+1.U;primitiveCounts(e):=primitiveCounts(e)+imageResult(e).accepted
-      loads(e):=loads(e)+imageResult(e).image.transfers.loadBytes
-      stores(e):=stores(e)+imageResult(e).image.transfers.storedBytes
-      resolves(e):=resolves(e)+imageResult(e).image.transfers.resolvedBytes}
+    router.io.clients(e) <> image.shared
+    payload.foreach { _ =>
+      tieInputs(image.payload.get(0)); io.payload.get(e + 1) <> image.payload.get(1)
+      image.payload.get(1).context := contexts(e + 1);
+      image.payload.get(1).cancel := imageStarted(e) && io.payload.get(e + 1).cancel
+      router.io.clientPayload.get(e) := image.poolPayload.get
+      for (i <- 0 until 4) io.payloadPins.get(4 + 2 * engines + e * 4 + i) := image.payloadPins.get(i)
+    }
+    queue.io.enq.valid := owned(e) && haveBin(e) && !imageOffered(e) && (!imageStarted(e) || (imageDone(
+      e
+    ) && !image.busy))
+    queue.io.enq.bits := 0.U.asTypeOf(queue.io.enq.bits); queue.io.enq.bits.engine := e.U
+    queue.io.enq.bits.source := binResult(e); queue.io.enq.bits.renderStarted := imageStarted(e);
+    queue.io.enq.bits.image := imageResult(e)
+    queue.io.enq.bits.status := Mux(
+      binResult(e).recordStatus =/= 0.U,
+      binResult(e).recordStatus,
+      Mux(
+        binResult(e).bins.status =/= 0.U,
+        binResult(e).bins.status,
+        Mux(imageResult(e).status =/= 0.U, imageResult(e).status, Mux(stop, 4.U, 0.U))
+      )
+    )
+    io.tileDone(e) <> queue.io.deq
+    when(queue.io.enq.fire) {
+      owned(e) := false.B; haveBin(e) := false.B; imageStarted(e) := false.B; imageDone(e) := false.B
+      tileCounts(e) := tileCounts(e) + 1.U; primitiveCounts(e) := primitiveCounts(e) + imageResult(e).accepted
+      loads(e) := loads(e) + imageResult(e).image.transfers.loadBytes
+      stores(e) := stores(e) + imageResult(e).image.transfers.storedBytes
+      resolves(e) := resolves(e) + imageResult(e).image.transfers.resolvedBytes
+    }
   }
 
-  private val arbiter=Module(new RRArbiter(new ComputeMemoryRequest(config,64,memoryTransactions),engines+1+(if(tessellationUniforms)1 else 0)+(if(nativeGeometryAvailable)1 else 0)))
-  private val requests=Module(new Queue(new ComputeMemoryRequest(config,64,memoryTransactions),2,pipe=true))
-  arbiter.io.in(0).valid:=source.io.memoryRequest.valid;arbiter.io.in(0).bits:=source.io.memoryRequest.bits
-  source.io.memoryRequest.ready:=arbiter.io.in(0).ready
-  source.io.memoryResponse.valid:=io.memoryResponse.valid && io.memoryResponse.bits.transactionId<binSlots.U
-  source.io.memoryResponse.bits:=io.memoryResponse.bits
-  private val imageReplies=Wire(Vec(engines,Bool()))
-  for((image,e)<-images.zipWithIndex){val base=binSlots+32*e;val port=arbiter.io.in(e+1)
-    port.valid:=image.memoryRequest.valid;port.bits:=image.memoryRequest.bits
-    port.bits.transactionId:=image.memoryRequest.bits.transactionId+&base.U;image.memoryRequest.ready:=port.ready
-    val selected=io.memoryResponse.bits.transactionId>=base.U && io.memoryResponse.bits.transactionId<(base+32).U
-    image.memoryResponse.valid:=io.memoryResponse.valid && selected;image.memoryResponse.bits:=io.memoryResponse.bits
-    image.memoryResponse.bits.transactionId:=io.memoryResponse.bits.transactionId-base.U
-    imageReplies(e):=selected && image.memoryResponse.ready
+  private val arbiter = Module(
+    new RRArbiter(
+      new ComputeMemoryRequest(config, 64, memoryTransactions),
+      engines + 1 + (if (tessellationUniforms) 1 else 0) + (if (nativeGeometryAvailable) 1 else 0)
+    )
+  )
+  private val requests = Module(new Queue(new ComputeMemoryRequest(config, 64, memoryTransactions), 2, pipe = true))
+  arbiter.io.in(0).valid := source.io.memoryRequest.valid; arbiter.io.in(0).bits := source.io.memoryRequest.bits
+  source.io.memoryRequest.ready := arbiter.io.in(0).ready
+  source.io.memoryResponse.valid := io.memoryResponse.valid && io.memoryResponse.bits.transactionId < binSlots.U
+  source.io.memoryResponse.bits := io.memoryResponse.bits
+  private val imageReplies = Wire(Vec(engines, Bool()))
+  for ((image, e) <- images.zipWithIndex) {
+    val base = binSlots + 32 * e; val port = arbiter.io.in(e + 1)
+    port.valid := image.memoryRequest.valid; port.bits := image.memoryRequest.bits
+    port.bits.transactionId := image.memoryRequest.bits.transactionId +& base.U; image.memoryRequest.ready := port.ready
+    val selected =
+      io.memoryResponse.bits.transactionId >= base.U && io.memoryResponse.bits.transactionId < (base + 32).U
+    image.memoryResponse.valid := io.memoryResponse.valid && selected;
+    image.memoryResponse.bits := io.memoryResponse.bits
+    image.memoryResponse.bits.transactionId := io.memoryResponse.bits.transactionId - base.U
+    imageReplies(e) := selected && image.memoryResponse.ready
   }
-  private val uniformReply=WireDefault(false.B)
-  if(tessellationUniforms){
-    val base=binSlots+32*engines
-    val port=arbiter.io.in(engines+1);val request=source.io.uniformMemoryRequest.get
-    port.valid:=request.valid;port.bits:=request.bits;port.bits.transactionId:=request.bits.transactionId+&base.U
-    request.ready:=port.ready
-    val selected=io.memoryResponse.bits.transactionId>=base.U && io.memoryResponse.bits.transactionId<(base+2).U
-    val reply=source.io.uniformMemoryResponse.get
-    reply.valid:=io.memoryResponse.valid && selected;reply.bits:=io.memoryResponse.bits
-    reply.bits.transactionId:=io.memoryResponse.bits.transactionId-base.U
-    uniformReply:=selected && reply.ready
+  private val uniformReply = WireDefault(false.B)
+  if (tessellationUniforms) {
+    val base = binSlots + 32 * engines
+    val port = arbiter.io.in(engines + 1); val request = source.io.uniformMemoryRequest.get
+    port.valid := request.valid; port.bits := request.bits;
+    port.bits.transactionId := request.bits.transactionId +& base.U
+    request.ready := port.ready
+    val selected = io.memoryResponse.bits.transactionId >= base.U && io.memoryResponse.bits.transactionId < (base + 2).U
+    val reply = source.io.uniformMemoryResponse.get
+    reply.valid := io.memoryResponse.valid && selected; reply.bits := io.memoryResponse.bits
+    reply.bits.transactionId := io.memoryResponse.bits.transactionId - base.U
+    uniformReply := selected && reply.ready
   }
-  private val patchLaunchPending=RegInit(false.B);private val patchInvalidatePending=RegInit(false.B)
-  when(source.io.shared.launch.fire){patchLaunchPending:=true.B}
-  when(source.io.shared.completion.fire){patchLaunchPending:=false.B}
-  when(source.io.shared.invalidate.fire){patchInvalidatePending:=true.B}
-  when(source.io.shared.invalidateDone.fire){patchInvalidatePending:=false.B}
-  private val uniformPending=RegInit(0.U(2.W))
-  if(tessellationUniforms){
-    val request=source.io.uniformMemoryRequest.get;val response=source.io.uniformMemoryResponse.get
-    val add=Mux(request.fire,UIntToOH(request.bits.transactionId,2),0.U(2.W))
-    val remove=Mux(response.fire,UIntToOH(response.bits.transactionId,2),0.U(2.W))
-    uniformPending:=(uniformPending & ~remove) | add
+  private val patchLaunchPending = RegInit(false.B); private val patchInvalidatePending = RegInit(false.B)
+  when(source.io.shared.launch.fire) { patchLaunchPending := true.B }
+  when(source.io.shared.completion.fire) { patchLaunchPending := false.B }
+  when(source.io.shared.invalidate.fire) { patchInvalidatePending := true.B }
+  when(source.io.shared.invalidateDone.fire) { patchInvalidatePending := false.B }
+  private val uniformPending = RegInit(0.U(2.W))
+  if (tessellationUniforms) {
+    val request = source.io.uniformMemoryRequest.get; val response = source.io.uniformMemoryResponse.get
+    val add = Mux(request.fire, UIntToOH(request.bits.transactionId, 2), 0.U(2.W))
+    val remove = Mux(response.fire, UIntToOH(response.bits.transactionId, 2), 0.U(2.W))
+    uniformPending := (uniformPending & ~remove) | add
   }
-  source.io.sourceTransportDrained:= !patchLaunchPending && !patchInvalidatePending && !uniformPending.orR &&
-    TessellationGeometryPatchPipelineLink.offersDrained(source.io.shared,source.io.texture.toSeq,
-      source.io.uniformMemoryRequest.map(_.valid).getOrElse(false.B),source.io.trap.valid,
-      source.io.invalidate.valid,source.io.invalidateDone.valid)
-  source.io.geometryTransportDrained:=geometryTransportDrained
-  private val geometryReply=WireDefault(false.B)
-  if(nativeGeometryAvailable){
-    val gs=source.io.geometryShared.get
-    val transport=Module(new TessellationGeometryClientTransport(config))
-    transport.io.launchAccepted:=gs.launch.fire;transport.io.completionAccepted:=gs.completion.fire
-    transport.io.invalidateAccepted:=gs.invalidate.fire;transport.io.invalidateDoneAccepted:=gs.invalidateDone.fire
-    transport.io.memoryRequest.valid:=source.io.geometryMemoryRequest.get.valid
-    transport.io.memoryRequest.bits:=source.io.geometryMemoryRequest.get.bits
-    source.io.geometryMemoryRequest.get.ready:=transport.io.memoryRequest.ready
-    source.io.geometryMemoryResponse.get<>transport.io.memoryResponse
-    val base=binSlots+32*engines+(if(tessellationUniforms)2 else 0)
-    val port=arbiter.io.in(engines+1+(if(tessellationUniforms)1 else 0))
-    val request=transport.io.request;val reply=transport.io.response
-    port.valid:=request.valid;port.bits:=request.bits;port.bits.transactionId:=base.U
-    request.ready:=port.ready
-    val selected=io.memoryResponse.bits.transactionId===base.U
-    reply.valid:=io.memoryResponse.valid && selected;reply.bits:=io.memoryResponse.bits;reply.bits.transactionId:=0.U
-    geometryReply:=selected && reply.ready
-    val requestsLive=gs.texture.map(t=>t.scalar.valid || t.vector.valid || t.scalarWriteback.valid || t.vectorWriteback.valid).reduce(_ || _)
-    val eventsLive=gs.geometryEvent.get.map(_.valid).reduce(_ || _)
-    transport.io.executionOffersLive:=gs.launch.valid || source.io.geometryMemoryRequest.get.valid ||
+  source.io.sourceTransportDrained := !patchLaunchPending && !patchInvalidatePending && !uniformPending.orR &&
+    TessellationGeometryPatchPipelineLink.offersDrained(
+      source.io.shared,
+      source.io.texture.toSeq,
+      source.io.uniformMemoryRequest.map(_.valid).getOrElse(false.B),
+      source.io.trap.valid,
+      source.io.invalidate.valid,
+      source.io.invalidateDone.valid
+    )
+  source.io.geometryTransportDrained := geometryTransportDrained
+  private val geometryReply = WireDefault(false.B)
+  if (nativeGeometryAvailable) {
+    val gs = source.io.geometryShared.get
+    val transport = Module(new TessellationGeometryClientTransport(config))
+    transport.io.launchAccepted := gs.launch.fire; transport.io.completionAccepted := gs.completion.fire
+    transport.io.invalidateAccepted := gs.invalidate.fire; transport.io.invalidateDoneAccepted := gs.invalidateDone.fire
+    transport.io.memoryRequest.valid := source.io.geometryMemoryRequest.get.valid
+    transport.io.memoryRequest.bits := source.io.geometryMemoryRequest.get.bits
+    source.io.geometryMemoryRequest.get.ready := transport.io.memoryRequest.ready
+    source.io.geometryMemoryResponse.get <> transport.io.memoryResponse
+    val base = binSlots + 32 * engines + (if (tessellationUniforms) 2 else 0)
+    val port = arbiter.io.in(engines + 1 + (if (tessellationUniforms) 1 else 0))
+    val request = transport.io.request; val reply = transport.io.response
+    port.valid := request.valid; port.bits := request.bits; port.bits.transactionId := base.U
+    request.ready := port.ready
+    val selected = io.memoryResponse.bits.transactionId === base.U
+    reply.valid := io.memoryResponse.valid && selected; reply.bits := io.memoryResponse.bits;
+    reply.bits.transactionId := 0.U
+    geometryReply := selected && reply.ready
+    val requestsLive = gs.texture
+      .map(t => t.scalar.valid || t.vector.valid || t.scalarWriteback.valid || t.vectorWriteback.valid)
+      .reduce(_ || _)
+    val eventsLive = gs.geometryEvent.get.map(_.valid).reduce(_ || _)
+    transport.io.executionOffersLive := gs.launch.valid || source.io.geometryMemoryRequest.get.valid ||
       gs.completion.valid || gs.trap.valid || gs.owned.orR || requestsLive || eventsLive
-    transport.io.invalidateOffersLive:=gs.invalidate.valid || gs.invalidateDone.valid
-    geometryExecutionDrained:=transport.io.executionDrained
-    geometryTransportDrained:=transport.io.drained
-    io.geometryTransportDrained.get:=geometryTransportDrained
+    transport.io.invalidateOffersLive := gs.invalidate.valid || gs.invalidateDone.valid
+    geometryExecutionDrained := transport.io.executionDrained
+    geometryTransportDrained := transport.io.drained
+    io.geometryTransportDrained.get := geometryTransportDrained
   }
-  requests.io.enq<>arbiter.io.out;io.memoryRequest<>requests.io.deq
-  io.memoryResponse.ready:=Mux(io.memoryResponse.bits.transactionId<binSlots.U,source.io.memoryResponse.ready,imageReplies.asUInt.orR || uniformReply || geometryReply)
-  private val inFlight=RegInit(0.U(log2Ceil(memoryTransactions+3).W))
-  inFlight:=inFlight+io.memoryRequest.fire.asUInt-io.memoryResponse.fire.asUInt
-  when(io.memoryResponse.fire){assert(inFlight.orR || io.memoryRequest.fire,"unowned triangle bin image response")}
-  private val executionChildrenDrained= !sourceOffered && (!sourceStarted || (sourceDone && !source.io.busy)) && !owned.asUInt.orR &&
-    !imageOffered.asUInt.orR && !images.map(_.busy).reduce(_ || _) && tileQueues.map(q=> !q.io.deq.valid).reduce(_ && _) &&
-    !localTaskValid && inFlight===0.U && requests.io.count===0.U
-  private val drained=executionChildrenDrained && mux.io.drained && router.io.drained &&
+  requests.io.enq <> arbiter.io.out; io.memoryRequest <> requests.io.deq
+  io.memoryResponse.ready := Mux(
+    io.memoryResponse.bits.transactionId < binSlots.U,
+    source.io.memoryResponse.ready,
+    imageReplies.asUInt.orR || uniformReply || geometryReply
+  )
+  private val inFlight = RegInit(0.U(log2Ceil(memoryTransactions + 3).W))
+  inFlight := inFlight + io.memoryRequest.fire.asUInt - io.memoryResponse.fire.asUInt
+  when(io.memoryResponse.fire) { assert(inFlight.orR || io.memoryRequest.fire, "unowned triangle bin image response") }
+  private val executionChildrenDrained =
+    !sourceOffered && (!sourceStarted || (sourceDone && !source.io.busy)) && !owned.asUInt.orR &&
+      !imageOffered.asUInt.orR && !images.map(_.busy).reduce(_ || _) && tileQueues
+        .map(q => !q.io.deq.valid)
+        .reduce(_ && _) &&
+      !localTaskValid && inFlight === 0.U && requests.io.count === 0.U
+  private val drained = executionChildrenDrained && mux.io.drained && router.io.drained &&
     vertexRouter.map(_.io.drained).getOrElse(true.B) && geometryReady && geometrySourceDrained
-  when(active && externalCancel && status===0.U && !childPrimary){status:=4.U;faultStage:=0.U;faultTileValid:=false.B}
-  switch(phase){
-    is(State.idle){when(io.begin.fire){descriptor:=io.begin.bits;status:=0.U;faultStage:=0.U;faultTileValid:=false.B;faultAddress:=0.U
-      sourceOffered:=false.B;sourceStarted:=false.B;sourceDone:=false.B;sourceResult:=0.U.asTypeOf(sourceResult)
-      gsPublished:=0.U;gsReceived:=0.U;gsDropped:=0.U;gsAdmitted:=0.U;gsTasks:=0.U;gsNext:=0.U;gsBinNext:=0.U
-      tasks:=0.U;localTaskValid:=false.B;scanX:=0.U;scanY:=0.U
-      for(e<-0 until engines){owned(e):=false.B;imageOffered(e):=false.B;imageStarted(e):=false.B;imageDone(e):=false.B;haveBin(e):=false.B
-        tileCounts(e):=0.U;primitiveCounts(e):=0.U;loads(e):=0.U;stores(e):=0.U;resolves(e):=0.U}
-      for(i<-0 until engines+1)contexts(i):=io.payload.map(_(i).context).getOrElse(0.U)
-      phase:=State.validate}}
-    is(State.validate){
-      val d=descriptor;val b=d.bins;val a=d.states;val c=d.image.pixels.colors
-      val cols=(b.producer.screenWidth.pad(17)+tileSize-1.U)>>b.producer.tileLog2
-      val rows=(b.producer.screenHeight.pad(17)+tileSize-1.U)>>b.producer.tileLog2
-      val count=(a.limit-a.base)>>9
-      val emptyStates=allowEmptyStates.B && a.base===0.U && a.limit===0.U
-      val fixed=Seq((b.producer.arena.base,b.producer.arena.limit),(b.bins.pool.base,b.bins.pool.limit)) ++
-        (if(pagedCapacity>0)Seq((b.bins.directoryBase,b.bins.directoryLimit))else Seq.empty)
-      val enabled=TypedTileImageRules.enabled(d.image.pixels);val loadOps=TypedTileImageRules.loads(d.image.pixels)
-      val views=d.image.views.zipWithIndex.map{case(v,i)=>val used=enabled(i) && (v.store || loadOps(i)===AttachmentLoadOp.load.U)
-        (Mux(used,v.allocationBase,0.U),Mux(used,v.allocationLimit,0.U))} ++
-        d.image.resolves.map(r=>(Mux(r.enable,r.destination.allocationBase,0.U),Mux(r.enable,r.destination.allocationLimit,0.U)))
-      val stateClear= !(fixed++views).map{case(x,y)=>overlap(a.base,a.limit,x,y)}.reduce(_ || _)
-      val scratchClear=d.scratch.zipWithIndex.map{case(s,e)=>if(e<engines)
-        legalSpan(s.base,s.limit) && (!emptyStates || s.limit>s.base) && s.base.pad(64)+count.pad(64)*d.scratchStride.pad(64)<=s.limit &&
-          !(fixed++views++Seq((a.base,a.limit))).map{case(x,y)=>overlap(s.base,s.limit,x,y)}.reduce(_ || _)
-        else !s.asUInt.orR}.reduce(_ && _)
-      val separate=(for(x<-0 until engines;y<-x+1 until engines)yield !overlap(d.scratch(x).base,d.scratch(x).limit,d.scratch(y).base,d.scratch(y).limit)).foldLeft(true.B)(_ && _)
-      val viewsClear= !views.flatMap{case(x,y)=>fixed.map{case(z,t)=>overlap(x,y,z,t)}}.reduce(_ || _)
-      val frameVersion=(d.version===1.U && !b.bins.tileCount(31,16).orR) ||
-        ((pagedCapacity==65536).B && d.version===2.U)
-      val legal=frameVersion && b.bins.version===3.U && !b.bins.resume && b.producer.version===1.U &&
-        b.producer.screenWidth>0.U && b.producer.screenHeight>0.U && b.producer.screenWidth<=g.screenWidth.U && b.producer.screenHeight<=g.screenHeight.U &&
-        (b.producer.tileLog2===3.U || b.producer.tileLog2===4.U) && c.tileLog2===b.producer.tileLog2 && c.originX===0.S && c.originY===0.S &&
-        cols*rows===b.bins.tileCount && cols*rows<=(if(pagedCapacity>0)pagedCapacity else tileSlots).U &&
-        a.version===1.U && legalSpan(a.base,a.limit) && (a.limit>a.base || emptyStates) && ((a.limit-a.base)&511.U)===0.U &&
-        a.identity.asUInt===c.identity.asUInt && a.identity.asUInt===b.producer.arena.identity.asUInt && a.identity.asUInt===b.bins.pool.identity.asUInt &&
-        d.scratchStride>=64.U && d.scratchStride(5,0)===0.U && stateClear && scratchClear && separate && viewsClear
-      columns:=cols
-      when(stop){phase:=State.closing}.elsewhen(!legal){fail(1.U,1);phase:=State.closing}.otherwise{phase:=State.scan}
-    }
-    is(State.scan){
-      when(stop){phase:=State.closing}.elsewhen(TypedTileImageRules.invalid(imageFor(scanX,scanY),storage)){fail(1.U,1);phase:=State.closing}
-        .elsewhen(scanX+tileSize>=descriptor.bins.producer.screenWidth){
-          when(scanY+tileSize>=descriptor.bins.producer.screenHeight){sourceOffered:=true.B;phase:=State.sourceOffer}
-            .otherwise{scanX:=0.U;scanY:=scanY+tileSize}}
-        .otherwise{scanX:=scanX+tileSize}
-    }
-    is(State.sourceOffer){when(stop || sourceDone){phase:=State.closing}.elsewhen(sourceStarted && (if(nativeGeometryAvailable)source.io.geometryTask.get.ready else source.io.task.ready)){phase:=State.run}}
-    is(State.run){when(stop || sourceDone){phase:=State.closing}.elsewhen(io.end.fire){when(!io.end.bits){fail(1.U,1)};phase:=State.closing}}
-    is(State.closing){when(drained){phase:=State.finish}}
-    is(State.finish){when(if(nativeGeometryAvailable)drained else true.B){
-        geometryResult.image:=0.U.asTypeOf(geometryResult.image)
-        geometryResult.actualGsPublished:=gsPublished;geometryResult.received:=gsReceived;geometryResult.dropped:=gsDropped
-        geometryResult.admitted:=gsAdmitted;geometryResult.tasks:=gsTasks;geometryResult.nextGsSequence:=gsNext;geometryResult.nextSequence:=gsBinNext
-      result:=0.U.asTypeOf(result);result.identity:=descriptor.states.identity
-      result.status:=Mux(externalCancel && status===0.U,4.U,status);result.faultStage:=faultStage;result.faultTileValid:=faultTileValid;result.faultTile:=faultTile
-      result.faultAddress:=faultAddress
-      result.source:=sourceResult;result.tiles:=tileCounts.reduce(_+_);result.primitives:=primitiveCounts.reduce(_+_)
-      result.loadBytes:=loads.reduce(_+_);result.storedBytes:=stores.reduce(_+_);result.resolvedBytes:=resolves.reduce(_+_);phase:=State.complete}
-      if(nativeGeometryAvailable)when(!drained){phase:=State.closing}}
-    is(State.complete){when(frameReportFire){phase:=State.idle}}
+  when(active && externalCancel && status === 0.U && !childPrimary) {
+    status := 4.U; faultStage := 0.U; faultTileValid := false.B
   }
-  if(nativeGeometryAvailable){
+  switch(phase) {
+    is(State.idle) {
+      when(io.begin.fire) {
+        descriptor := io.begin.bits; status := 0.U; faultStage := 0.U; faultTileValid := false.B; faultAddress := 0.U
+        sourceOffered := false.B; sourceStarted := false.B; sourceDone := false.B;
+        sourceResult := 0.U.asTypeOf(sourceResult)
+        gsPublished := 0.U; gsReceived := 0.U; gsDropped := 0.U; gsAdmitted := 0.U; gsTasks := 0.U; gsNext := 0.U;
+        gsBinNext := 0.U
+        tasks := 0.U; localTaskValid := false.B; scanX := 0.U; scanY := 0.U
+        for (e <- 0 until engines) {
+          owned(e) := false.B; imageOffered(e) := false.B; imageStarted(e) := false.B; imageDone(e) := false.B;
+          haveBin(e) := false.B
+          tileCounts(e) := 0.U; primitiveCounts(e) := 0.U; loads(e) := 0.U; stores(e) := 0.U; resolves(e) := 0.U
+        }
+        for (i <- 0 until engines + 1) contexts(i) := io.payload.map(_(i).context).getOrElse(0.U)
+        phase := State.validate
+      }
+    }
+    is(State.validate) {
+      val d = descriptor; val b = d.bins; val a = d.states; val c = d.image.pixels.colors
+      val cols = (b.producer.screenWidth.pad(17) + tileSize - 1.U) >> b.producer.tileLog2
+      val rows = (b.producer.screenHeight.pad(17) + tileSize - 1.U) >> b.producer.tileLog2
+      val count = (a.limit - a.base) >> 9
+      val emptyStates = allowEmptyStates.B && a.base === 0.U && a.limit === 0.U
+      val fixed = Seq((b.producer.arena.base, b.producer.arena.limit), (b.bins.pool.base, b.bins.pool.limit)) ++
+        (if (pagedCapacity > 0) Seq((b.bins.directoryBase, b.bins.directoryLimit)) else Seq.empty)
+      val enabled = TypedTileImageRules.enabled(d.image.pixels); val loadOps = TypedTileImageRules.loads(d.image.pixels)
+      val views = d.image.views.zipWithIndex.map { case (v, i) =>
+        val used = enabled(i) && (v.store || loadOps(i) === AttachmentLoadOp.load.U)
+        (Mux(used, v.allocationBase, 0.U), Mux(used, v.allocationLimit, 0.U))
+      } ++
+        d.image.resolves.map(r =>
+          (Mux(r.enable, r.destination.allocationBase, 0.U), Mux(r.enable, r.destination.allocationLimit, 0.U))
+        )
+      val stateClear = !(fixed ++ views).map { case (x, y) => overlap(a.base, a.limit, x, y) }.reduce(_ || _)
+      val scratchClear = d.scratch.zipWithIndex
+        .map { case (s, e) =>
+          if (e < engines)
+            legalSpan(s.base, s.limit) && (!emptyStates || s.limit > s.base) && s.base
+              .pad(64) + count.pad(64) * d.scratchStride.pad(64) <= s.limit &&
+            !(fixed ++ views ++ Seq((a.base, a.limit)))
+              .map { case (x, y) => overlap(s.base, s.limit, x, y) }
+              .reduce(_ || _)
+          else !s.asUInt.orR
+        }
+        .reduce(_ && _)
+      val separate = (for (x <- 0 until engines; y <- x + 1 until engines)
+        yield !overlap(d.scratch(x).base, d.scratch(x).limit, d.scratch(y).base, d.scratch(y).limit))
+        .foldLeft(true.B)(_ && _)
+      val viewsClear = !views.flatMap { case (x, y) => fixed.map { case (z, t) => overlap(x, y, z, t) } }.reduce(_ || _)
+      val frameVersion = (d.version === 1.U && !b.bins.tileCount(31, 16).orR) ||
+        ((pagedCapacity == 65536).B && d.version === 2.U)
+      val legal = frameVersion && b.bins.version === 3.U && !b.bins.resume && b.producer.version === 1.U &&
+        b.producer.screenWidth > 0.U && b.producer.screenHeight > 0.U && b.producer.screenWidth <= g.screenWidth.U && b.producer.screenHeight <= g.screenHeight.U &&
+        (b.producer.tileLog2 === 3.U || b.producer.tileLog2 === 4.U) && c.tileLog2 === b.producer.tileLog2 && c.originX === 0.S && c.originY === 0.S &&
+        cols * rows === b.bins.tileCount && cols * rows <= (if (pagedCapacity > 0) pagedCapacity else tileSlots).U &&
+        a.version === 1.U && legalSpan(
+          a.base,
+          a.limit
+        ) && (a.limit > a.base || emptyStates) && ((a.limit - a.base) & 511.U) === 0.U &&
+        a.identity.asUInt === c.identity.asUInt && a.identity.asUInt === b.producer.arena.identity.asUInt && a.identity.asUInt === b.bins.pool.identity.asUInt &&
+        d.scratchStride >= 64.U && d.scratchStride(5, 0) === 0.U && stateClear && scratchClear && separate && viewsClear
+      columns := cols
+      when(stop) { phase := State.closing }.elsewhen(!legal) { fail(1.U, 1); phase := State.closing }.otherwise {
+        phase := State.scan
+      }
+    }
+    is(State.scan) {
+      when(stop) { phase := State.closing }
+        .elsewhen(TypedTileImageRules.invalid(imageFor(scanX, scanY), storage)) { fail(1.U, 1); phase := State.closing }
+        .elsewhen(scanX + tileSize >= descriptor.bins.producer.screenWidth) {
+          when(scanY + tileSize >= descriptor.bins.producer.screenHeight) {
+            sourceOffered := true.B; phase := State.sourceOffer
+          }
+            .otherwise { scanX := 0.U; scanY := scanY + tileSize }
+        }
+        .otherwise { scanX := scanX + tileSize }
+    }
+    is(State.sourceOffer) {
+      when(stop || sourceDone) { phase := State.closing }.elsewhen(
+        sourceStarted && (if (nativeGeometryAvailable) source.io.geometryTask.get.ready else source.io.task.ready)
+      ) { phase := State.run }
+    }
+    is(State.run) {
+      when(stop || sourceDone) { phase := State.closing }.elsewhen(io.end.fire) {
+        when(!io.end.bits) { fail(1.U, 1) }; phase := State.closing
+      }
+    }
+    is(State.closing) { when(drained) { phase := State.finish } }
+    is(State.finish) {
+      when(if (nativeGeometryAvailable) drained else true.B) {
+        geometryResult.image := 0.U.asTypeOf(geometryResult.image)
+        geometryResult.actualGsPublished := gsPublished; geometryResult.received := gsReceived;
+        geometryResult.dropped := gsDropped
+        geometryResult.admitted := gsAdmitted; geometryResult.tasks := gsTasks; geometryResult.nextGsSequence := gsNext;
+        geometryResult.nextSequence := gsBinNext
+        result := 0.U.asTypeOf(result); result.identity := descriptor.states.identity
+        result.status := Mux(externalCancel && status === 0.U, 4.U, status); result.faultStage := faultStage;
+        result.faultTileValid := faultTileValid; result.faultTile := faultTile
+        result.faultAddress := faultAddress
+        result.source := sourceResult; result.tiles := tileCounts.reduce(_ + _);
+        result.primitives := primitiveCounts.reduce(_ + _)
+        result.loadBytes := loads.reduce(_ + _); result.storedBytes := stores.reduce(_ + _);
+        result.resolvedBytes := resolves.reduce(_ + _); phase := State.complete
+      }
+      if (nativeGeometryAvailable) when(!drained) { phase := State.closing }
+    }
+    is(State.complete) { when(frameReportFire) { phase := State.idle } }
+  }
+  if (nativeGeometryAvailable) {
     // Full live drain was rechecked on the finish capture edge. A later idle
     // cache flush cannot revoke that report, but no execution credit may return.
-    when(io.geometryCompletion.get.valid){
-      assert(executionChildrenDrained && geometryExecutionDrained,
-        "held triangle GS frame report acquired execution debt")
-      assert(!source.io.geometryShared.get.launch.valid && !source.io.geometryMemoryRequest.get.valid,
-        "held GS frame report admitted a new execution task")
-      assert(!source.io.shared.launch.valid && !io.vertexShared.get.launch.valid &&
-        !VecInit(images.map(_.shared.launch.valid)).asUInt.orR,
-        "held GS frame report acquired source/render launch offers")
+    when(io.geometryCompletion.get.valid) {
+      assert(
+        executionChildrenDrained && geometryExecutionDrained,
+        "held triangle GS frame report acquired execution debt"
+      )
+      assert(
+        !source.io.geometryShared.get.launch.valid && !source.io.geometryMemoryRequest.get.valid,
+        "held GS frame report admitted a new execution task"
+      )
+      assert(
+        !source.io.shared.launch.valid && !io.vertexShared.get.launch.valid &&
+          !VecInit(images.map(_.shared.launch.valid)).asUInt.orR,
+        "held GS frame report acquired source/render launch offers"
+      )
     }
-  }else{
-    when(io.completion.valid){assert(drained,"triangle bin image completion escaped source/render/publication drain")}
+  } else {
+    when(io.completion.valid) {
+      assert(drained, "triangle bin image completion escaped source/render/publication drain")
+    }
   }
 
-  if(tessellationInfoAvailable)source.io.inputPatchBinding.get:=io.inputPatchBinding.get
+  if (tessellationInfoAvailable) source.io.inputPatchBinding.get := io.inputPatchBinding.get
 }

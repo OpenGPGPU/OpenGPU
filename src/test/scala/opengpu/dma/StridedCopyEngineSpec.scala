@@ -9,8 +9,7 @@ class StridedCopyEngineSpec extends AnyFlatSpec {
   behavior of "StridedCopyEngine"
 
   it should "advance source and destination strides after each completed row" in {
-    simulate(new StridedCopyEngine(
-      GpuConfig(lanes = 4), descriptorIdWidth = 4)) { dut =>
+    simulate(new StridedCopyEngine(GpuConfig(lanes = 4), descriptorIdWidth = 4)) { dut =>
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
       dut.io.descriptor.valid.poke(false.B)
       dut.io.descriptor.bits.poke(0.U.asTypeOf(dut.io.descriptor.bits))
@@ -29,8 +28,7 @@ class StridedCopyEngineSpec extends AnyFlatSpec {
       dut.io.descriptor.valid.poke(true.B)
       dut.clock.step(); dut.io.descriptor.valid.poke(false.B)
 
-      val rows = Seq((BigInt(0x1000), BigInt(0x4000), BigInt(0x11)),
-        (BigInt(0x1100), BigInt(0x4180), BigInt(0x22)))
+      val rows = Seq((BigInt(0x1000), BigInt(0x4000), BigInt(0x11)), (BigInt(0x1100), BigInt(0x4180), BigInt(0x22)))
       rows.foreach { case (source, destination, data) =>
         var cycles = 0
         while (!dut.io.memoryRequest.valid.peek().litToBoolean && cycles < 10) {
@@ -72,8 +70,7 @@ class StridedCopyEngineSpec extends AnyFlatSpec {
   }
 
   it should "reject overlapping row footprints without memory traffic" in {
-    simulate(new StridedCopyEngine(
-      GpuConfig(lanes = 4), descriptorIdWidth = 4)) { dut =>
+    simulate(new StridedCopyEngine(GpuConfig(lanes = 4), descriptorIdWidth = 4)) { dut =>
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
       dut.io.descriptor.bits.poke(0.U.asTypeOf(dut.io.descriptor.bits))
       dut.io.descriptor.bits.sourceAddress.poke(0x1000.U)
@@ -96,8 +93,7 @@ class StridedCopyEngineSpec extends AnyFlatSpec {
   }
 
   it should "reject a two-dimensional range that crosses the address space" in {
-    simulate(new StridedCopyEngine(
-      GpuConfig(lanes = 4), descriptorIdWidth = 4)) { dut =>
+    simulate(new StridedCopyEngine(GpuConfig(lanes = 4), descriptorIdWidth = 4)) { dut =>
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
       dut.io.descriptor.bits.poke(0.U.asTypeOf(dut.io.descriptor.bits))
       dut.io.descriptor.bits.sourceAddress.poke("hfffff000".U)
