@@ -3,7 +3,7 @@ package opengpu.system
 import chisel3._
 import chisel3.util._
 import opengpu.graphics._
-import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse}
+import opengpu.core.memory.{CacheLineInvalidate, ComputeMemoryRequest, ComputeMemoryResponse}
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 
@@ -28,6 +28,9 @@ private class JointGeometryNativeObserved[D <: Data](domain: Int, sequenceType: 
     val a = Output(new TessellationJointGeometryAttachmentCompletion(p, 12))
     val rb = Input(Bool()); val rd = Input(Bool()); val rc = Output(Bool())
     val rf = Flipped(Decoupled(new TessellationJointGeometryRangeExecutionRetirement))
+    val geometryInvalidate = Decoupled(new CacheLineInvalidate(config))
+    val geometryInvalidateDone = Flipped(Decoupled(new CacheLineInvalidate(config)))
+    val rangeCancel = Output(Bool())
     val out = Decoupled(new TessellationJointGeometryNativeCompletion(12))
     val cancel = Input(Bool()); val busy = Output(Bool()); val drained = Output(Bool())
   })
@@ -39,11 +42,29 @@ private class JointGeometryNativeObserved[D <: Data](domain: Int, sequenceType: 
   io.clear := child.io.frame.bits.clearOnly
   child.io.frameBusy := io.fb; child.io.frameDrained := io.fd; io.fc := child.io.cancelFrame
   io.end <> child.io.end; child.io.frameRetired <> io.ff
-  io.rv := child.io.range.valid; child.io.range.ready := io.rr; io.e := child.io.range.bits.directory
-  io.c := child.io.range.bits.cursor; io.g := child.io.range.bits.captured.base.gnt.sequence
-  io.v := child.io.range.bits.captured.base.capture; io.a := child.io.range.bits.captured.attachment
-  child.io.rangeBusy := io.rb; child.io.rangeDrained := io.rd; io.rc := child.io.cancelRange;
+  private val gate = Module(
+    new TessellationJointGeometryRangeInvalidationGate(
+      config,
+      new TessellationJointGeometryRangeExecution(sequenceType, p, 12)
+    )
+  )
+  gate.io.request <> child.io.range; gate.io.cancel := child.io.cancelRange
+  io.rv := gate.io.begin.valid; gate.io.begin.ready := io.rr
+  io.e := gate.io.begin.bits.directory; io.c := gate.io.begin.bits.cursor
+  io.g := gate.io.begin.bits.captured.base.gnt.sequence; io.v := gate.io.begin.bits.captured.base.capture
+  io.a := gate.io.begin.bits.captured.attachment
+  child.io.rangeBusy := io.rb || gate.io.busy
+  child.io.rangeDrained := io.rd && gate.io.drained
+  io.rc := child.io.cancelRange
   child.io.rangeRetired <> io.rf
+  io.geometryInvalidate.valid := gate.io.peerInvalidate.valid
+  gate.io.peerInvalidate.ready := io.geometryInvalidate.ready
+  io.geometryInvalidate.bits := gate.io.peerInvalidate.bits
+  gate.io.peerInvalidateDone <> io.geometryInvalidateDone
+  io.rangeCancel := gate.io.cancelChild
+  gate.io.externalInvalidate.valid := false.B
+  gate.io.externalInvalidate.bits := 0.U.asTypeOf(gate.io.externalInvalidate.bits)
+  gate.io.externalInvalidateDone.ready := true.B
   io.out <> child.io.completion; child.io.cancel := io.cancel; io.busy := child.io.busy; io.drained := child.io.drained
 }
 
@@ -205,7 +226,17 @@ class TessellationJointGeometryNativeControllerSpec extends AnyFlatSpec {
         for (_ <- 0 until 3) { m.tick(); d.io.fv.expect(true.B); assert(d.io.f.peek().litValue == held) }
         d.io.fr.poke(true.B); m.tick(); d.io.fr.poke(false.B); d.io.fb.poke(true.B)
       }
+      def invalidateRange(): Unit = {
+        d.io.geometryInvalidate.ready.poke(true.B)
+        m.until("range L1 invalidate")(d.io.geometryInvalidate.valid.peek().litToBoolean)
+        d.io.geometryInvalidate.bits.lineAddress.expect(BigInt("ffffffff", 16).U)
+        m.tick(); d.io.geometryInvalidate.ready.poke(false.B)
+        d.io.geometryInvalidateDone.valid.poke(true.B)
+        d.io.geometryInvalidateDone.bits.lineAddress.poke(BigInt("ffffffff", 16).U)
+        m.tick(); d.io.geometryInvalidateDone.valid.poke(false.B)
+      }
       def acceptRange(index: Int, c: Cursor, patches: Int, output: BigInt = 100): Unit = {
+        invalidateRange()
         m.until("actual GNT GVS GND GGA GNG range")(d.io.rv.peek().litToBoolean)
         d.io.e.entry.sequenceIndex.expect(index.U); d.io.e.entry.drawIndex.expect(2.U)
         d.io.e.entry.invocationId.expect(invocation.U); d.io.e.entry.patchCount.expect(patches.U)
@@ -311,11 +342,27 @@ class TessellationJointGeometryNativeControllerSpec extends AnyFlatSpec {
       endFrame(gs = 0, received = 0, admitted = 0, tasks = 0, next = 0, bin = 0)
       finish(0, 0, 0, 0, 0, 0, 0, 0, clear = true); assert(m.reads.size == 40)
       // Already offered range metadata survives cancel and first transfers.
-      begin(n = 1); acceptFrame(); m.until("held cancellable geometry range")(d.io.rv.peek().litToBoolean)
-      val held = d.io.c.peek().litValue; d.io.cancel.poke(true.B); d.io.rc.expect(false.B)
+      begin(n = 1); acceptFrame()
+      d.io.geometryInvalidate.ready.poke(true.B)
+      m.until("accepted range invalidate")(d.io.geometryInvalidate.valid.peek().litToBoolean)
+      m.tick(); d.io.geometryInvalidate.ready.poke(false.B); d.io.cancel.poke(true.B)
+      for (_ <- 0 until 4) {
+        m.tick(); d.io.rv.expect(false.B); d.io.end.valid.expect(false.B); d.io.out.valid.expect(false.B)
+      }
+      d.io.geometryInvalidateDone.valid.poke(true.B)
+      d.io.geometryInvalidateDone.bits.lineAddress.poke(BigInt("ffffffff", 16).U)
+      m.tick(); d.io.geometryInvalidateDone.valid.poke(false.B)
+      d.io.rv.expect(true.B); d.io.rc.expect(true.B)
+      d.io.rr.poke(true.B); m.tick(); d.io.rr.poke(false.B); d.io.rb.poke(true.B); d.io.rd.poke(false.B)
+      retireRange(0, 0, seed, 0, 0, 0, status = 4)
+      endFrame(status = 2, gs = 0, received = 0, admitted = 0, tasks = 0, next = 0, bin = 0)
+      finish(2, 0, 0, 0, 1, 0, 0, 0, stage = 6)
+      begin(n = 1); acceptFrame(); invalidateRange()
+      m.until("held cancellable geometry range")(d.io.rv.peek().litToBoolean)
+      val held = d.io.c.peek().litValue; d.io.cancel.poke(true.B); d.io.rangeCancel.expect(false.B)
       for (_ <- 0 until 3) { m.tick(); d.io.rv.expect(true.B); assert(d.io.c.peek().litValue == held) }
       d.io.rr.poke(true.B); m.tick(); d.io.rr.poke(false.B); d.io.rb.poke(true.B); d.io.rd.poke(false.B)
-      d.io.rc.expect(true.B); retireRange(0, 0, seed, 0, 0, 0, status = 4)
+      d.io.rc.expect(true.B); d.io.rangeCancel.expect(true.B); retireRange(0, 0, seed, 0, 0, 0, status = 4)
       endFrame(status = 2, gs = 0, received = 0, admitted = 0, tasks = 0, next = 0, bin = 0);
       finish(2, 0, 0, 0, 1, 0, 0, 0, stage = 6)
       // A noncancel frame fault on the exact successful range-drain edge

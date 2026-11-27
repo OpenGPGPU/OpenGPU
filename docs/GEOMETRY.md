@@ -42,12 +42,42 @@ total pins. The provider is `two-cu-vga60-owner-v3-five-stage`. The capacity wor
 stores payload bytes as log2 and maximum payload bytes in 4 KiB units. Parsing
 accepts only this exact internal read-only profile.
 
-JDK21 production/test compilation passed. The new protocol spec passed 9/9;
-the new spec plus `TessellationHostAxiCommandSpec`,
-`TileBinHostCommandPortSpec`, `TessellationHostCommandPortSpec` and
-`TessellationJointJobAbiSpec` passed 19/19. Generator `--check`, the 10-test
-Python ABI suite, 181 changed-suite selector tests, both selection catalogs,
-`bash -n` and `git diff --check` passed.
+The private Scala host transport is wired but remains default closed.
+`TileBinHostCommandPort` explicitly dispatches GNQ4/5/6 tag `0x474a0100`
+(GNZ2/GJP1) and GNQ7/8/9 tag `0x474a0200` (GNZ3/GJP2), with independent
+geometry submit/completion IO. A geometry completion command-ID or identity
+mismatch is replaced by status 3/stage 7 with the accepted identity. GNZ2
+completions retain their 16 words and read zero in the GNZ3 extension.
+
+`GpuCommandMmio` holds one 46-word GNZ3 report at the codec addresses above.
+The complete `0x560–0x5e7` window is read-only, `0x5d8–0x5e7` is zero padding,
+and `0x5e8` and above return SLVERR. POP and command reset clear the held report.
+`GpuHostAxi` exposes GJP2 only for the exact protected profile and sets GCR1
+bit23 when the geometry host is present; it does not add a driver feature,
+`GET_PARAM` or public discovery record.
+
+`GpuHostSystemAxi(jointTessellationGeometryNative=true)` is mutually exclusive
+with legacy `jointTessellationNative`. It instantiates
+`TessellationJointThreeDomainGeometryJobImage` with geometry-specific memory
+transactions and payload pins over one shared image owner. It creates no
+tessellation feedback admission, transfer or three-domain feedback bridge;
+native-renderer transform feedback may remain enabled, while geometry commands
+reject all TF flags.
+
+Every geometry typed range passes through
+`TessellationJointGeometryRangeInvalidationGate`. The gate sends
+`CacheLineInvalidate.allLinesAddress` to the retained domain and waits for done
+before beginning the range. It arbitrates that request with the external
+geometry invalidate peer. Cancellation may withdraw an unaccepted invalidate,
+but an accepted request and its held done must drain before range or outer-job
+completion. No invalidate is broadcast to another domain.
+
+JDK21 production/test compilation and 52 focused cases passed: command port
+4/4, AXI/MMIO 4/4, gate 3/3, controller 4/4, geometry-only top 1/1, three domain
+parents 3/3, parent elaboration 3/3, shared geometry owner 3/3, command MMIO
+10/10, GCR1 AXI 4/4, protocol 9/9, alignment profile 3/3 and the shared-owner
+GNQ7→GNQ8→GNQ9 clear-only/invalidation case 1/1. The changed-suite selector
+passed 183 tests and both integration/large-PR catalogs passed.
 
 ```sh
 export JAVA_HOME=/opt/homebrew/opt/openjdk@21
@@ -56,7 +86,11 @@ export JVM_OPTS="$JAVA_OPTS"
 bash scripts/scala_autofix.sh origin/main
 sbt -batch -Dopengpu.productQualification=0 -Dopengpu.simJobs=2 \
   'set Test / parallelExecution := false' 'Test / compile' \
-  'testOnly opengpu.graphics.TessellationJointGeometryHostProtocolSpec opengpu.system.TessellationHostAxiCommandSpec opengpu.graphics.TileBinHostCommandPortSpec opengpu.graphics.tessellation.TessellationHostCommandPortSpec opengpu.system.TessellationJointJobAbiSpec'
+  'testOnly opengpu.graphics.TileBinHostCommandPortSpec opengpu.system.TessellationHostAxiCommandSpec opengpu.system.TessellationJointGeometryRangeInvalidationGateSpec opengpu.system.TessellationJointGeometryNativeControllerSpec opengpu.graphics.GpuCommandMmioSpec opengpu.system.ComputeResourceCapabilitiesAxiSpec opengpu.graphics.TessellationJointGeometryHostProtocolSpec opengpu.system.NativeAlignmentHostProfileSpec' \
+  'testOnly opengpu.system.TessellationNativeHostElaborationSpec -- -z "geometry-only"' \
+  'testOnly opengpu.system.TessellationJointThreeDomainGeometrySpec opengpu.system.TessellationJointIsolineGeometryParentSpec opengpu.system.TessellationJointTriangleGeometryParentSpec opengpu.system.TessellationJointQuadGeometryParentSpec opengpu.system.TessellationGeometryParentElaborationSpec' \
+  'testOnly opengpu.system.TessellationJointEmptyFrameSpec -- -z "GNQ7 GNQ8 GNQ9"'
+sbt -batch 'runMain opengpu.elaboration.EmitComputeResourceAbi --check'
 python3 -B scripts/generate_protected_tessellation_joint_geometry_abi.py --check
 python3 -B scripts/test_protected_tessellation_joint_abi.py
 python3 -B scripts/test_changed_test_suites.py
@@ -65,11 +99,11 @@ bash -n scripts/scala_autofix.sh scripts/select_tests.sh scripts/ci_shard_tests.
 git diff --check
 ```
 
-This is a schema/codec delivery only. It does not wire `TileBinHostCommandPort`,
-`GpuCommandMmio`, `GpuHostAxi`, `GpuHostSystemAxi`, driver C execution,
-scheduler/IRQ, DRM/userspace/public ioctl, TF or ABI10. GJP2 is not a driver
-feature, `GET_PARAM` or public discovery record. No CU/frame execution, fault
-drain, product FPS, physical timing or P39/P40 acceptance is claimed.
+This delivery does not change driver C execution, scheduler/IRQ,
+DRM/userspace/public ioctl or discovery, Mesa/Gallium producers, TF or ABI10.
+GJP2 remains an internal read-only probe, not a default public capability. The
+new complete top is elaboration-qualified; no original-shader CU/frame replay,
+product FPS, physical timing or P39/P40 acceptance is claimed.
 
 ## Geometry metadata in bin records
 

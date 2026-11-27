@@ -45,6 +45,30 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertIn("opengpu.graphics.TessellationJointGeometryHostProtocolSpec",
                               set(changed_suites(REPO_ROOT, [path])))
 
+    def test_geometry_host_transport_selects_command_mmio_axi_and_gate_checks(self):
+        paths = (
+            "src/main/scala/opengpu/graphics/host/TileBinHostCommandPort.scala",
+            "src/main/scala/opengpu/graphics/host/GpuCommandMmio.scala",
+            "src/main/scala/opengpu/system/GpuHostAxi.scala",
+            "src/main/scala/opengpu/system/top/GpuHostSystemAxi.scala",
+        )
+        expected = {
+            "opengpu.graphics.TileBinHostCommandPortSpec",
+            "opengpu.graphics.GpuCommandMmioSpec",
+            "opengpu.system.TessellationHostAxiCommandSpec",
+            "opengpu.system.TessellationJointThreeDomainGeometrySpec",
+            "opengpu.system.TessellationJointGeometryRangeInvalidationGateSpec",
+        }
+        for path in paths:
+            with self.subTest(path=path):
+                self.assertTrue(expected <= set(changed_suites(REPO_ROOT, [path])))
+
+    def test_geometry_range_gate_selects_cancel_and_drain_spec(self):
+        selected = set(changed_suites(REPO_ROOT, [
+            "src/main/scala/opengpu/system/tessellation/TessellationJointGeometryRangeInvalidationGate.scala",
+        ]))
+        self.assertIn("opengpu.system.TessellationJointGeometryRangeInvalidationGateSpec", selected)
+
     def test_geometry_range_sources_select_controller_cursor_and_adapter_checks(self):
         paths = [
             "system/tessellation/TessellationJointGeometryJobLayout",
@@ -276,7 +300,8 @@ class ChangedTestSuitesTest(unittest.TestCase):
         for path in ("src/main/scala/opengpu/system/ComputeResourceCapabilities.scala",
                      "src/main/scala/opengpu/elaboration/EmitComputeResourceAbi.scala",
                      "driver/opengpu_compute_resource_abi.h", "docs/abi/compute-resource-v1.json"):
-            selected = expected | ({"opengpu.system.NativeOwnerHostProfileSpec"}
+            selected = expected | ({"opengpu.system.NativeOwnerHostProfileSpec",
+                                     "opengpu.system.ComputeResourceCapabilitiesAxiSpec"}
                 if path.endswith("/ComputeResourceCapabilities.scala") else set())
             self.assertEqual(set(changed_suites(root, [path])), selected)
 

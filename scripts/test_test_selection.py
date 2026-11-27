@@ -90,6 +90,7 @@ geometry_ci_suites = {
     "opengpu.system.TessellationJointTriangleGeometryParentSpec",
     "opengpu.system.TessellationJointQuadGeometryParentSpec",
     "opengpu.system.TessellationJointThreeDomainGeometrySpec",
+    "opengpu.system.TessellationJointGeometryRangeInvalidationGateSpec",
     "opengpu.system.TessellationGeometryVertexRangeControlSpec",
     "opengpu.system.TessellationGeometryVertexTypedRangeTagSpec",
     "opengpu.graphics.TessellationGeometryClientTransportSpec",
@@ -215,6 +216,7 @@ for name in ("TessellationJointIsolineGeometryParentSpec", "TessellationJointTri
              "TessellationJointQuadGeometryParentSpec"):
     assert assigned["opengpu.system." + name] == "system-core"
 assert assigned["opengpu.system.TessellationJointThreeDomainGeometrySpec"] == "system-core"
+assert assigned["opengpu.system.TessellationJointGeometryRangeInvalidationGateSpec"] == "system-core"
 assert assigned["opengpu.system.TessellationGeometryVertexRangeControlSpec"] == "system-core"
 assert assigned["opengpu.system.TessellationGeometryVertexTypedRangeTagSpec"] == "system-core"
 assert assigned["opengpu.system.NativeGeometryPrimitivePipelineSpec"] == "system-core"

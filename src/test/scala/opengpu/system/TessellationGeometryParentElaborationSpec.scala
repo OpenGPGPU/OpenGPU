@@ -152,8 +152,9 @@ class TessellationGeometryParentElaborationSpec extends AnyFlatSpec {
         chirrtl.linesIterator.find(line => line.contains("output io :") && line.contains("geometryInvalidate")).get
       assert(topPort.contains("flip geometryInvalidate :"))
       assert(topPort.contains("geometryInvalidateDone :"))
-      assert(chirrtl.contains("connect image.io.geometryInvalidate, io.geometryInvalidate"))
-      assert(chirrtl.contains("connect io.geometryInvalidateDone.valid, image.io.geometryInvalidateDone.valid"))
+      assert(chirrtl.contains("TessellationJointGeometryRangeInvalidationGate"))
+      assert(chirrtl.contains("rangeGate.io.externalInvalidate"))
+      assert(chirrtl.contains("rangeGate.io.peerInvalidate"))
       assert(!chirrtl.contains("GeometryTransformFeedbackStage"))
       assert(!chirrtl.contains("TransformFeedbackExport"))
     }

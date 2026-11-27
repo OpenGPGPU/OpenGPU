@@ -91,13 +91,20 @@
    已用命名参数修正。尚未接 protected host/driver/public discovery/submission/TF/
    ABI10，也未执行三域原 shader 的实际 CU/frame 或产品验收；不增加 15/40 闭环计数。
    [结果、限制与复现](TESSELLATION_JOINT_NATIVE_PARENT.md#shared-gnq789-geometry-owner)。
-- P39/P40 的独立 private geometry host ABI/codec 已定义 command tag
-  `0x474a0200`、46 词 GNZ3 completion 和四词 GJP2 internal probe；旧 GNQ4/5/6、
-  GJP1/GNZ2 常量和地址不变。JDK21 编译、新 protocol 9/9、新/旧 host 与 GNQ ABI
-  回归 19/19、Python ABI 10 项、selector 181 项及两套 catalog 通过。该 codec 未接入
-  `TileBinHostCommandPort`、MMIO/AXI、driver C、scheduler/IRQ、DRM/userspace/public
-  ioctl、TF 或 ABI10，也不增加 driver feature/GET_PARAM/public discovery；不执行 CU/frame，
-  不增加 15/40 闭环计数。[合同、限制与复现](GEOMETRY.md#private-geometry-host-abi-codec)。
+- P39/P40 的 private geometry host transport 已接通 default-closed Scala 路径：
+  command tag `0x474a0200`/GNZ3 46 词与旧 `0x474a0100`/GNZ2 显式双路分派，
+  MMIO `0x180/0x540/0x560–0x5e7` held/read-only 窗口、`0x5e8` SLVERR、
+  POP/reset 清零与 mismatch status3/stage7；GCR1 bit23 表示 private host presence，
+  GJP2 仅为 exact-profile internal read-only probe。`jointTessellationGeometryNative`
+  与旧 joint-native 互斥，使用 geometry 专用 transactions/payloadPins 和一个 shared
+  image owner，不创建 tessellation feedback bridge；native renderer TF 可保留，
+  geometry command 拒绝 TF flags。每个 typed range 在 begin 前执行 retained-domain
+  全 L1 invalidation gate，与外部 invalidate peer 仲裁，accepted invalidate/done
+  必须 drain，未接受可随 cancel 撤回，且不广播到其他 domain。JDK21 编译、52 项聚焦
+  Scala 检查、Python selector 183 项及两套 catalog 通过；未改 driver C 执行、
+  scheduler/IRQ、DRM/userspace/public ioctl/discovery、Mesa/Gallium、TF 或 ABI10，
+  不执行原 shader CU/frame 或产品验收，不增加 15/40 闭环计数。
+  [合同、限制与复现](GEOMETRY.md#private-geometry-host-abi-codec)。
 - P16 原 draw catalog/invocation range 捕获、内部语言程序 v3、程序快照
   权限边界与 FS8/9 私有程序验证的六个逻辑提交已通过 #825 合入。
   [交付范围、结果与限制](P16_INVOCATION_SOURCE_DELIVERY.md)：准确交付源完整 host

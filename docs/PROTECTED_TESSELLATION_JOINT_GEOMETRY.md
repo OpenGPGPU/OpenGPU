@@ -11,8 +11,8 @@ GNZ3 has 46 words and retains the GNZ2 prefix addresses; GJP2 uses
 `0x474a5002` at `0x600–0x60c`. The codec, exact wide-field validation, address
 map and test results are recorded in
 [the geometry host ABI section](GEOMETRY.md#private-geometry-host-abi-codec).
-No production host, driver or public discovery route is enabled by this
-contract.
+The schema alone enables no route; the opt-in Scala transport is described
+below.
 
 The root retains the original sequence/frame/directory structure and adds an
 exact GGA1 table. Its 64-byte header binds count and context/pass/generation.
@@ -41,8 +41,8 @@ or prove GPU behavior.
 
 Subsequent GPU PRs #961 and #962 added the no-TF ABI5/7 geometry RTL/readers and a
 direct typed-isoline `full5`/`pointcoord` two-CU retained Verilator replay. Those
-results are separate from this BUILD/prepare contract: they do not connect the
-GNQ7/8/9 protected host, driver submission or public discovery route.
+results are separate from this BUILD/prepare contract and predate the private
+host transport; they do not enable driver submission or public discovery.
 
 The three thin `TessellationSystem*JointGeometryVertexImage` parents connect
 the GNQ7/8/9 controller, typed range and native-geometry image internally, with
@@ -51,8 +51,11 @@ default-closed admission and real invalidation peer ports.
 geometry image bank/owner/mux, three-domain memory/payload fabrics, a
 three-client shader router and sample mux. Its physical images enable geometry
 input and empty states; each domain's native-geometry memory/payload capacity is
-computed independently and required to match. Invalidation is retained-domain
-only, and the bank owner retires after outer completion fire plus complete
+computed independently and required to match. Each typed range now performs an
+owner-aware all-lines L1 invalidation and waits for done before begin. The thin
+parent arbitrates this gate with the external geometry invalidate peer, retains
+accepted invalidate/done through cancellation, and never broadcasts to another
+domain. The bank owner retires after outer completion fire plus complete
 physical drain.
 
 The new composition spec passed 3/3, existing bank/memory/payload/sample/parent
@@ -63,17 +66,19 @@ cancellation, held outer completion, held invalidate/done and healthy reuse.
 The existing geometry controller does not propagate the image fault address, so
 that negative case checks status 3/stage 6 rather than the address. See
 [joint parent results](TESSELLATION_JOINT_NATIVE_PARENT.md#shared-gnq789-geometry-owner).
-This does not enable the protected host, driver, public submission, TF or ABI10,
-and does not claim original-shader CU/frame execution or product acceptance.
+This enables only the default-closed Scala host transport. It does not enable a
+driver queue, public submission, TF or ABI10, and does not claim original-shader
+CU/frame execution or product acceptance.
 
 ## Validation
 
 - The generated ABI/schema suite passes all 10 tests, including exact header
   regeneration and fail-closed schema mutations.
-- JDK21 production/test compilation passes. The private geometry host protocol
-  spec passes 9/9, and the focused new/legacy host and GNQ4/5/6 ABI regression
-  set passes 19/19. The changed-suite selector passes 181 tests plus both
-  integration/large-PR catalogs; `bash -n` and `git diff --check` pass.
+- JDK21 production/test compilation passes. The private host transport, MMIO,
+  GCR1, protocol, geometry-only top, controller/range invalidation and shared
+  owner checks pass 52 focused cases. The changed-suite selector passes 183
+  tests plus both integration/large-PR catalogs; `bash -n` and
+  `git diff --check` pass.
 - The Clang ASan/UBSan owner/MMU runner passes the existing joint suite and all
   three geometry domains. It compiles 28 translation units, checks 126 distinct
   dependencies and 397 consumed inputs, and rejects all 16 existing plus 9 new
@@ -90,16 +95,17 @@ and does not claim original-shader CU/frame execution or product acceptance.
 
 ## Limits
 
-This delivery does not enable discovery, a getter, ioctl, queue, host submission,
-transform feedback or an execution route. The private command/completion/profile
-codec is not connected to `TileBinHostCommandPort`, `GpuCommandMmio`, `GpuHostAxi`,
-`GpuHostSystemAxi`, driver C execution, scheduler/IRQ or public discovery.
-It does not close P17, P39 or P40 and
-does not replace their actual CU/frame, range/image ownership or product checks.
-No Scala/RTL, actual CU, frame, image, fault/drain or product-FPS result is
-claimed by these CPU and Kbuild checks. The later #961/#962 direct typed-isoline
-evidence does not remove the protected-host, three-domain, fault/cancel or
-product limits described above.
+This delivery does not enable a driver getter, ioctl, queue, public discovery,
+transform feedback or ABI10. The private command/completion/profile codec is
+connected to `TileBinHostCommandPort`, `GpuCommandMmio`, `GpuHostAxi` and the
+opt-in `GpuHostSystemAxi` geometry-native mode, but not to driver C execution,
+scheduler/IRQ, DRM/userspace/public ioctl or Mesa/Gallium producers. GJP2 is an
+internal read-only probe; GCR1 bit23 reports private host presence only.
+It does not close P17, P39 or P40 and does not replace their actual CU/frame,
+range/image ownership or product checks. No original-shader CU/frame,
+product-FPS or physical-timing result is claimed. The later #961/#962 direct
+typed-isoline evidence and the clear-only shared-owner run do not remove the
+protected-host, three-domain, fault/cancel or product limits described above.
 
 ## Reproduction
 
@@ -107,13 +113,19 @@ product limits described above.
 export JAVA_HOME=/opt/homebrew/opt/openjdk@21
 export JAVA_OPTS='-Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8'
 export JVM_OPTS="$JAVA_OPTS"
+bash scripts/scala_autofix.sh origin/main
 sbt -batch -Dopengpu.productQualification=0 -Dopengpu.simJobs=2 \
-  'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationJointGeometryHostProtocolSpec opengpu.system.TessellationHostAxiCommandSpec opengpu.graphics.TileBinHostCommandPortSpec opengpu.graphics.tessellation.TessellationHostCommandPortSpec opengpu.system.TessellationJointJobAbiSpec'
+  'set Test / parallelExecution := false' 'Test / compile' \
+  'testOnly opengpu.graphics.TessellationJointGeometryHostProtocolSpec opengpu.system.TessellationHostAxiCommandSpec opengpu.graphics.TileBinHostCommandPortSpec opengpu.system.TessellationJointGeometryRangeInvalidationGateSpec opengpu.system.TessellationJointGeometryNativeControllerSpec opengpu.graphics.GpuCommandMmioSpec opengpu.system.ComputeResourceCapabilitiesAxiSpec' \
+  'testOnly opengpu.system.TessellationNativeHostElaborationSpec -- -z "geometry-only"'
 sbt -batch 'testOnly opengpu.system.TessellationJointThreeDomainGeometrySpec'
 sbt -batch 'testOnly opengpu.system.TessellationJointEmptyFrameSpec -- -z "GNQ7 GNQ8 GNQ9"'
 python3 -B scripts/generate_protected_tessellation_joint_geometry_abi.py --check
 python3 -B scripts/test_protected_tessellation_joint_abi.py
+python3 -B scripts/test_changed_test_suites.py
+python3 -B scripts/test_test_selection.py
+bash -n scripts/scala_autofix.sh scripts/select_tests.sh scripts/ci_shard_tests.sh scripts/test_scripts.sh
+git diff --check
 python3 -B scripts/test_protected_tessellation_joint.py --sanitize --negative-controls
 OPENGPU_TEST_SANITIZERS=1 PYTHONDONTWRITEBYTECODE=1 bash scripts/test_scripts.sh
 ```
