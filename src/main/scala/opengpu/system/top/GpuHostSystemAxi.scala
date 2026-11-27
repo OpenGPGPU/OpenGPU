@@ -3,7 +3,13 @@ package opengpu.system
 import chisel3._
 import chisel3.util._
 import opengpu.config.{GpuConfig, MobileGpuConfig}
-import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse, TranslatedLineClient, TranslatedWordClient}
+import opengpu.core.memory.{
+  CacheLineInvalidate,
+  ComputeMemoryRequest,
+  ComputeMemoryResponse,
+  TranslatedLineClient,
+  TranslatedWordClient
+}
 import opengpu.graphics.{
   GraphicsConfig,
   TextureUnit,
@@ -504,6 +510,12 @@ class GpuHostSystemAxi(
     val m_axi_rlast = Input(Bool())
     val m_axi_rvalid = Input(Bool())
     val m_axi_rready = Output(Bool())
+    val jointTessellationGeometryInvalidate =
+      if (jointTessellationGeometryNative)
+        Some(Flipped(Decoupled(new CacheLineInvalidate(gpuConfig))))
+      else None
+    val jointTessellationGeometryInvalidateDone =
+      if (jointTessellationGeometryNative) Some(Decoupled(new CacheLineInvalidate(gpuConfig))) else None
   })
 
   withClockAndReset(io.s_axi_aclk, !io.s_axi_aresetn) {
@@ -830,9 +842,8 @@ class GpuHostSystemAxi(
       t.out.foreach(_.ready := true.B)
     }
     jointGeometryTessellation.foreach { t =>
-      t.io.geometryInvalidate.valid := false.B
-      t.io.geometryInvalidate.bits := 0.U.asTypeOf(t.io.geometryInvalidate.bits)
-      t.io.geometryInvalidateDone.ready := true.B
+      io.jointTessellationGeometryInvalidate.get <> t.io.geometryInvalidate
+      t.io.geometryInvalidateDone <> io.jointTessellationGeometryInvalidateDone.get
     }
     def connectPhysicalGraphics(
         request: DecoupledIO[ComputeMemoryRequest],

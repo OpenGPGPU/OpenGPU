@@ -54,12 +54,13 @@ class TessellationNativeHostElaborationSpec extends AnyFlatSpec {
     )
     intercept[IllegalArgumentException] { profile.copy(tessellationUniforms = false) }
     val circuit = circt.stage.ChiselStage.elaborate(new NativeAlignmentHostSystemAxi(profile))
-    val modules = circuit.lazilySerialize.iterator
-      .flatMap(_.linesIterator)
+    val chirrtl = circuit.lazilySerialize.iterator.flatMap(_.linesIterator).mkString("\n")
+    val modules = chirrtl.linesIterator
       .map(_.trim)
       .filter(_.startsWith("inst "))
       .map(_.split("\\s+")(3).replaceFirst("_[0-9]+$", ""))
       .toVector
+    assert(!chirrtl.contains("jointTessellationGeometryInvalidate"))
     for (
       name <- Seq(
         "TessellationJointThreeDomainJobImage",
@@ -455,6 +456,36 @@ class TessellationNativeHostElaborationSpec extends AnyFlatSpec {
         "TransformFeedbackOwnerTransfer"
       )
     ) assert(!modules.contains(name), s"unexpected ordinary or feedback module $name")
+    val topStart = chirrtl.indexOf("module GpuHostSystemAxi :")
+    val topEnd = chirrtl.indexOf("\nmodule ", topStart + 1)
+    val topBody = if (topEnd < 0) chirrtl.substring(topStart) else chirrtl.substring(topStart, topEnd)
+    val topPort = topBody.linesIterator
+      .find(line => line.contains("output io :") && line.contains("jointTessellationGeometryInvalidate"))
+      .get
+    assert(topPort.contains("flip jointTessellationGeometryInvalidate :"))
+    assert(topPort.contains("jointTessellationGeometryInvalidateDone :"))
+    assert(
+      topBody.contains(
+        "connect jointGeometryTessellation.io.geometryInvalidate, io.jointTessellationGeometryInvalidate"
+      )
+    )
+    assert(
+      topBody.contains(
+        "connect io.jointTessellationGeometryInvalidateDone.bits, jointGeometryTessellation.io.geometryInvalidateDone.bits"
+      )
+    )
+    assert(
+      topBody.contains(
+        "connect io.jointTessellationGeometryInvalidateDone.valid, jointGeometryTessellation.io.geometryInvalidateDone.valid"
+      )
+    )
+    assert(
+      topBody.contains(
+        "connect jointGeometryTessellation.io.geometryInvalidateDone.ready, io.jointTessellationGeometryInvalidateDone.ready"
+      )
+    )
+    assert(!topBody.contains("connect jointGeometryTessellation.io.geometryInvalidate.valid, UInt<1>(0h0)"))
+    assert(!topBody.contains("connect io.jointTessellationGeometryInvalidateDone.ready, UInt<1>(0h1)"))
     val geometryTransactions = TessellationJointThreeDomainGeometryJobImage.transactions(1, 2, 8, true)
     val geometryPins = TessellationJointThreeDomainGeometryJobImage.payloadPins(1)
     val geometryStart = chirrtl.indexOf("module TessellationJointThreeDomainGeometryJobImage :")
