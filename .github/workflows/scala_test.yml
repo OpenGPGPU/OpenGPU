@@ -19,9 +19,6 @@ jobs:
     name: Fix Scala linting issues
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions:
-      contents: write
-      pull-requests: read
     env:
       JVM_OPTS: -Xms256M -Xmx4G -Xss4M -Dfile.encoding=UTF-8
     outputs:
@@ -78,15 +75,17 @@ jobs:
         path: ${{ runner.temp }}/scala-autofix.patch
         if-no-files-found: error
         retention-days: 3
-    - name: Commit and push lint fixes
+    - name: Verify the PR branch before pushing
+      id: push-ready
       if: >-
         steps.git-check.outputs.changed == 'true' &&
         steps.select.outputs.can_push == 'true' &&
+        vars.OPENGPU_LINT_APP_CLIENT_ID != '' &&
         github.event.pull_request.head.repo.full_name == github.repository &&
         github.head_ref != 'main' &&
         github.head_ref != 'master'
       env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GH_TOKEN: ${{ github.token }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
         HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         HEAD_REF: ${{ github.head_ref }}
@@ -97,13 +96,33 @@ jobs:
           echo 'The PR changed while the fixes were being prepared.'
           exit 0
         fi
+        echo 'current=true' >> "$GITHUB_OUTPUT"
+    - name: Create lint GitHub App token
+      if: steps.push-ready.outputs.current == 'true'
+      id: lint-app
+      uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+      with:
+        client-id: ${{ vars.OPENGPU_LINT_APP_CLIENT_ID }}
+        private-key: ${{ secrets.OPENGPU_LINT_APP_PRIVATE_KEY }}
+        owner: ${{ github.repository_owner }}
+        repositories: ${{ github.event.repository.name }}
+        permission-contents: write
+    - name: Commit and push lint fixes
+      if: steps.push-ready.outputs.current == 'true'
+      env:
+        GH_TOKEN: ${{ steps.lint-app.outputs.token }}
+        APP_SLUG: ${{ steps.lint-app.outputs.app-slug }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        HEAD_REF: ${{ github.head_ref }}
+      run: |
+        bot_id=$(gh api "users/${APP_SLUG}%5Bbot%5D" --jq .id)
         git switch --detach "$HEAD_SHA"
-        git -c user.name='github-actions[bot]' \
-          -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+        git -c user.name="${APP_SLUG}[bot]" \
+          -c user.email="${bot_id}+${APP_SLUG}[bot]@users.noreply.github.com" \
           commit -m 'Apply Scalafix and Scalafmt' -- '*.scala' '*.sbt'
         gh auth setup-git
         git push --force-with-lease="refs/heads/$HEAD_REF:$HEAD_SHA" origin "HEAD:refs/heads/$HEAD_REF"
-        printf 'Pushed Scala fixes to the PR branch. Approve the follow-up CI run from the PR page.\n' >> "$GITHUB_STEP_SUMMARY"
+        printf 'Pushed Scala fixes with the GitHub App. Scala CI will run for the new PR head.\n' >> "$GITHUB_STEP_SUMMARY"
     - name: Verify bulk Scala formatting
       if: steps.git-check.outputs.changed == 'false' && steps.select.outputs.has_files == 'true'
       id: replay
