@@ -14,6 +14,7 @@ class TessellationGeometryBinTaskResult[T <: Data, R <: Data](taskType: T, repor
   val task = taskType.cloneType
   val sourceValid = Bool(); val source = reportType.cloneType
   val publicationValid = Bool(); val actualGsPublished = UInt(94.W); val nextGsSequence = UInt(64.W)
+  val nextGsSequenceExclusive = UInt(65.W)
   val status = UInt(3.W); val received = UInt(97.W); val dropped = UInt(97.W); val admitted = UInt(33.W)
   val firstSequence = UInt(33.W); val nextSequence = UInt(33.W)
 }
@@ -54,6 +55,7 @@ class TessellationGeometryBinPassCore[T <: Data, R <: Data](
     val sourceCompletion = Flipped(Decoupled(reportType.cloneType))
     val sourceStatus = Input(UInt(3.W)); val sourceReportMatches = Input(Bool())
     val actualGsPublished = Input(UInt(94.W)); val nextGsSequence = Input(UInt(64.W))
+    val nextGsSequenceExclusive = Input(UInt(65.W))
     val sourceBusy = Input(Bool()); val sourceDrained = Input(Bool()); val sourceCancel = Output(Bool())
     val taskCompletion = Decoupled(new TessellationGeometryBinTaskResult(taskType, reportType))
     val end = Flipped(Decoupled(Bool())); val out = Vec(engines, Decoupled(new WindowPrimitiveReplay(p)))
@@ -92,7 +94,7 @@ class TessellationGeometryBinPassCore[T <: Data, R <: Data](
   private val token = Reg(UInt(32.W))
   private val sourceResult = Reg(reportType.cloneType); private val sourceValid = RegInit(false.B)
   private val publicationValid = RegInit(false.B); private val published = Reg(UInt(94.W));
-  private val nextGs = Reg(UInt(64.W))
+  private val nextGs = Reg(UInt(64.W)); private val nextGsExclusive = Reg(UInt(65.W))
   private val received = RegInit(0.U(97.W)); private val dropped = RegInit(0.U(97.W));
   private val admitted = RegInit(0.U(33.W))
   private val sequence = RegInit(0.U(33.W)); private val firstSequence = Reg(UInt(33.W));
@@ -120,7 +122,8 @@ class TessellationGeometryBinPassCore[T <: Data, R <: Data](
   when(io.task.fire) {
     task := io.task.bits; raster := io.raster; state := io.state; token := io.token; tasks := tasks + 1.U
     owned := true.B; sourceValid := false.B; publicationValid := false.B; sourceResult := 0.U.asTypeOf(sourceResult)
-    published := 0.U; nextGs := 0.U; received := 0.U; dropped := 0.U; admitted := 0.U; firstSequence := sequence
+    published := 0.U; nextGs := 0.U; nextGsExclusive := 0.U; received := 0.U; dropped := 0.U; admitted := 0.U;
+    firstSequence := sequence
     taskStatus := Mux(!admission, 1.U, Mux(stop, Mux(status =/= 0.U, status, 4.U), 0.U))
     sourceOffer := admission && !stop; sourceDone := !admission || stop
   }
@@ -143,17 +146,21 @@ class TessellationGeometryBinPassCore[T <: Data, R <: Data](
       dropped := dropped + 1.U
     }
   }
+  private val publicationMatches = io.sourceReportMatches && io.nextGsSequenceExclusive <= (BigInt(1) << 64).U &&
+    io.nextGsSequenceExclusive(63, 0) === io.nextGsSequence
   io.sourceCompletion.ready := owned && sourceStarted && !sourceDone
   when(io.sourceCompletion.fire) {
     sourceResult := io.sourceCompletion.bits; sourceValid := true.B
-    publicationValid := io.sourceReportMatches; published := Mux(io.sourceReportMatches, io.actualGsPublished, 0.U)
-    nextGs := Mux(io.sourceReportMatches, io.nextGsSequence, 0.U); sourceDone := true.B; sourceStarted := false.B
+    publicationValid := publicationMatches; published := Mux(publicationMatches, io.actualGsPublished, 0.U)
+    nextGs := Mux(publicationMatches, io.nextGsSequence, 0.U)
+    nextGsExclusive := Mux(publicationMatches, io.nextGsSequenceExclusive, 0.U)
+    sourceDone := true.B; sourceStarted := false.B
   }
   bins.io.completion.ready := active && binStarted && !binDone
   when(bins.io.completion.fire) { binResult := bins.io.completion.bits; binDone := true.B; binStarted := false.B }
   // Compute one ordered cause; a later real noncancel fault can replace cancel.
   private val localCode = Mux(io.sourceOut.fire && !stop, outputFault, 0.U)
-  private val childCode = Mux(io.sourceCompletion.fire, Mux(io.sourceReportMatches, io.sourceStatus, 3.U), 0.U)
+  private val childCode = Mux(io.sourceCompletion.fire, Mux(publicationMatches, io.sourceStatus, 3.U), 0.U)
   private val binCode = Mux(bins.io.completion.fire, bins.io.completion.bits.status, 0.U)
   private val admissionCode = Mux(io.task.fire && !admission, 1.U, 0.U)
   private val nextStatus =
@@ -165,7 +172,7 @@ class TessellationGeometryBinPassCore[T <: Data, R <: Data](
   when(owned && sourceDone && sourceQuiet && !report) {
     taskResult.task := task; taskResult.sourceValid := sourceValid; taskResult.source := sourceResult
     taskResult.publicationValid := publicationValid; taskResult.actualGsPublished := published;
-    taskResult.nextGsSequence := nextGs
+    taskResult.nextGsSequence := nextGs; taskResult.nextGsSequenceExclusive := nextGsExclusive
     taskResult.status := nextTaskStatus; taskResult.received := received; taskResult.dropped := dropped;
     taskResult.admitted := admitted
     taskResult.firstSequence := firstSequence; taskResult.nextSequence := sequence; owned := false.B; report := true.B
@@ -279,7 +286,8 @@ class TessellationSystemIsolineGeometryBinPass(
       useSramBlackBoxes,
       tessellationUniforms,
       evaluationPatchAvailable,
-      tessellationInfoAvailable
+      tessellationInfoAvailable,
+      exclusiveGsSequence = true
     )
   )
   private val owner = Module(
@@ -323,6 +331,7 @@ class TessellationSystemIsolineGeometryBinPass(
   owner.io.sourceReportMatches := r.patch.identity.asUInt === original.geometryLink.identity.asUInt &&
     r.patch.tesTaskId === original.geometryLink.expectedTesTaskId && r.patch.tesLanguagePatchId === original.geometryLink.tesLanguagePatchId
   owner.io.actualGsPublished := r.patch.mapped; owner.io.nextGsSequence := r.patch.nextSequence
+  owner.io.nextGsSequenceExclusive := r.patch.nextGsSequenceExclusive
   owner.io.sourceBusy := source.io.busy; owner.io.sourceDrained := source.io.drained;
   source.io.cancel := owner.io.sourceCancel
   owner.io.cancel := io.cancel
@@ -430,7 +439,8 @@ class TessellationSystemTriangleGeometryBinPass(
       useSramBlackBoxes,
       tessellationUniforms,
       evaluationPatchAvailable,
-      tessellationInfoAvailable
+      tessellationInfoAvailable,
+      exclusiveGsSequence = true
     )
   )
   private val owner = Module(
@@ -474,6 +484,7 @@ class TessellationSystemTriangleGeometryBinPass(
   owner.io.sourceReportMatches := r.patch.identity.asUInt === original.geometryLink.identity.asUInt &&
     r.patch.tesTaskId === original.geometryLink.expectedTesTaskId && r.patch.tesLanguagePatchId === original.geometryLink.tesLanguagePatchId
   owner.io.actualGsPublished := r.patch.mapped; owner.io.nextGsSequence := r.patch.nextSequence
+  owner.io.nextGsSequenceExclusive := r.patch.nextGsSequenceExclusive
   owner.io.sourceBusy := source.io.busy; owner.io.sourceDrained := source.io.drained;
   source.io.cancel := owner.io.sourceCancel
   owner.io.cancel := io.cancel
@@ -581,7 +592,8 @@ class TessellationSystemQuadGeometryBinPass(
       useSramBlackBoxes,
       tessellationUniforms,
       evaluationPatchAvailable,
-      tessellationInfoAvailable
+      tessellationInfoAvailable,
+      exclusiveGsSequence = true
     )
   )
   private val owner = Module(
@@ -625,6 +637,7 @@ class TessellationSystemQuadGeometryBinPass(
   owner.io.sourceReportMatches := r.patch.identity.asUInt === original.geometryLink.identity.asUInt &&
     r.patch.tesTaskId === original.geometryLink.expectedTesTaskId && r.patch.tesLanguagePatchId === original.geometryLink.tesLanguagePatchId
   owner.io.actualGsPublished := r.patch.mapped; owner.io.nextGsSequence := r.patch.nextSequence
+  owner.io.nextGsSequenceExclusive := r.patch.nextGsSequenceExclusive
   owner.io.sourceBusy := source.io.busy; owner.io.sourceDrained := source.io.drained;
   source.io.cancel := owner.io.sourceCancel
   owner.io.cancel := io.cancel

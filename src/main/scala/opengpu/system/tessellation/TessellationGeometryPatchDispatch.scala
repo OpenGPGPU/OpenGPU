@@ -40,7 +40,7 @@ class TessellationGeometryPatchDispatchResult(p: VertexShaderStageConfig, w: Int
   // A patch can publish up to 2^16 TES primitives. Preserve the complete GS
   // per-input inventories (78/81/94 bits) when accumulating across the patch.
   val mapped = UInt(94.W); val prepared = UInt(97.W); val arithmeticOperations = UInt(110.W)
-  val nextSequence = UInt(64.W)
+  val nextSequence = UInt(64.W); val nextGsSequenceExclusive = UInt(65.W)
   val lastGeometryValid = Bool(); val lastGeometry = new TessellationGeometryViewportCompletion(w)
   val faultGeometryValid = Bool(); val faultGeometry = new TessellationGeometryViewportCompletion(w)
 }
@@ -154,7 +154,7 @@ class TessellationGeometryPatchDispatch(
     if (exclusiveGsSequence) io.geometryNextSequenceExclusive.get else g.source.geometry.nextSequence.pad(65)
   private val previous = if (exclusiveGsSequence) exclusiveCursor.get else sequence.pad(65)
   private val nextSequenceLegal = !actualGeometry || (reportedNext >= previous && reportedNext <= (BigInt(1) << 64).U &&
-    reportedNext(63, 0) === g.source.geometry.nextSequence)
+    reportedNext(63, 0) === g.source.geometry.nextSequence && reportedNext === g.source.nextGsSequenceExclusive)
   private val successfulSequence = g.status =/= 0.U || (actualGeometry &&
     reportedNext - previous === g.source.geometry.producedPrimitives)
   private val geometryOwned = geometryIdentity && geometryOrigin && nextSequenceLegal && successfulSequence
@@ -181,7 +181,10 @@ class TessellationGeometryPatchDispatch(
     faultGeometry := 0.U.asTypeOf(faultGeometry)
     received := 0.U; submitted := 0.U; dropped := 0.U; mapped := 0.U; prepared := 0.U; arithmetic := 0.U
     sequence := io.task.bits.link.firstOutputSequence
-    if (exclusiveGsSequence) exclusiveCursor.get := io.task.bits.link.firstOutputSequence
+    if (exclusiveGsSequence) {
+      exclusiveCursor.get := io.task.bits.link.firstOutputSequence
+      exclusiveResult.get := io.task.bits.link.firstOutputSequence
+    }
     val b = io.task.bits.link
     val legal = io.tupleLegal && b.version === 1.U && b.domain === domain.U && b.expectedTesSequence === 0.U &&
       b.identity.asUInt === b.program.identity.asUInt && Fp32ViewportState.legal(io.task.bits.viewport)
@@ -227,6 +230,7 @@ class TessellationGeometryPatchDispatch(
     result.received := received; result.submitted := submitted; result.dropped := dropped
     result.mapped := mapped; result.prepared := prepared; result.arithmeticOperations := arithmetic;
     result.nextSequence := sequence
+    result.nextGsSequenceExclusive := (if (exclusiveGsSequence) exclusiveCursor.get else sequence.pad(65))
     result.lastGeometryValid := lastGeometryValid; result.lastGeometry := lastGeometry
     result.faultGeometryValid := faultGeometryValid; result.faultGeometry := faultGeometry; done := true.B
   }

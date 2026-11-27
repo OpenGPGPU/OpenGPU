@@ -204,7 +204,7 @@ class NativeGeometryPrimitivePipeline(
     mapperBusy := true.B
     if (exclusiveGsSequence) {
       val next = exclusive.get +& 1.U
-      exclusive.get := next(64, 0); sequence := next(63, 0)
+      exclusive.get := next; sequence := next(63, 0)
     } else { when(sequence.andR) { outputFault := true.B }.otherwise { sequence := sequence + 1.U } }
   }
   when(io.primitive.fire) { mapperBusy := false.B; result.producedPrimitives := result.producedPrimitives + 1.U }
