@@ -969,7 +969,7 @@ class TessellationSystemTriangleImagePipeline(
         sourceOffered := false.B; sourceStarted := false.B; sourceDone := false.B;
         sourceResult := 0.U.asTypeOf(sourceResult)
         gsPublished := 0.U; gsReceived := 0.U; gsDropped := 0.U; gsAdmitted := 0.U; gsTasks := 0.U; gsNext := 0.U;
-        gsBinNext := 0.U
+        gsNextExclusive := 0.U; gsBinNext := 0.U
         tasks := 0.U; localTaskValid := false.B; scanX := 0.U; scanY := 0.U
         for (e <- 0 until engines) {
           owned(e) := false.B; imageOffered(e) := false.B; imageStarted(e) := false.B; imageDone(e) := false.B;
