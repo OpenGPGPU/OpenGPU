@@ -50,7 +50,13 @@ class TessellationGeometryPatchDispatchResult(p: VertexShaderStageConfig, w: Int
   * generated here. geometryTask is an irrevocable captured raw-TES offer. Both children receive cancel only after their
   * own task.fire; each actual held report and local transport must retire before patch publication.
   */
-class TessellationGeometryPatchDispatch(p: VertexShaderStageConfig, w: Int, domain: Int) extends Module {
+class TessellationGeometryPatchDispatch(
+    p: VertexShaderStageConfig,
+    w: Int,
+    domain: Int,
+    exclusiveGsSequence: Boolean = false
+) extends Module {
+  def this(p: VertexShaderStageConfig, w: Int, domain: Int) = this(p, w, domain, false)
   require(w > 0 && domain >= 0 && domain <= 2)
   val io = IO(new Bundle {
     val task = Flipped(Decoupled(new TessellationGeometryPatchDispatchTask(p, w)))
@@ -65,6 +71,8 @@ class TessellationGeometryPatchDispatch(p: VertexShaderStageConfig, w: Int, doma
     val tupleLegal = Input(Bool())
     val geometryTask = Decoupled(new TessellationGeometryViewportTask(p, w))
     val geometryCompletion = Flipped(Decoupled(new TessellationGeometryViewportCompletion(w)))
+    val geometryNextSequenceExclusive = if (exclusiveGsSequence) Some(Input(UInt(65.W))) else None
+    val nextSequenceExclusive = if (exclusiveGsSequence) Some(Output(UInt(65.W))) else None
     val geometryBusy = Input(Bool()); val geometryDrained = Input(Bool())
     val sourceCancel = Output(Bool()); val geometryCancel = Output(Bool())
     val completion = Decoupled(new TessellationGeometryPatchDispatchResult(p, w))
@@ -86,6 +94,9 @@ class TessellationGeometryPatchDispatch(p: VertexShaderStageConfig, w: Int, doma
   private val dropped = RegInit(0.U(17.W))
   private val mapped = RegInit(0.U(94.W)); private val prepared = RegInit(0.U(97.W))
   private val arithmetic = RegInit(0.U(110.W)); private val sequence = Reg(UInt(64.W))
+  private val exclusiveCursor = if (exclusiveGsSequence) Some(Reg(UInt(65.W))) else None
+  private val exclusiveResult = if (exclusiveGsSequence) Some(Reg(UInt(65.W))) else None
+  if (exclusiveGsSequence) io.nextSequenceExclusive.get := exclusiveResult.get
   private val status = RegInit(0.U(3.W)); private val faultStage = RegInit(0.U(3.W))
   private val childrenDrained = !io.sourceBusy && io.sourceTransportDrained && !io.geometryBusy && io.geometryDrained
   private val visibleDrained = !io.evaluated.valid && !io.sourceCompletion.valid && !io.geometryCompletion.valid
@@ -106,6 +117,7 @@ class TessellationGeometryPatchDispatch(p: VertexShaderStageConfig, w: Int, doma
   private val evaluatedBad = io.evaluated.valid && (sourceDone ||
     e.taskId =/= saved.link.expectedTesTaskId || received > 65535.U || e.sequence =/= received ||
     !sequenceFits || gsTask(32) || gsInput(32) || inputSequence(64) ||
+    (if (exclusiveGsSequence) exclusiveCursor.get(64) else false.B) ||
     (if (domain == 0) e.vertices(2).asUInt =/= 0.U else false.B))
   private val rawSourceFault = io.sourceCompletion.valid && io.sourceCompletion.bits.status =/= 0.U
   private val rawGeometryFault = io.geometryCompletion.valid && io.geometryCompletion.bits.status =/= 0.U
@@ -138,9 +150,13 @@ class TessellationGeometryPatchDispatch(p: VertexShaderStageConfig, w: Int, doma
   private val geometryOrigin =
     Mux(g.sourceValid, sourceOrigin, g.status =/= 0.U && g.faultStage === 1.U && g.source.asUInt === 0.U)
   private val actualGeometry = g.sourceValid && g.source.geometryValid
-  private val nextSequenceLegal = !actualGeometry || g.source.geometry.nextSequence >= sequence
+  private val reportedNext =
+    if (exclusiveGsSequence) io.geometryNextSequenceExclusive.get else g.source.geometry.nextSequence.pad(65)
+  private val previous = if (exclusiveGsSequence) exclusiveCursor.get else sequence.pad(65)
+  private val nextSequenceLegal = !actualGeometry || (reportedNext >= previous && reportedNext <= (BigInt(1) << 64).U &&
+    reportedNext(63, 0) === g.source.geometry.nextSequence)
   private val successfulSequence = g.status =/= 0.U || (actualGeometry &&
-    g.source.geometry.nextSequence - sequence === g.source.geometry.producedPrimitives)
+    reportedNext - previous === g.source.geometry.producedPrimitives)
   private val geometryOwned = geometryIdentity && geometryOrigin && nextSequenceLegal && successfulSequence
   private val geometryCode = Mux(geometryOwned, g.status, 3.U)
   private val sourceCount = received +& io.evaluated.fire.asUInt
@@ -165,6 +181,7 @@ class TessellationGeometryPatchDispatch(p: VertexShaderStageConfig, w: Int, doma
     faultGeometry := 0.U.asTypeOf(faultGeometry)
     received := 0.U; submitted := 0.U; dropped := 0.U; mapped := 0.U; prepared := 0.U; arithmetic := 0.U
     sequence := io.task.bits.link.firstOutputSequence
+    if (exclusiveGsSequence) exclusiveCursor.get := io.task.bits.link.firstOutputSequence
     val b = io.task.bits.link
     val legal = io.tupleLegal && b.version === 1.U && b.domain === domain.U && b.expectedTesSequence === 0.U &&
       b.identity.asUInt === b.program.identity.asUInt && Fp32ViewportState.legal(io.task.bits.viewport)
@@ -190,7 +207,10 @@ class TessellationGeometryPatchDispatch(p: VertexShaderStageConfig, w: Int, doma
   when(io.geometryCompletion.fire) {
     geometryPending := false.B; geometryStarted := false.B; lastGeometryValid := true.B; lastGeometry := g
     when(geometryOwned) {
-      when(actualGeometry) { sequence := g.source.geometry.nextSequence }
+      when(actualGeometry) {
+        sequence := g.source.geometry.nextSequence
+        if (exclusiveGsSequence) exclusiveCursor.get := reportedNext
+      }
       mapped := mapped + g.counts.mappedInputs; prepared := prepared + g.counts.preparedParts
       arithmetic := arithmetic + g.counts.arithmeticOperations
     }
@@ -199,6 +219,7 @@ class TessellationGeometryPatchDispatch(p: VertexShaderStageConfig, w: Int, doma
     }
   }
   when(active && !done && sourceDone && !sourceOffered && !geometryPending && childrenDrained && visibleDrained) {
+    if (exclusiveGsSequence) exclusiveResult.get := exclusiveCursor.get
     result.identity := saved.link.identity; result.tesTaskId := saved.link.expectedTesTaskId
     result.tesLanguagePatchId := saved.link.tesLanguagePatchId
     result.status := nextStatus; result.faultStage := nextStage; result.sourceValid := sourceValid;
