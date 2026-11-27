@@ -30,6 +30,11 @@ ABI10 rejection, feedback-reserved rejection, physical alias rejection,
 post-prepare corruption and heap-allocation failure. It does not execute shaders
 or prove GPU behavior.
 
+Subsequent GPU PRs #961 and #962 added the no-TF ABI5/7 geometry RTL/readers and a
+direct typed-isoline `full5`/`pointcoord` two-CU retained Verilator replay. Those
+results are separate from this BUILD/prepare contract: they do not connect the
+GNQ7/8/9 protected host, driver submission or public discovery route.
+
 ## Validation
 
 - The generated ABI/schema suite passes all 9 tests, including exact header
@@ -54,7 +59,9 @@ This delivery does not enable discovery, a getter, ioctl, queue, host submission
 transform feedback or an execution route. It does not close P17, P39 or P40 and
 does not replace their actual CU/frame, range/image ownership or product checks.
 No Scala/RTL, actual CU, frame, image, fault/drain or product-FPS result is
-claimed by these CPU and Kbuild checks.
+claimed by these CPU and Kbuild checks. The later #961/#962 direct typed-isoline
+evidence does not remove the protected-host, three-domain, fault/cancel or
+product limits described above.
 
 ## Reproduction
 
