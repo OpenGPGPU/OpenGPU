@@ -27,8 +27,9 @@ class ChangedTestSuitesTest(unittest.TestCase):
                      "graphics/TessellationGeometryRawBridge",
                      "system/native/NativeGeometryPrimitivePipeline"):
             with self.subTest(path=path):
-                selected = changed_suites(REPO_ROOT, [f"src/main/scala/opengpu/{path}.scala"])
-                self.assertIn("opengpu.system.TessellationGeometryPipelineControlSpec", selected)
+                selected = set(changed_suites(REPO_ROOT, [f"src/main/scala/opengpu/{path}.scala"]))
+                self.assertTrue({"opengpu.system.TessellationGeometryPipelineControlSpec",
+                                 "opengpu.system.TessellationGeometryPatchDispatchSpec"} <= selected)
 
     def test_geometry_range_sources_select_controller_cursor_and_adapter_checks(self):
         paths = [
@@ -60,7 +61,8 @@ class ChangedTestSuitesTest(unittest.TestCase):
             with self.subTest(path=path):
                 selected = set(changed_suites(REPO_ROOT, [f"src/main/scala/opengpu/{path}.scala"]))
                 self.assertTrue({"opengpu.graphics.TessellationGeometryClientTransportSpec",
-                                 "opengpu.graphics.TessellationGeometryVertexTupleSpec"} <= selected)
+                                 "opengpu.graphics.TessellationGeometryVertexTupleSpec",
+                                 "opengpu.system.TessellationGeometryPatchDispatchSpec"} <= selected)
 
     def test_record_fault_priority_runs_for_each_actual_production_owner(self):
         for name in ("WindowPrimitiveRecords", "WindowPrimitiveBinProducer", "WindowPrimitiveBinReplayPass"):

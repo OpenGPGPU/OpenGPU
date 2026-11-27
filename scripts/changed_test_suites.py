@@ -828,6 +828,7 @@ def changed_suites(root, changed, *, test_index=None):
     if changed & geometry_control_sources:
         affected.update({
             "src/test/scala/opengpu/system/TessellationGeometryPipelineControlSpec.scala",
+            "src/test/scala/opengpu/system/TessellationGeometryPatchDispatchSpec.scala",
             "src/test/scala/opengpu/system/NativeGeometryPrimitivePipelineSpec.scala",
         })
     geometry_range_sources = {
@@ -864,6 +865,7 @@ def changed_suites(root, changed, *, test_index=None):
         affected.update({
             "src/test/scala/opengpu/graphics/TessellationGeometryClientTransportSpec.scala",
             "src/test/scala/opengpu/graphics/TessellationGeometryVertexTupleSpec.scala",
+            "src/test/scala/opengpu/system/TessellationGeometryPatchDispatchSpec.scala",
         })
     if changed & {"src/main/scala/opengpu/graphics/raster/WindowPrimitiveRecords.scala",
                   "src/main/scala/opengpu/graphics/raster/WindowPrimitiveBinProducer.scala",
