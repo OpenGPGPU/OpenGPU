@@ -97,7 +97,7 @@ use `sbt 'scalafixAll --syntactic' scalafmtAll scalafmtSbt`.
 
 Scala CI publishes a `scala-autofix` patch when either tool changes a file. For
 an up-to-date PR branch in this repository, CI also commits the fixes to that
-branch. GitHub may ask a maintainer to approve CI for the bot commit. For a
+branch. GitHub requires approval to run CI for the bot commit. For a
 fork or a branch that needs updating, apply the patch with
 `git apply scala-autofix.patch` after updating your branch, or run the command
 above and push the fixes.
