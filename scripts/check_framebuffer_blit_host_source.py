@@ -69,7 +69,8 @@ def main():
     if (owner / 'scripts/owner_factory.hpp').is_file():
         owner_dependencies.append('scripts/owner_factory.hpp')
     capture_source = (owner / "scripts/native_owner_capture.hpp").read_text()
-    for name in ("opengpu_native_binned_host_abi.h", "opengpu_protected_tessellation_joint_abi.h"):
+    for name in ("opengpu_native_binned_host_abi.h", "opengpu_protected_tessellation_joint_abi.h",
+                 "opengpu_protected_tessellation_joint_geometry_abi.h"):
         if f'#include "../driver/{name}"' in capture_source:
             owner_dependencies.append('driver/' + name)
     if args.sample_owner:
