@@ -376,7 +376,7 @@ object TessellationJointGeometryHostProtocol {
     require((w(1) & ~BigInt(255)) == 0, "nonzero GNZ3 flags high bits")
     require((w(20) & ~BigInt("3fffffff", 16)) == 0, "nonzero actualGsPublished high bits")
     for (index <- Seq(26, 32, 36, 41, 45)) {
-      require((w(index) & ~BigInt("7fffffff", 16)) == 0, s"nonzero GNZ3 word$index high bits")
+      require((w(index) & ~BigInt(1)) == 0, s"nonzero GNZ3 word$index high bits")
     }
     def wide(word: Int, count: Int): BigInt =
       w.slice(word, word + count)
