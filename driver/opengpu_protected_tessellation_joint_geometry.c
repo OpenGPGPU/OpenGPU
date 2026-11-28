@@ -142,8 +142,8 @@ bool opengpu_protected_tessellation_joint_geometry_profile_valid(
         p->payload_owners==5 && p->payload_ports==12 && p->image_producer_pins==34 && p->single_domain_total_pins==37 && p->domains==7 && p->compute_units==2 &&
         p->lanes==16 && p->warps==8 && p->engines==4 &&
         p->owned_vertex_source && p->patch_zero_initialized && p->owned_patch_reads &&
-        p->owned_tessellation_info && p->geometry_inputs && p->geometry_route && p->joint_directory_route &&
-        p->whole_owner_retirement;
+        p->owned_tessellation_info && p->geometry_inputs && p->geometry_route && p->geometry_uniforms &&
+        p->joint_directory_route && p->whole_owner_retirement && p->scalar_fpu && p->advanced_blend;
 }
 static bool jg_view(u32 base,u64 limit,u64 bytes)
 {return !(base&63u) && limit==(u64)base+bytes && limit<=(1ULL<<32);}
@@ -595,7 +595,7 @@ static int jg_geometry_validate(const struct jg_capture *c,u32 index,u32 domain)
     const void *f=(const u8 *)s->states+(size_t)p->state_handle*512;
     u32 n[256];for(u32 i=0;i<256;i++)n[i]=jg_get(g->gng,i);
     u32 exports=jg_get(d,jg_layouts[domain].tes_outputs);
-    if(g->state_handle!=p->state_handle || g->command_id>=32 || g->raster_discard>1 ||
+    if(g->state_handle!=p->state_handle || g->command_id>=32 || g->raster_discard ||
         !opengpu_native_geometry_program_encoding_valid(g->gng) || n[3]!=s->context || n[4]!=s->pass || n[5]!=s->generation ||
         n[6]!=(jg_get(d,220+(domain!=0))?1u:domain?3u:2u) || !n[7] || n[7]>32 || n[8]>2 || !n[9] || n[9]>256 || n[10]>64 || n[11]>64 ||
         n[11]+(n[12]&1u)+((n[12]>>1)&1u)>64 || n[9]*(n[11]+(n[12]&1u)+((n[12]>>1)&1u))>1024 ||
@@ -782,4 +782,41 @@ int opengpu_protected_tessellation_joint_geometry_prepare(struct opengpu_private
     int ret=opengpu_private_snapshot_prepare(owner);
     if(!ret)ret=opengpu_private_snapshot_check_prepared_joint_geometry(owner,segment);
     return ret;
+}
+
+int opengpu_protected_tessellation_joint_geometry_command_locked(
+    const struct opengpu_private_snapshot *owner, struct opengpu_device *gpu,
+    const struct opengpu_render_context *context, u32 segment,
+    struct opengpu_protected_tessellation_joint_geometry_host_command *command)
+{
+    struct opengpu_private_snapshot_joint_request request;
+    int ret;
+
+    if (!command)
+        return -EINVAL;
+    ret = opengpu_private_snapshot_joint_geometry_request_locked(owner, gpu, context, segment, &request);
+    if (ret)
+        return ret;
+    if ((request.job_base & (OPENGPU_JOINT_GEOMETRY_HOST_ROOT_ALLOCATION_BYTES - 1u)) ||
+        request.job_allocation_base != request.job_base ||
+        request.job_limit != (u64)request.job_base + OPENGPU_JOINT_GEOMETRY_HOST_ROOT_BYTES ||
+        request.job_allocation_limit != (u64)request.job_base + OPENGPU_JOINT_GEOMETRY_HOST_ROOT_ALLOCATION_BYTES ||
+        request.owner_limit <= request.owner_base ||
+        request.owner_limit > OPENGPU_JOINT_GEOMETRY_HOST_OWNER_LIMIT_MAXIMUM ||
+        request.domain >= OPENGPU_JOINT_GEOMETRY_HOST_DOMAIN_COUNT)
+        return -EINVAL;
+    *command = (struct opengpu_protected_tessellation_joint_geometry_host_command) {
+        .opcode = OPENGPU_JOINT_GEOMETRY_HOST_OPCODE,
+        .source = request.job_base,
+        .destination = request.owner_base,
+        .bytes = OPENGPU_JOINT_GEOMETRY_HOST_ROOT_BYTES,
+        .pattern = OPENGPU_JOINT_GEOMETRY_HOST_COMMAND_TAG |
+            ((u32)(request.owner_limit >> 32) << OPENGPU_JOINT_GEOMETRY_HOST_PATTERN_OWNER_LIMIT_HIGH_SHIFT) |
+            (request.domain << OPENGPU_JOINT_GEOMETRY_HOST_PATTERN_DOMAIN_SHIFT),
+        .width = (u32)request.owner_limit,
+        .height = request.context,
+        .source_stride = request.pass,
+        .destination_stride = request.generation,
+    };
+    return 0;
 }

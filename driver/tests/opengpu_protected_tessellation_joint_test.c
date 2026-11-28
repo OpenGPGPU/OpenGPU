@@ -316,6 +316,14 @@ static void joint_request_oracle(struct opengpu_private_snapshot *o,struct openg
            request.job_allocation_base==root->va && request.job_allocation_limit==root->va+root->backing.size);
     assert(request.owner_base==first && request.owner_limit==last && request.owner_limit>=request.job_allocation_limit);
     assert(request.domain==domain && request.context==ctx->id && request.pass==8 && request.generation==9);
+    assert(!o->joint_geometry_root && !o->joint_geometry_request.job_base &&
+        !o->joint_geometry_request.job_limit && !o->joint_geometry_request.job_allocation_limit);
+    struct opengpu_private_snapshot_joint_request geometry_request;
+    memset(&geometry_request,0xa5,sizeof(geometry_request));
+    mutex_lock(&gpu->hw.submit_lock);
+    int geometry_ret=opengpu_private_snapshot_joint_geometry_request_locked(o,gpu,ctx,segment,&geometry_request);
+    mutex_unlock(&gpu->hw.submit_lock);
+    assert(geometry_ret==-EINVAL && geometry_request.job_base==0xa5a5a5a5u);
     struct opengpu_protected_tessellation_joint_host_command command;
     mutex_lock(&gpu->hw.submit_lock);
     int ret=opengpu_protected_tessellation_joint_command_locked(o,gpu,ctx,segment,&command);
