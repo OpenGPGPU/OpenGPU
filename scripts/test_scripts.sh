@@ -49,6 +49,7 @@ python3 -B scripts/test_protected_tessellation_joint_abi.py
 python3 -B scripts/test_protected_tessellation_joint_geometry_host.py
 python3 -B scripts/test_five_stage_runtime.py --self-test
 python3 -B scripts/test_native_joint_live_oracle.py
+python3 -B scripts/test_native_joint_geometry_live_oracle.py
 python3 -B scripts/test_tessellation_vertex_source.py
 python3 -B scripts/test_native_joint_domains.py
 python3 scripts/test_tessellation_canonical.py

@@ -829,6 +829,17 @@ def changed_suites(root, changed, *, test_index=None):
         "scripts/generate_protected_tessellation_joint_geometry_abi.py",
         "scripts/test_protected_tessellation_joint_abi.py",
         "scripts/test_protected_tessellation_joint_geometry_host.py",
+        "scripts/native_joint_geometry_live_kernel.c",
+        "scripts/native_joint_geometry_live_bridge.h",
+        "scripts/native_joint_geometry_live_oracle.py",
+        "scripts/test_native_joint_geometry_live_oracle.py",
+        "scripts/native_owner_capture.hpp",
+        "scripts/native_owner_runtime.hpp",
+        "scripts/native_owner_driver.cpp",
+        "driver/tests/opengpu_native_mmio_fixture.inc",
+        "driver/tests/opengpu_native_submit_fixture.c",
+        "driver/tests/opengpu_native_submit_fixture.h",
+        "scripts/test_native_mmio_capture.py",
     }
     if changed & geometry_host_abi_paths:
         affected.add("src/test/scala/opengpu/graphics/TessellationJointGeometryHostProtocolSpec.scala")
@@ -1151,8 +1162,10 @@ def changed_suites(root, changed, *, test_index=None):
                   "src/test/scala/opengpu/system/PrepareNativeOwnerHost.scala",
                   "src/main/scala/opengpu/system/native/NativeAlignmentHostProfile.scala",
                   "src/main/scala/opengpu/system/ComputeResourceCapabilities.scala",
-                  "src/main/scala/opengpu/system/native/NativeShaderExecutionCapabilities.scala"}:
+                   "src/main/scala/opengpu/system/native/NativeShaderExecutionCapabilities.scala"}:
         affected.add("src/test/scala/opengpu/system/NativeOwnerHostProfileSpec.scala")
+    if "src/main/scala/opengpu/system/native/NativeAlignmentHostProfile.scala" in changed:
+        affected.add("src/test/scala/opengpu/system/NativeAlignmentHostProfileSpec.scala")
     if changed & {"src/main/scala/opengpu/graphics/host/NativeAdvancedBlendCapabilities.scala",
                   "src/main/scala/opengpu/system/native/NativeAlignmentHostProfile.scala",
                   "src/main/scala/opengpu/elaboration/EmitNativeAdvancedBlendAbi.scala",

@@ -70,6 +70,32 @@ This enables only the default-closed Scala host transport. It does not enable a
 driver queue, public submission, TF or ABI10, and does not claim original-shader
 CU/frame execution or product acceptance.
 
+## Private-host live front bridge
+
+The exact `NativeAlignmentHostProfile.protectedJointGeometryTarget` now freezes
+the two-CU/16-lane/eight-warp/four-engine geometry host, 65536 paged capacity and
+524288/69632-byte five-owner/twelve-port payload. Advanced blend, sample shading,
+legacy joint tessellation and geometry-command feedback remain closed. The
+profile exposes 100 discovery words plus five auxiliary registers, GCR1
+`0x8b67ff` and the exact four GJP2 words. `PrepareProtectedJointOwnerHost`
+accepts mutually exclusive `--full-factory` and `--joint-geometry`; the latter
+emits the full geometry target.
+
+`OGCAP007` and `OGNP0004` are independent geometry capture/profile wires.
+`native_owner_driver` supports geometry profile probing and active owner series.
+GNZ3 receipts contain 46 words and are emitted/compared by report kind; the MMIO
+fixture maps the complete prefix, legacy tail, geometry tail and zero padding.
+The test-only `native_kernel_submit_joint_geometry` wrapper runs the real
+snapshot/BUILD/prepare/publish/scheduler composition without a DRM ioctl or UAPI
+registration. Under `OPENGPU_NATIVE_MMIO` it uses the extracted production
+geometry profile/async bodies; the non-MMIO CPU fixture retains its stub.
+
+The first geometry batch supports normal held/retired completion only. Geometry
+cancel and read/write-fault capture requests are rejected with `-EOPNOTSUPP`.
+The existing GNZ2 cancel/read-fault formats and behavior are unchanged. This is
+a prerequisite bridge only: no live DUT session, original-shader CU/frame,
+product-FPS or physical-timing result is claimed.
+
 ## Validation
 
 - The generated ABI/schema suite passes all 10 tests, including exact header
@@ -80,8 +106,8 @@ CU/frame execution or product acceptance.
   tests plus both integration/large-PR catalogs; `bash -n` and
   `git diff --check` pass.
 - The Clang ASan/UBSan owner/MMU runner passes the existing joint suite and all
-  three geometry domains. It compiles 28 translation units, checks 126 distinct
-  dependencies and 397 consumed inputs, and rejects all 16 existing plus 9 new
+  three geometry domains. It compiles 28 translation units, checks 128 distinct
+  dependencies and 398 consumed inputs, and rejects all 16 existing plus 9 new
   geometry semantic controls. The same positive fixture passes Ubuntu GCC13 with
   `-O2 -Wall -Wextra -Werror` and ASan/UBSan.
 - The sanitizer host lane passes every `scripts/test_scripts.sh` command except
@@ -95,6 +121,11 @@ CU/frame execution or product acceptance.
   cancel, timeout, delayed completion and mixed-report fail-closed checks. The
   actual native submit/owner/MMU and MMIO production-body fixtures also pass
   under ASan/UBSan.
+- The live-front exact target passes profile 4/4, exact-profile elaboration 1/1
+  and geometry-only elaboration 1/1 after JDK21 `Test / compile`. The GNZ3 Python
+  oracle passes 6/6; both Python selector suites, geometry-host sanitizer,
+  protected-joint sanitizer/negative-controls, unified race, native submit and
+  native MMIO capture with the `OGCAP007` parser pass. No live DUT was run.
 - A fresh ARM64 Linux 7.2/GCC 15.2 Kbuild compiles every `gpu_drv` module object,
   including `opengpu_protected_tessellation_joint_geometry.o`, then MODPOST and
   `gpu_drv.ko`. `-Werror=frame-larger-than=2048` passes. The module was not loaded.
@@ -107,7 +138,7 @@ register a driver ioctl, public queue, discovery feature, transform-feedback rou
 or ABI10, and it does not change DRM UAPI, userspace Gallium/public submit or
 Mesa/Gallium producers. GJP2 is an internal read-only probe; GCR1 bit23 reports
 private host presence only, and the legacy native-source validator receives a
-mask without bit23. Raster discard and all feedback/TF command metadata remain
+mask without bits22/23. Raster discard and all feedback/TF command metadata remain
 rejected on this private route.
 
 It does not close P17, P39 or P40 and does not replace their actual CU/frame,
@@ -125,16 +156,19 @@ export JVM_OPTS="$JAVA_OPTS"
 bash scripts/scala_autofix.sh origin/main
 sbt -batch -Dopengpu.productQualification=0 -Dopengpu.simJobs=2 \
   'set Test / parallelExecution := false' 'Test / compile' \
-  'testOnly opengpu.graphics.TessellationJointGeometryHostProtocolSpec opengpu.system.TessellationHostAxiCommandSpec opengpu.graphics.TileBinHostCommandPortSpec opengpu.system.TessellationJointGeometryRangeInvalidationGateSpec opengpu.system.TessellationJointGeometryNativeControllerSpec opengpu.graphics.GpuCommandMmioSpec opengpu.system.ComputeResourceCapabilitiesAxiSpec' \
+  'testOnly opengpu.graphics.TessellationJointGeometryHostProtocolSpec opengpu.system.TessellationHostAxiCommandSpec opengpu.graphics.TileBinHostCommandPortSpec opengpu.system.TessellationJointGeometryRangeInvalidationGateSpec opengpu.system.TessellationJointGeometryNativeControllerSpec opengpu.graphics.GpuCommandMmioSpec opengpu.system.ComputeResourceCapabilitiesAxiSpec opengpu.system.NativeAlignmentHostProfileSpec' \
+  'testOnly opengpu.system.TessellationNativeHostElaborationSpec -- -z "exact geometry profile"' \
   'testOnly opengpu.system.TessellationNativeHostElaborationSpec -- -z "geometry-only"'
 sbt -batch 'testOnly opengpu.system.TessellationJointThreeDomainGeometrySpec'
 sbt -batch 'testOnly opengpu.system.TessellationJointEmptyFrameSpec -- -z "GNQ7 GNQ8 GNQ9"'
 python3 -B scripts/generate_protected_tessellation_joint_geometry_abi.py --check
 python3 -B scripts/test_protected_tessellation_joint_abi.py
 python3 -B scripts/test_protected_tessellation_joint_geometry_host.py
+python3 -B scripts/test_native_joint_geometry_live_oracle.py
 python3 -B scripts/test_protected_tessellation_joint.py --sanitize --negative-controls
 OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_unified_completion_race.py
 OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_submit.py
+OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_mmio_capture.py --executor-root .
 python3 -B scripts/test_changed_test_suites.py
 python3 -B scripts/test_test_selection.py
 bash -n scripts/scala_autofix.sh scripts/select_tests.sh scripts/ci_shard_tests.sh scripts/test_scripts.sh

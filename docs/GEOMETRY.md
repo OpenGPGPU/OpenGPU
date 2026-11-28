@@ -72,6 +72,25 @@ fault snapshot. IRQ/poll races share the held-slot lock; completion, abort and
 timeout clear the geometry pending pointer. A mixed GNZ2/GNZ3 pending state fails
 closed. No geometry ioctl, DRM UAPI, Gallium submit or Mesa producer is added.
 
+The private-host live front bridge now has an exact
+`protectedJointGeometryTarget`: two CUs, 16 lanes, eight warps, four engines,
+65536 paged capacity and the 524288/69632-byte five-owner/twelve-port payload.
+Its discovery is 100 words plus five auxiliary registers, GCR1 flags are
+`0x8b67ff`, and GJP2 is exactly `474a5002 008038ff 08100207 8ce58b2c`.
+`PrepareProtectedJointOwnerHost --joint-geometry` emits this full target and is
+mutually exclusive with the retained `--full-factory` mode.
+
+The live executor accepts independent `OGCAP007` geometry captures and the
+`OGNP0004` 100+5 profile wire. `native_owner_driver` adds
+`--probe-joint-geometry-profile` and `--active-joint-geometry-owner-series`.
+Driver receipts carry `gnz3[46]`; held/retired JSON and retirement validation
+select GNZ3 by report kind instead of reusing the 16-word GNZ2 layout. The MMIO
+fixture maps all 46 words and four padding words, while the test-only
+`native_kernel_submit_joint_geometry` wrapper reuses snapshot create, geometry
+BUILD/prepare, publish and scheduler without registering a DRM ioctl. The first
+geometry batch accepts normal completion only; geometry cancel and read/write
+fault capture modes return `-EOPNOTSUPP`, and legacy GNZ2 behavior is unchanged.
+
 `GpuHostSystemAxi(jointTessellationGeometryNative=true)` is mutually exclusive
 with legacy `jointTessellationNative`. It instantiates
 `TessellationJointThreeDomainGeometryJobImage` with geometry-specific memory
@@ -103,6 +122,13 @@ The actual native submit/owner/MMU and MMIO production-body fixtures pass under
 ASan/UBSan. ARM64 Linux 7.2/GCC 15.2 Kbuild compiles every module object and links
 `gpu_drv.ko` with `-Werror=frame-larger-than=2048`; the module was not loaded.
 
+The live-front bridge adds passing JDK21 `Test / compile`, exact geometry profile
+4/4, exact-profile elaboration 1/1, geometry-only elaboration 1/1, Python selector
+183 tests plus both selection catalogs, GNZ3 oracle 6/6, geometry-host sanitizer,
+protected-joint sanitizer/negative-controls, unified race, native submit and
+native MMIO capture with the actual `OGCAP007` parser. These are host/elaboration
+and CPU transport checks only; no live DUT qualification was run.
+
 ```sh
 export JAVA_HOME=/opt/homebrew/opt/openjdk@21
 export JAVA_OPTS='-Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8'
@@ -115,6 +141,15 @@ sbt -batch -Dopengpu.productQualification=0 -Dopengpu.simJobs=2 \
   'testOnly opengpu.system.TessellationJointThreeDomainGeometrySpec opengpu.system.TessellationJointIsolineGeometryParentSpec opengpu.system.TessellationJointTriangleGeometryParentSpec opengpu.system.TessellationJointQuadGeometryParentSpec opengpu.system.TessellationGeometryParentElaborationSpec' \
   'testOnly opengpu.system.TessellationJointEmptyFrameSpec -- -z "GNQ7 GNQ8 GNQ9"'
 sbt -batch 'runMain opengpu.elaboration.EmitComputeResourceAbi --check'
+sbt -batch 'testOnly opengpu.system.NativeAlignmentHostProfileSpec' \
+  'testOnly opengpu.system.TessellationNativeHostElaborationSpec -- -z "exact geometry profile"' \
+  'testOnly opengpu.system.TessellationNativeHostElaborationSpec -- -z "geometry-only"'
+python3 -B scripts/test_native_joint_geometry_live_oracle.py
+OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_protected_tessellation_joint_geometry_host.py
+OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_submit.py
+OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_mmio_capture.py --executor-root .
+python3 -B scripts/test_changed_test_suites.py
+python3 -B scripts/test_test_selection.py
 python3 -B scripts/generate_protected_tessellation_joint_geometry_abi.py --check
 python3 -B scripts/test_protected_tessellation_joint_abi.py
 python3 -B scripts/test_protected_tessellation_joint_geometry_host.py
@@ -128,12 +163,12 @@ git diff --check
 ```
 
 This delivery adds only the kernel-private GNQ7/8/9 enqueue and GNZ3 report
-lifecycle. It does not register a public ioctl or change DRM UAPI, userspace
-Gallium/public submit, Mesa producers, TF or ABI10. GJP2/GCR1 bit23 remain
-internal probes, and legacy `GET_PARAM`, driver-feature and public-discovery
-behavior is unchanged. The new complete top is elaboration-qualified; no
-original-shader CU/frame replay, product FPS, physical timing or P39/P40
-acceptance is claimed.
+lifecycle, plus the private-host live front bridge. It does not register a public
+ioctl or change DRM UAPI, userspace Gallium/public submit, Mesa producers, TF or
+ABI10. GJP2/GCR1 bit23 remain internal probes, and legacy `GET_PARAM`,
+driver-feature and public-discovery behavior is unchanged. The new complete top
+is elaboration-qualified; no original-shader CU/frame replay, live private-host
+DUT run, product FPS, physical timing or P39/P40 acceptance is claimed.
 
 ## Geometry metadata in bin records
 
