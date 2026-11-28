@@ -12,18 +12,18 @@ static struct opengpu_protected_tessellation_joint_geometry_source geometry_sour
     s.profile=(struct opengpu_protected_tessellation_joint_geometry_profile){.version=1,.domains=7,.compute_units=2,.lanes=16,.warps=8,.engines=4,
         .provider="two-cu-vga60-owner-v3-five-stage",.owner_resource_version=3,.payload_bytes=524288,.max_payload_bytes=69632,
         .payload_owners=5,.payload_ports=12,.image_producer_pins=34,.single_domain_total_pins=37,
-        .available=true,.scalar_fpu=true,.advanced_blend=true,.owned_vertex_source=true,.patch_zero_initialized=true,.owned_patch_reads=true,
-        .owned_tessellation_info=true,.geometry_inputs=true,.sample_inputs=true,.geometry_route=true,
+        .available=true,.scalar_fpu=true,.advanced_blend=false,.owned_vertex_source=true,.patch_zero_initialized=true,.owned_patch_reads=true,
+        .owned_tessellation_info=true,.geometry_inputs=true,.sample_inputs=false,.geometry_route=true,
         .geometry_uniforms=true,.joint_directory_route=true,.whole_owner_retirement=true};
     u32 *job=f->old.original.job;job[0]=0x474e5107u+domain;job[2]=3;job[36]=1;job[40]=3;job[41]=1024;job[42]=64+3*1024;
-    f->old.original.request.scratch_stride=(domain==1?95u:92u)*128u*4;
+    f->old.original.request.scratch_stride=92u*128u*4;
     for(u32 i=0;i<4;i++) {
         struct opengpu_native_frame_gem *v=&f->old.original.request.scratch[i];
         opengpu_buffer_free(gpu,&graph_original[v->handle]);v->bytes=2*f->old.original.request.scratch_stride;
         assert(!opengpu_buffer_alloc(gpu,&graph_original[v->handle],(size_t)(v->bytes+64+4095)&~4095u));
     }
     assert(!opengpu_native_frame_encode(&f->old.original.request,&f->old.original.encoded));
-    for(u32 i=0;i<2;i++)f->old.original.states[i*128+56]=domain==1?7:5;
+    for(u32 i=0;i<2;i++)f->old.original.states[i*128+56]=5;
     u32 code=graph_alloc(gpu,4096),blocks[13];
     const u32 instructions[]={0xffffffffu,7u<<25|5u<<7|0x0bu,33u<<25|5u<<20|0x0bu,35u<<25|0x0bu,OPENGPU_SHADER_CEASE};
     memcpy((u8 *)graph_original[code].cpu+64,instructions,sizeof(instructions));
@@ -83,6 +83,9 @@ static void geometry_negative_cases(struct opengpu_device *gpu,struct opengpu_re
     struct opengpu_protected_tessellation_joint_geometry_source *s,struct opengpu_joint_geometry_plan gs[3])
 {
     geometry_case="owner-version";s->profile.owner_resource_version=2;geometry_reject(gpu,ctx,s,-EOPNOTSUPP,true);s->profile.owner_resource_version=3;
+    geometry_case="scalar-fpu";s->profile.scalar_fpu=false;geometry_reject(gpu,ctx,s,-EOPNOTSUPP,true);s->profile.scalar_fpu=true;
+    geometry_case="advanced-blend";s->profile.advanced_blend=true;geometry_reject(gpu,ctx,s,-EOPNOTSUPP,true);s->profile.advanced_blend=false;
+    geometry_case="sample-inputs";s->profile.sample_inputs=true;geometry_reject(gpu,ctx,s,-EOPNOTSUPP,true);s->profile.sample_inputs=false;
     geometry_case="geometry-permission";
     bool permission=s->profile.geometry_inputs;s->profile.geometry_inputs=false;
     geometry_reject(gpu,ctx,s,-EOPNOTSUPP,true);s->profile.geometry_inputs=permission;
@@ -100,6 +103,12 @@ static void geometry_negative_cases(struct opengpu_device *gpu,struct opengpu_re
     geometry_case="command-id";gs[0].command_id=32;geometry_reject(gpu,ctx,s,-EINVAL,true);gs[0].command_id=3;
     geometry_case="gng-context";gs[0].gng[3]++;geometry_reject(gpu,ctx,s,-EINVAL,true);gs[0].gng[3]--;
     geometry_case="abi10";u32 abi=((u32 *)s->states)[56];((u32 *)s->states)[56]=10;
+    u32 *frame=(u32 *)s->frame;
+    u32 stride=frame[OPENGPU_NATIVE_BINNED_FRAME_FRAME_SCRATCHSTRIDE_WORD];
+    frame[OPENGPU_NATIVE_BINNED_FRAME_FRAME_SCRATCHSTRIDE_WORD]=95u*128u*4;
+    geometry_reject(gpu,ctx,s,-EINVAL,true);((u32 *)s->states)[56]=abi;
+    frame[OPENGPU_NATIVE_BINNED_FRAME_FRAME_SCRATCHSTRIDE_WORD]=stride;
+    geometry_case="abi7-without-sample-inputs";((u32 *)s->states)[56]=7;
     geometry_reject(gpu,ctx,s,-EINVAL,true);((u32 *)s->states)[56]=abi;
     if(job[0]!=0x474e5108u) {
         u32 *frame=(u32 *)s->frame;
@@ -109,9 +118,6 @@ static void geometry_negative_cases(struct opengpu_device *gpu,struct opengpu_re
         frame[OPENGPU_NATIVE_BINNED_FRAME_FRAME_SCRATCHSTRIDE_WORD]=46592u;
         geometry_reject(gpu,ctx,s,-EINVAL,true);
         frame[OPENGPU_NATIVE_BINNED_FRAME_FRAME_SCRATCHSTRIDE_WORD]=stride;
-    }
-    if(job[0]==0x474e5108u) {
-        geometry_case="sample-inputs";s->profile.sample_inputs=false;geometry_reject(gpu,ctx,s,-EINVAL,true);s->profile.sample_inputs=true;
     }
     geometry_case="geometry-uniforms";s->profile.geometry_uniforms=false;geometry_reject(gpu,ctx,s,-EOPNOTSUPP,true);s->profile.geometry_uniforms=true;
     geometry_case="raster-range";gs[0].raster_discard=1;geometry_reject(gpu,ctx,s,-EINVAL,true);gs[0].raster_discard=0;

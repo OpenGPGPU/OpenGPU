@@ -143,7 +143,8 @@ bool opengpu_protected_tessellation_joint_geometry_profile_valid(
         p->lanes==16 && p->warps==8 && p->engines==4 &&
         p->owned_vertex_source && p->patch_zero_initialized && p->owned_patch_reads &&
         p->owned_tessellation_info && p->geometry_inputs && p->geometry_route && p->geometry_uniforms &&
-        p->joint_directory_route && p->whole_owner_retirement && p->scalar_fpu && p->advanced_blend;
+        p->joint_directory_route && p->whole_owner_retirement && p->scalar_fpu &&
+        !p->advanced_blend && !p->sample_inputs;
 }
 static bool jg_view(u32 base,u64 limit,u64 bytes)
 {return !(base&63u) && limit==(u64)base+bytes && limit<=(1ULL<<32);}

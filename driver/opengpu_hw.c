@@ -648,8 +648,8 @@ int opengpu_hw_init(struct opengpu_device *gpu, struct platform_device *pdev)
                              "invalid protected joint tessellation profile record\n");
     if (!opengpu_read_tessellation_joint_geometry_profile(gpu->hw.compute_resource_flags,
             gpu->hw.capabilities, gpu->hw.regs_size, &gpu->hw.native_sources,
-            gpu->hw.native_advanced_blend_transport, gpu->hw.native_sample_transport,
-            gpu, opengpu_mmio_read_callback, &gpu->hw.joint_geometry))
+            gpu->hw.native_sample_transport, gpu, opengpu_mmio_read_callback,
+            &gpu->hw.joint_geometry))
         return dev_err_probe(gpu->dev, -EINVAL,
                              "invalid protected joint geometry profile record\n");
     if (!opengpu_read_compute_local_limits(id, gpu->hw.regs_size,

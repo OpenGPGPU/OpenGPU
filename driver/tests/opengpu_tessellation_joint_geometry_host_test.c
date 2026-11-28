@@ -62,16 +62,16 @@ static void geometry_profile_test(void)
     native.frame.words[7] = 2;
     memset(&profile, 0xa5, sizeof(profile));
     assert(opengpu_read_tessellation_joint_geometry_profile(flags & ~(1u << 23), caps,
-        0x610, &native, true, false, &regs, geometry_read, &profile));
+        0x610, &native, false, &regs, geometry_read, &profile));
     assert(!profile.available && !regs.reads);
     assert(!opengpu_read_tessellation_joint_geometry_profile(flags, caps, 0x60f,
-        &native, true, false, &regs, geometry_read, &profile) && !regs.reads);
+        &native, false, &regs, geometry_read, &profile) && !regs.reads);
     assert(opengpu_read_tessellation_joint_geometry_profile(flags, caps, 0x610,
-        &native, true, false, &regs, geometry_read, &profile));
+        &native, false, &regs, geometry_read, &profile));
     assert(regs.reads == 4 && profile.available && profile.version == 1 &&
         profile.domains == 7 && profile.compute_units == 2 && profile.lanes == 16 &&
         profile.warps == 8 && profile.engines == 4 && profile.scalar_fpu &&
-        profile.advanced_blend && !profile.sample_inputs && profile.geometry_route &&
+        !profile.advanced_blend && !profile.sample_inputs && profile.geometry_route &&
         profile.geometry_uniforms && profile.whole_owner_retirement &&
         !strcmp(profile.provider, OPENGPU_JOINT_GEOMETRY_PROFILE_PROVIDER));
     for (unsigned word = 0; word < 4; ++word) {
@@ -81,21 +81,36 @@ static void geometry_profile_test(void)
             memcpy(&saved, &profile, sizeof(saved));
             regs.profile[word] ^= 1u << bit;
             assert(!opengpu_read_tessellation_joint_geometry_profile(flags, caps, 0x610,
-                &native, true, false, &regs, geometry_read, &profile));
+                &native, false, &regs, geometry_read, &profile));
             assert(!memcmp(&saved, &profile, sizeof(saved)));
             regs.profile[word] = value;
         }
     }
+    const unsigned closed_bits[] = {8, 9, 10};
+    for (unsigned i = 0; i < sizeof(closed_bits) / sizeof(closed_bits[0]); ++i) {
+        struct opengpu_protected_tessellation_joint_geometry_profile saved;
+        u32 value = regs.profile[1];
+        memcpy(&saved, &profile, sizeof(saved));
+        regs.profile[1] |= 1u << closed_bits[i];
+        assert(!opengpu_read_tessellation_joint_geometry_profile(flags, caps, 0x610,
+            &native, false, &regs, geometry_read, &profile));
+        assert(!memcmp(&saved, &profile, sizeof(saved)));
+        regs.profile[1] = value;
+    }
+    assert(!opengpu_read_tessellation_joint_geometry_profile(flags,
+        caps & ~GPU_CAP_COMPUTE_SCALAR_FPU, 0x610,
+        &native, false, &regs, geometry_read, &profile));
     assert(!opengpu_read_tessellation_joint_geometry_profile(flags, caps, 0x610,
-        &native, false, false, &regs, geometry_read, &profile));
-    assert(!opengpu_read_tessellation_joint_geometry_profile(flags, caps, 0x610,
-        &native, true, true, &regs, geometry_read, &profile));
+        &native, true, &regs, geometry_read, &profile));
     assert(!opengpu_read_tessellation_joint_geometry_profile(flags |
         OPENGPU_COMPUTE_RESOURCE_JOINT_TESSELLATION_V1, caps, 0x610,
-        &native, true, false, &regs, geometry_read, &profile));
+        &native, false, &regs, geometry_read, &profile));
+    assert(!opengpu_read_tessellation_joint_geometry_profile(flags |
+        OPENGPU_COMPUTE_RESOURCE_TESSELLATION_FEEDBACK, caps, 0x610,
+        &native, false, &regs, geometry_read, &profile));
     native.lanes = 8;
     assert(!opengpu_read_tessellation_joint_geometry_profile(flags, caps, 0x610,
-        &native, true, false, &regs, geometry_read, &profile));
+        &native, false, &regs, geometry_read, &profile));
 }
 
 static void geometry_words(u32 words[46], u32 status)
