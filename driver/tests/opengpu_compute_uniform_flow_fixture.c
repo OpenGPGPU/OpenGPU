@@ -115,6 +115,8 @@ struct opengpu_kernel_launch { u32 indirect_base,indirect_bytes,indirect_offset;
 struct opengpu_device { struct {
     void *native_pending_owner;
     struct opengpu_tessellation_joint_completion *joint_pending_completion;
+    struct opengpu_tessellation_joint_geometry_completion *joint_geometry_pending_completion;
+    u32 joint_geometry_context,joint_geometry_pass,joint_geometry_generation;
     struct { bool available; } native_sources;
     u32 native_context,native_pass,native_generation;
     bool compute_texture_transport,compute_storage_transport,compute_image_transport,compute_counter_transport,compute_uniform_transport,compute_indirect_transport,wedged,reset_pending;
@@ -123,7 +125,7 @@ struct opengpu_device { struct {
     u64 regs_size,unified_expected_bytes,fence_context,fence_seqno;
     int submit_lock,fence_lock,timeout_work,completion_work;
     struct dma_fence *unified_fence,*active_fence;
-    struct { struct opengpu_native_completion native; bool native_valid; struct opengpu_tessellation_completion tessellation; bool tessellation_valid; int error; u32 flags,status; } last_fault;
+    struct { struct opengpu_native_completion native; bool native_valid; struct opengpu_tessellation_completion tessellation; bool tessellation_valid; bool joint_geometry_valid; struct opengpu_tessellation_joint_geometry_completion joint_geometry; int error; u32 flags,status; } last_fault;
     struct opengpu_compute_local_limits compute_local_limits;
     struct opengpu_compute_shared_limits compute_shared_limits;
 } hw;struct {int admission_lock;} compute; u32 regs[512],captured[8],active_root; unsigned kicks,pops,uniform_writes,invalidations; };

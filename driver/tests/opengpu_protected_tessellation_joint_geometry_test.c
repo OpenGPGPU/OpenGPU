@@ -1,6 +1,7 @@
 /* Actual owner/MMU BUILD graph only. Literal CEASE/emit programs are NOT
  * shader results, VS output, patch bytes or GPU-execution evidence. */
 #include "../opengpu_tessellation_joint_host.h"
+#define OPENGPU_MMU_TEST_HW_EXTRA struct opengpu_protected_tessellation_joint_geometry_profile joint_geometry;
 #define OPENGPU_PROTECTED_TESS_TEST_MAIN joint_old_protected_regression_main
 #include "../opengpu_protected_tessellation_test.c"
 #undef OPENGPU_PROTECTED_TESS_TEST_MAIN
@@ -98,4 +99,43 @@ static void joint_init(struct joint_fixture *f,struct opengpu_device *gpu,u32 do
 #define OPENGPU_JOINT_GEOMETRY_SOURCE "../opengpu_protected_tessellation_joint_geometry.c"
 #endif
 #include OPENGPU_JOINT_GEOMETRY_SOURCE
+struct opengpu_kernel_launch;
+struct opengpu_command_events {u32 flags,wait_event,signal_event;};
+struct opengpu_hw_joint_submission {
+    enum opengpu_tessellation_joint_report_kind kind;
+    struct opengpu_tessellation_joint_completion *completion;
+    struct opengpu_tessellation_joint_geometry_completion *geometry_completion;
+    u32 feedback_program,feedback_cookie;
+};
+static bool geometry_busy,geometry_kick_fail;
+static unsigned geometry_kicks;
+static int geometry_fence_token;
+static struct opengpu_protected_tessellation_joint_geometry_host_command geometry_expected_command;
+static struct opengpu_tessellation_joint_geometry_completion *geometry_expected_report;
+static bool opengpu_hw_execution_busy(struct opengpu_device *gpu)
+{assert(gpu->hw.submit_lock.held);return geometry_busy;}
+static int opengpu_hw_unified_submit_locked(struct opengpu_device *gpu,
+    const struct opengpu_kernel_launch *launch,const struct opengpu_command_events *events,
+    u32 opcode,u32 source,u32 destination,u32 bytes,u32 pattern,u32 sample_mode,
+    u32 width,u32 height,u32 source_stride,u32 destination_stride,u64 expected_bytes,
+    const struct opengpu_vm *vm,u32 delay,const struct opengpu_hw_joint_submission *joint,
+    struct dma_fence **output)
+{
+    assert(gpu->hw.submit_lock.held && !launch && events && !events->flags &&
+        !events->wait_event && !events->signal_event && vm && vm->enabled);
+    assert(joint && joint->kind==OPENGPU_TESSELLATION_JOINT_REPORT_GNZ3 &&
+        !joint->completion && joint->geometry_completion==geometry_expected_report &&
+        !joint->feedback_program && !joint->feedback_cookie && !sample_mode && !expected_bytes && !delay);
+    assert(opcode==15 && source==geometry_expected_command.source &&
+        destination==geometry_expected_command.destination && bytes==512 &&
+        pattern==geometry_expected_command.pattern && width==geometry_expected_command.width &&
+        height==geometry_expected_command.height && source_stride==geometry_expected_command.source_stride &&
+        destination_stride==geometry_expected_command.destination_stride);
+    ++geometry_kicks;
+    if(geometry_kick_fail)return -ENOMEM;
+    *joint->geometry_completion=(struct opengpu_tessellation_joint_geometry_completion){0};
+    *output=(struct dma_fence *)&geometry_fence_token;
+    return 0;
+}
+#include "joint_geometry_enqueue_under_test.inc"
 #include "opengpu_protected_tessellation_joint_geometry_test.inc"

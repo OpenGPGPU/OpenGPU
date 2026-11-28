@@ -35,6 +35,8 @@ struct opengpu_device {
         u32 tessellation_engines;
         struct dma_fence *unified_fence, *active_fence;
         struct opengpu_tessellation_joint_completion *joint_pending_completion;
+        struct opengpu_tessellation_joint_geometry_completion *joint_geometry_pending_completion;
+        u32 joint_geometry_context,joint_geometry_pass,joint_geometry_generation;
         u32 native_context,native_pass,native_generation;
         u32 aborting, unified_command_id, unified_opcode, unified_completion_delay_ms;
         u64 unified_expected_bytes, fence_context, fence_seqno; int fence_lock, submit_lock;

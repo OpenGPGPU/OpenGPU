@@ -12,7 +12,7 @@ static struct opengpu_protected_tessellation_joint_geometry_source geometry_sour
     s.profile=(struct opengpu_protected_tessellation_joint_geometry_profile){.version=1,.domains=7,.compute_units=2,.lanes=16,.warps=8,.engines=4,
         .provider="two-cu-vga60-owner-v3-five-stage",.owner_resource_version=3,.payload_bytes=524288,.max_payload_bytes=69632,
         .payload_owners=5,.payload_ports=12,.image_producer_pins=34,.single_domain_total_pins=37,
-        .available=true,.scalar_fpu=true,.owned_vertex_source=true,.patch_zero_initialized=true,.owned_patch_reads=true,
+        .available=true,.scalar_fpu=true,.advanced_blend=true,.owned_vertex_source=true,.patch_zero_initialized=true,.owned_patch_reads=true,
         .owned_tessellation_info=true,.geometry_inputs=true,.sample_inputs=true,.geometry_route=true,
         .geometry_uniforms=true,.joint_directory_route=true,.whole_owner_retirement=true};
     u32 *job=f->old.original.job;job[0]=0x474e5107u+domain;job[2]=3;job[36]=1;job[40]=3;job[41]=1024;job[42]=64+3*1024;
@@ -114,7 +114,7 @@ static void geometry_negative_cases(struct opengpu_device *gpu,struct opengpu_re
         geometry_case="sample-inputs";s->profile.sample_inputs=false;geometry_reject(gpu,ctx,s,-EINVAL,true);s->profile.sample_inputs=true;
     }
     geometry_case="geometry-uniforms";s->profile.geometry_uniforms=false;geometry_reject(gpu,ctx,s,-EOPNOTSUPP,true);s->profile.geometry_uniforms=true;
-    geometry_case="raster-range";gs[0].raster_discard=2;geometry_reject(gpu,ctx,s,-EINVAL,true);gs[0].raster_discard=0;
+    geometry_case="raster-range";gs[0].raster_discard=1;geometry_reject(gpu,ctx,s,-EINVAL,true);gs[0].raster_discard=0;
     assert(jg_geometry_same_source(&gs[0],&gs[1]));
     gs[1].raster_discard=1;assert(!jg_geometry_same_source(&gs[0],&gs[1]));gs[1].raster_discard=0;
     assert(jg_geometry_same_seeds(&gs[0],&gs[1]));
@@ -168,6 +168,108 @@ static void geometry_prepared_negatives(struct opengpu_device *gpu,struct opengp
         assert(opengpu_private_snapshot_publish(o)==-EINVAL);assert(!opengpu_private_snapshot_retire(o));
     }
 }
+static void geometry_command_oracle(struct opengpu_private_snapshot *o,
+    struct opengpu_device *gpu,struct opengpu_render_context *ctx,u32 id,u32 domain)
+{
+    struct opengpu_private_snapshot_joint_request request,saved;
+    struct opengpu_protected_tessellation_joint_geometry_host_command command,expected;
+    struct opengpu_render_context foreign={.gpu=gpu,.id=ctx->id+1};
+    const struct snapshot_segment *root=snapshot_segment_find(o,id);
+    u32 magic;
+    mutex_lock(&gpu->hw.submit_lock);
+    memset(&request,0xa5,sizeof(request));
+    assert(opengpu_private_snapshot_joint_request_locked(o,gpu,ctx,id,&request)==-EINVAL);
+    assert(request.job_base==0xa5a5a5a5u);
+    assert(!opengpu_private_snapshot_joint_geometry_request_locked(o,gpu,ctx,id,&request));
+    saved=request;
+    assert(request.domain==domain && request.context==ctx->id && request.pass==8 &&
+        request.generation==9 && request.job_limit==request.job_base+512 &&
+        request.job_allocation_limit==request.job_base+4096 &&
+        request.owner_limit>request.owner_base && request.owner_limit<=(1ULL<<32));
+    assert(root && !o->joint_root && !o->joint_request.job_base &&
+        !o->joint_request.job_limit && !o->joint_request.job_allocation_limit);
+    assert(opengpu_private_snapshot_joint_geometry_request_locked(o,gpu,&foreign,id,&request)==-EINVAL);
+    assert(!memcmp(&request,&saved,sizeof(request)));
+    memset(&command,0xa5,sizeof(command));
+    assert(!opengpu_protected_tessellation_joint_geometry_command_locked(o,gpu,ctx,id,&command));
+    expected=(struct opengpu_protected_tessellation_joint_geometry_host_command){
+        .opcode=15,.source=request.job_base,.destination=request.owner_base,.bytes=512,
+        .pattern=0x474a0200u|((u32)(request.owner_limit>>32))|(domain<<1),
+        .width=(u32)request.owner_limit,.height=ctx->id,.source_stride=8,.destination_stride=9};
+    assert(!memcmp(&command,&expected,sizeof(command)));
+    expected=command;
+    assert(opengpu_protected_tessellation_joint_geometry_command_locked(o,gpu,ctx,id+1,&command)==-EINVAL);
+    assert(!memcmp(&command,&expected,sizeof(command)));
+    assert(opengpu_protected_tessellation_joint_geometry_command_locked(o,gpu,&foreign,id,&command)==-EINVAL);
+    assert(!memcmp(&command,&expected,sizeof(command)));
+    magic=((const u32 *)root->backing.cpu)[0];
+    ((u32 *)root->backing.cpu)[0]=0x474e5104u;
+    assert(opengpu_private_snapshot_joint_geometry_request_locked(o,gpu,ctx,id,&request)==-EINVAL);
+    assert(!memcmp(&request,&saved,sizeof(request)));
+    assert(opengpu_protected_tessellation_joint_geometry_command_locked(o,gpu,ctx,id,&command)==-EINVAL);
+    assert(!memcmp(&command,&expected,sizeof(command)));
+    ((u32 *)root->backing.cpu)[0]=magic;
+    o->joint_geometry_request.pass++;
+    assert(opengpu_private_snapshot_joint_geometry_request_locked(o,gpu,ctx,id,&request)==-EINVAL);
+    assert(!memcmp(&request,&saved,sizeof(request)));
+    assert(opengpu_protected_tessellation_joint_geometry_command_locked(o,gpu,ctx,id,&command)==-EINVAL);
+    assert(!memcmp(&command,&expected,sizeof(command)));
+    o->joint_geometry_request.pass=saved.pass;
+    o->joint_geometry_request.owner_limit=1ULL<<32;
+    assert(!opengpu_protected_tessellation_joint_geometry_command_locked(o,gpu,ctx,id,&command));
+    assert(command.pattern==(0x474a0200u|1u|(domain<<1)) && command.width==0);
+    expected=command;
+    o->joint_geometry_request.owner_limit=(1ULL<<32)+1;
+    assert(opengpu_protected_tessellation_joint_geometry_command_locked(o,gpu,ctx,id,&command)==-EINVAL);
+    assert(!memcmp(&command,&expected,sizeof(command)));
+    o->joint_geometry_request.owner_limit=saved.owner_limit;
+    expected=command;
+    o->joint_geometry_request.domain=3;
+    assert(opengpu_protected_tessellation_joint_geometry_command_locked(o,gpu,ctx,id,&command)==-EINVAL);
+    assert(!memcmp(&command,&expected,sizeof(command)));
+    o->joint_geometry_request.domain=saved.domain;
+    o->joint_geometry_request.job_limit++;
+    assert(opengpu_protected_tessellation_joint_geometry_command_locked(o,gpu,ctx,id,&command)==-EINVAL);
+    assert(!memcmp(&command,&expected,sizeof(command)));
+    o->joint_geometry_request.job_limit=saved.job_limit;
+    mutex_unlock(&gpu->hw.submit_lock);
+}
+
+static void geometry_enqueue_oracle(struct opengpu_private_snapshot *o,
+    struct opengpu_device *gpu,struct opengpu_render_context *ctx,u32 id,
+    const struct opengpu_protected_tessellation_joint_geometry_profile *profile)
+{
+    struct opengpu_tessellation_joint_geometry_completion completion={.valid=true};
+    struct dma_fence *fence=NULL;
+    unsigned cached=invalidations,kicks=geometry_kicks;
+
+    mutex_lock(&gpu->hw.submit_lock);
+    assert(!opengpu_protected_tessellation_joint_geometry_command_locked(o,gpu,ctx,id,&geometry_expected_command));
+    mutex_unlock(&gpu->hw.submit_lock);
+    geometry_expected_report=&completion;
+    gpu->hw.joint_geometry=(struct opengpu_protected_tessellation_joint_geometry_profile){0};
+    assert(opengpu_hw_protected_tessellation_joint_geometry_async(gpu,o,ctx,id,&completion,&fence)==-EOPNOTSUPP);
+    assert(!fence && invalidations==cached && geometry_kicks==kicks);
+    gpu->hw.joint_geometry=*profile;
+    geometry_busy=true;
+    assert(opengpu_hw_protected_tessellation_joint_geometry_async(gpu,o,ctx,id,&completion,&fence)==-EBUSY);
+    assert(!fence && invalidations==cached && geometry_kicks==kicks);
+    geometry_busy=false;
+    assert(opengpu_hw_protected_tessellation_joint_geometry_async(gpu,o,ctx,id+1,&completion,&fence)==-EINVAL);
+    assert(!fence && invalidations==cached && geometry_kicks==kicks);
+    invalidate_failure=(int)cached+1;
+    assert(opengpu_hw_protected_tessellation_joint_geometry_async(gpu,o,ctx,id,&completion,&fence)==-EIO);
+    assert(!fence && invalidations==cached+1 && geometry_kicks==kicks);
+    invalidate_failure=0;
+    geometry_kick_fail=true;
+    assert(opengpu_hw_protected_tessellation_joint_geometry_async(gpu,o,ctx,id,&completion,&fence)==-ENOMEM);
+    assert(!fence && geometry_kicks==kicks+1);
+    geometry_kick_fail=false;
+    assert(!opengpu_hw_protected_tessellation_joint_geometry_async(gpu,o,ctx,id,&completion,&fence));
+    assert(fence==(struct dma_fence *)&geometry_fence_token && geometry_kicks==kicks+2);
+    assert(!completion.valid && !completion.status && !gpu->hw.submit_lock.held);
+}
+
 static struct opengpu_joint_geometry_plan *geometry_mutate_plans;
 static struct opengpu_protected_tessellation_joint_geometry_source *geometry_mutate_source;
 static int geometry_mutating_resolve(void *context,u32 handle,struct opengpu_native_frame_backing *out)
@@ -188,6 +290,7 @@ int main(void)
         struct joint_fixture *f=calloc(1,sizeof(*f));assert(f);joint_init(f,&gpu,domain);
         struct opengpu_joint_geometry_plan gs[3];struct opengpu_protected_tessellation_joint_geometry_plan plans[3];
         struct opengpu_protected_tessellation_joint_geometry_source s=geometry_source(f,gs,plans,&gpu,domain);
+        struct opengpu_protected_tessellation_joint_geometry_profile profile=s.profile;
         geometry_negative_cases(&gpu,&ctx,&s,gs);
         if(!domain)geometry_prepared_negatives(&gpu,&ctx,&s);
         struct opengpu_native_job_copy callbacks=joint_callbacks;
@@ -203,7 +306,9 @@ int main(void)
             fprintf(stderr,"geometry prepare domain%u ret%d\n",domain,ret);
             assert(!ret);
         }
-        assert(!opengpu_private_snapshot_publish(o));geometry_graph_oracle(o,&ctx,out,domain);
+        assert(!opengpu_private_snapshot_publish(o));geometry_command_oracle(o,&gpu,&ctx,out,domain);
+        geometry_enqueue_oracle(o,&gpu,&ctx,out,&profile);
+        geometry_graph_oracle(o,&ctx,out,domain);
         assert(!opengpu_private_snapshot_retire(o));pt_free_originals(&gpu);free(f);
         opengpu_mmu_vm_destroy(&gpu,&ctx.vm);opengpu_mmu_fini(&gpu);assert(!fixture_buffers && !live_allocations);
     }

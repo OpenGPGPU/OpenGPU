@@ -97,6 +97,8 @@ struct opengpu_sched_job {struct drm_sched_job base;struct opengpu_device *gpu;
     struct opengpu_render_context *context;const struct opengpu_vm *vm;unsigned type;
     struct opengpu_private_snapshot *native_owner;u32 native_job_segment;void *native_quarantine_refs;u32 native_quarantine_refcount;
     struct opengpu_tessellation_joint_completion *joint_report;
+    enum opengpu_tessellation_joint_report_kind joint_report_kind;
+    struct opengpu_tessellation_joint_geometry_completion *joint_geometry_report;
     struct dma_fence *retirement_fence,*admission_chain;bool ordinary_pending;
     struct dma_fence_chain *execution_chain;bool admission_armed;
     struct drm_gem_object **objects;u32 object_count,temporary_mapping_count;
@@ -308,6 +310,23 @@ static int opengpu_hw_protected_tessellation_joint_async(struct opengpu_device *
     return 0;
 }
 #endif
+static unsigned geometry_async_calls;
+static void *geometry_expected_owner;
+static u32 geometry_expected_segment;
+static struct opengpu_tessellation_joint_geometry_completion *geometry_expected_report;
+static int opengpu_hw_protected_tessellation_joint_geometry_async(struct opengpu_device *gpu,
+    struct opengpu_private_snapshot *owner,const struct opengpu_render_context *context,
+    u32 segment,struct opengpu_tessellation_joint_geometry_completion *report,struct dma_fence **fence)
+{
+    assert(running && gpu==&running->gpu && owner==geometry_expected_owner &&
+        context==&running->context && segment==geometry_expected_segment &&
+        report==geometry_expected_report && report && !running->hardware);
+    ++geometry_async_calls;
+    *fence=calloc(1,sizeof(**fence));
+    if(!*fence)return -ENOMEM;
+    (*fence)->refs=1;(*fence)->seqno=++running->next_seq;running->hardware=*fence;
+    return 0;
+}
 #define kzalloc native_submission_alloc
 #define memcpy native_memcpy
 #include "native_submit_under_test.inc"
@@ -543,7 +562,8 @@ int native_kernel_run(struct native_kernel_session *s,unsigned index)
     (void)native_session_record(s,index);
     running=s;copy_gpu=&s->gpu;
     for(struct fixture_dependency *d=j->base.dependencies;d;d=d->next)if(!dma_fence_is_signaled(d->fence))return -EBUSY;
-    if (j->type == OPENGPU_SCHED_PROTECTED_TESSELLATION && j->joint_report) {
+    if (j->type == OPENGPU_SCHED_PROTECTED_TESSELLATION &&
+        (j->joint_report || j->joint_geometry_report)) {
         fence = opengpu_protected_tessellation_job_run(j);
         return IS_ERR(fence) ? PTR_ERR(fence) : 0;
     }
@@ -801,10 +821,36 @@ static void test_retire_prior_ordinary(struct native_kernel_session *s)
     s->progress=NULL;++test_ordinary_retire_progress;
     assert(!native_kernel_retire(s,0,0));
 }
+static void test_geometry_async_dispatch(struct native_kernel_session *s)
+{
+    struct opengpu_tessellation_joint_completion legacy={0};
+    struct opengpu_tessellation_joint_geometry_completion geometry={0};
+    struct opengpu_sched_job job={.gpu=&s->gpu,.context=&s->context,
+        .native_owner=(struct opengpu_private_snapshot *)&s->context,.native_job_segment=123,
+        .joint_report_kind=OPENGPU_TESSELLATION_JOINT_REPORT_GNZ3,
+        .joint_report=&legacy,.joint_geometry_report=&geometry};
+    struct dma_fence *fence;
+
+    geometry_expected_owner=&s->context;geometry_expected_segment=123;geometry_expected_report=&geometry;
+    fence=opengpu_protected_tessellation_job_run(&job);
+    assert(IS_ERR(fence) && PTR_ERR(fence)==-EINVAL && !geometry_async_calls);
+    job.joint_report=NULL;job.joint_report_kind=OPENGPU_TESSELLATION_JOINT_REPORT_GNZ2;
+    fence=opengpu_protected_tessellation_job_run(&job);
+    assert(IS_ERR(fence) && PTR_ERR(fence)==-EINVAL && !geometry_async_calls);
+    job.joint_report_kind=OPENGPU_TESSELLATION_JOINT_REPORT_NONE;
+    fence=opengpu_protected_tessellation_job_run(&job);
+    assert(IS_ERR(fence) && PTR_ERR(fence)==-EINVAL && !geometry_async_calls);
+    job.joint_report_kind=OPENGPU_TESSELLATION_JOINT_REPORT_GNZ3;
+    fence=opengpu_protected_tessellation_job_run(&job);
+    assert(!IS_ERR(fence) && fence && geometry_async_calls==1 && running->hardware==fence);
+    running->hardware=NULL;dma_fence_put(fence);
+}
+
 int OPENGPU_NATIVE_SUBMIT_FIXTURE_MAIN(void)
 {
     native_test_profile();
     struct native_kernel_session *s=native_kernel_session_create(7);assert(s);
+    test_geometry_async_dispatch(s);
     /* Traverse every driver-side admission allocation, including the raw
      * execution-chain node freed before drm_sched_job_arm on failure. */
     for(int gate=0;gate<4;gate++){

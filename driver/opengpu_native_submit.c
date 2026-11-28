@@ -290,11 +290,23 @@ struct dma_fence *opengpu_protected_tessellation_job_run(struct opengpu_sched_jo
     struct dma_fence *fence;
     int ret;
 
-    if (job->joint_report) {
+    if (job->joint_report_kind == OPENGPU_TESSELLATION_JOINT_REPORT_GNZ3) {
+        if (!job->joint_geometry_report || job->joint_report)
+            return ERR_PTR(-EINVAL);
+        ret = opengpu_hw_protected_tessellation_joint_geometry_async(job->gpu, job->native_owner,
+            job->context, job->native_job_segment, job->joint_geometry_report, &fence);
+        return ret ? ERR_PTR(ret) : fence;
+    }
+    if (job->joint_report_kind == OPENGPU_TESSELLATION_JOINT_REPORT_GNZ2) {
+        if (!job->joint_report || job->joint_geometry_report)
+            return ERR_PTR(-EINVAL);
         ret = opengpu_hw_protected_tessellation_joint_async(job->gpu, job->native_owner,
             job->context, job->native_job_segment, NULL, job->joint_report, &fence);
         return ret ? ERR_PTR(ret) : fence;
     }
+    if (job->joint_report || job->joint_geometry_report ||
+        job->joint_report_kind != OPENGPU_TESSELLATION_JOINT_REPORT_NONE)
+        return ERR_PTR(-EINVAL);
     ret = opengpu_hw_protected_tessellation_profile(job->gpu, &profile);
     /* Even a future profile getter cannot silently enable a legacy kick. A
      * matched private-owner hardware route must be supplied independently. */
@@ -709,6 +721,7 @@ int opengpu_protected_tessellation_joint_ioctl(struct drm_device *drm, void *dat
     }
     job = &joint->job;
     job->joint_report = &joint->report;
+    job->joint_report_kind = OPENGPU_TESSELLATION_JOINT_REPORT_GNZ2;
     job->gpu = gpu;
     job->context = context;
     job->vm = &context->vm;

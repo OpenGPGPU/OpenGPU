@@ -99,6 +99,8 @@ struct opengpu_fault_snapshot {
     struct opengpu_native_completion native;
     bool tessellation_valid;
     struct opengpu_tessellation_completion tessellation;
+    bool joint_geometry_valid;
+    struct opengpu_tessellation_joint_geometry_completion joint_geometry;
 };
 
 /* Hardware-owned state. Business layers must use opengpu_hw_* APIs instead
@@ -152,6 +154,9 @@ struct opengpu_hw {
     struct opengpu_private_snapshot *native_pending_owner;
     struct opengpu_protected_tessellation_joint_profile joint_tessellation;
     struct opengpu_tessellation_joint_completion *joint_pending_completion;
+    struct opengpu_protected_tessellation_joint_geometry_profile joint_geometry;
+    struct opengpu_tessellation_joint_geometry_completion *joint_geometry_pending_completion;
+    u32 joint_geometry_context, joint_geometry_pass, joint_geometry_generation;
     struct opengpu_compute_local_limits compute_local_limits;
     struct opengpu_compute_shared_limits compute_shared_limits;
     bool compute_texture_transport;
@@ -431,6 +436,12 @@ int opengpu_hw_protected_tessellation_joint_async(struct opengpu_device *gpu,
     struct opengpu_private_snapshot *owner, const struct opengpu_render_context *context,
     u32 job_segment, const struct opengpu_tessellation_scope *scope,
     struct opengpu_tessellation_joint_completion *completion, struct dma_fence **fence);
+int opengpu_hw_protected_tessellation_joint_geometry_profile(const struct opengpu_device *gpu,
+    struct opengpu_protected_tessellation_joint_geometry_profile *profile);
+int opengpu_hw_protected_tessellation_joint_geometry_async(struct opengpu_device *gpu,
+    struct opengpu_private_snapshot *owner, const struct opengpu_render_context *context,
+    u32 job_segment, struct opengpu_tessellation_joint_geometry_completion *completion,
+    struct dma_fence **fence);
 void opengpu_hw_abort(struct opengpu_device *gpu, int error);
 void opengpu_hw_progress_tick(struct opengpu_device *gpu);
 int opengpu_hw_fence_wait(struct opengpu_device *gpu, struct dma_fence *fence,
