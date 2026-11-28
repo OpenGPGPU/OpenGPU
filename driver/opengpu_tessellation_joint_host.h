@@ -127,7 +127,7 @@ struct opengpu_protected_tessellation_joint_geometry_profile {
 
 static inline bool opengpu_read_tessellation_joint_geometry_profile(u32 flags, u32 capabilities,
     unsigned long long aperture, const struct opengpu_native_source_limits *native,
-    bool advanced_blend, bool sample_transport, void *registers,
+    bool sample_transport, void *registers,
     u32 (*read_reg)(void *, u32), struct opengpu_protected_tessellation_joint_geometry_profile *out)
 {
     const u32 base = OPENGPU_JOINT_GEOMETRY_PROFILE_BASE;
@@ -159,7 +159,7 @@ static inline bool opengpu_read_tessellation_joint_geometry_profile(u32 flags, u
         words[1] != OPENGPU_JOINT_GEOMETRY_PROFILE_FLAGS ||
         words[2] != OPENGPU_JOINT_GEOMETRY_PROFILE_SHAPE_WORD ||
         words[3] != OPENGPU_JOINT_GEOMETRY_PROFILE_CAPACITY_WORD ||
-        !advanced_blend || native->geometry_words[0] != OPENGPU_NATIVE_GEOMETRY_TRANSPORT_MAGIC)
+        native->geometry_words[0] != OPENGPU_NATIVE_GEOMETRY_TRANSPORT_MAGIC)
         return false;
 #define JOINT_GEOMETRY_SOURCE_FIELD(name) \
     ((native->frame.words[OPENGPU_NATIVE_BINNED_HOST_##name##_WORD] & \
@@ -178,7 +178,7 @@ static inline bool opengpu_read_tessellation_joint_geometry_profile(u32 flags, u
         .provider = OPENGPU_JOINT_GEOMETRY_PROFILE_PROVIDER, .owner_resource_version = 3,
         .payload_bytes = 524288, .max_payload_bytes = 69632, .payload_owners = 5,
         .payload_ports = 12, .image_producer_pins = 34, .single_domain_total_pins = 37,
-        .available = true, .scalar_fpu = true, .advanced_blend = true,
+        .available = true, .scalar_fpu = true, .advanced_blend = false,
         .owned_vertex_source = true, .patch_zero_initialized = true, .owned_patch_reads = true,
         .owned_tessellation_info = true, .geometry_inputs = true, .sample_inputs = false,
         .geometry_route = true, .geometry_uniforms = true, .joint_directory_route = true,
