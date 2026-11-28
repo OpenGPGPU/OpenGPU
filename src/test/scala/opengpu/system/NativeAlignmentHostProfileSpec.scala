@@ -46,6 +46,32 @@ class NativeAlignmentHostProfileSpec extends AnyFlatSpec {
     )
   }
 
+  it should "freeze the exact protected joint geometry target and independent GJP2 discovery" in {
+    val p = NativeAlignmentHostProfile.protectedJointGeometryTarget
+    assert(p.computeUnits == 2 && p.execution.lanes == 16 && p.execution.warps == 8)
+    assert(p.native.engines == 4 && p.native.pagedCapacity == 65536 && p.native.nativeGeometry)
+    assert(p.native.payload.contains(ShaderPayloadConfig(524288, 69632, 5, 12)))
+    assert(p.nativeProtectedSources && p.nativeGeometryTransport && p.tessellationUniforms)
+    assert(p.jointTessellationGeometryNative && !p.jointTessellationNative)
+    assert(!p.native.sampleShading && !p.tessellationSampleShading)
+    assert(!p.native.storage.nativeAdvancedDraws && p.native.transformFeedback)
+    assert(p.requiredDiscovery.size == 100)
+    val words = p.requiredDiscovery.toMap
+    assert(words(0x368) == 0x8b67ff)
+    assert(words(0x160) == 0x474e4305 && words(0x168) == 0x474e4a02)
+    assert(words(0x17c) == BigInt("8813db02", 16))
+    assert(
+      (0 until 4).map(i => words(0x600 + 4 * i)) ==
+        Seq[BigInt](0x474a5002, 0x8038ff, 0x08100207, BigInt("8ce58b2c", 16))
+    )
+    assert(
+      p.requiredDiscovery.filter { case (address, _) => address >= 0x500 && address < 0x520 } ==
+        NativeGeometryTransportCapabilities.words.zipWithIndex.map { case (word, index) =>
+          (NativeGeometryTransportCapabilities.base + 4 * index, word)
+        }
+    )
+  }
+
   it should "reject missing resource transaction capacity, feedback and translated image ownership" in {
     val p = NativeAlignmentHostProfile.target
     intercept[IllegalArgumentException](p.copy(transactionsPerCu = 8))

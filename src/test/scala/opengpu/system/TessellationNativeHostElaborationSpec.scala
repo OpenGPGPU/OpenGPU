@@ -28,14 +28,34 @@ object PrepareProtectedJointOwnerHost {
     target.copy(graphics = graphics, execution = gpu, native = native)
   }
 
+  private[system] def geometryProfile: NativeAlignmentHostConfig = {
+    val target = NativeAlignmentHostProfile.protectedJointGeometryTarget
+    val graphics = GraphicsConfig(
+      screenWidth = math.min(4, GraphicsTestResolution.width),
+      screenHeight = math.min(4, GraphicsTestResolution.height)
+    )
+    target.copy(graphics = graphics, execution = target.execution.copy(l2Sets = 8, l2Ways = 2))
+  }
+
   def main(args: Array[String]): Unit = {
     val fullFactory = args.length == 2 && args(1) == "--full-factory"
-    require(args.length == 1 || fullFactory, "pass a new protected joint FIRRTL path and optional --full-factory")
+    val jointGeometry = args.length == 2 && args(1) == "--joint-geometry"
+    require(
+      args.length == 1 || fullFactory || jointGeometry,
+      "pass a new protected joint FIRRTL path and optional --full-factory or --joint-geometry"
+    )
     val output = Paths.get(args(0))
     require(!Files.exists(output), "protected joint FIRRTL output already exists")
-    val config = if (fullFactory) NativeAlignmentHostProfile.protectedTessellationTarget else profile
+    val config =
+      if (jointGeometry) NativeAlignmentHostProfile.protectedJointGeometryTarget
+      else if (fullFactory) NativeAlignmentHostProfile.protectedTessellationTarget
+      else profile
     PrepareOwnerResourceImageFloatHost.writeFirrtl(
-      new NativeAlignmentHostSystemAxi(config, useBlackBoxes = fullFactory, exposePerformance = fullFactory),
+      new NativeAlignmentHostSystemAxi(
+        config,
+        useBlackBoxes = fullFactory || jointGeometry,
+        exposePerformance = fullFactory || jointGeometry
+      ),
       output
     )
   }
@@ -372,6 +392,97 @@ class TessellationNativeHostElaborationSpec extends AnyFlatSpec {
       assert(found._1 && found._2 && (!tessellation || found._3))
     }
   }
+  it should "elaborate the exact geometry profile with one shared owner and no legacy joint or feedback parent" in {
+    val profile = PrepareProtectedJointOwnerHost.geometryProfile
+    val registers = profile.requiredDiscovery.toMap
+    assert(profile.requiredDiscovery.size == 100 && registers(0x368) == 0x8b67ff)
+    assert(registers(0x160) == 0x474e4305 && registers(0x168) == 0x474e4a02)
+    assert(
+      (0 until 4).map(i => registers(0x600 + 4 * i)) ==
+        Seq[BigInt](0x474a5002, 0x8038ff, 0x08100207, BigInt("8ce58b2c", 16))
+    )
+    val circuit = circt.stage.ChiselStage.elaborate(
+      new NativeAlignmentHostSystemAxi(profile, useBlackBoxes = true)
+    )
+    val moduleCounts = scala.collection.mutable.Map.empty[String, Int].withDefaultValue(0)
+    var geometryBody = ""
+    var topPort = ""
+    var invalidateConnected = false
+    var doneBitsConnected = false
+    var doneValidConnected = false
+    var doneReadyConnected = false
+    def moduleBody(part: String, name: String): String = {
+      val start = part.indexOf(s"module $name :")
+      if (start < 0) ""
+      else {
+        val end = part.indexOf("\nmodule ", start + 1)
+        if (end < 0) part.substring(start) else part.substring(start, end)
+      }
+    }
+    circuit.lazilySerialize.iterator.foreach { part =>
+      part.linesIterator.foreach { raw =>
+        val line = raw.trim
+        if (line.startsWith("inst ")) {
+          val name = line.split("\\s+")(3).replaceFirst("_[0-9]+$", "")
+          moduleCounts(name) = moduleCounts(name) + 1
+        }
+        if (line.contains("output io :") && line.contains("jointTessellationGeometryInvalidate")) topPort = line
+        if (
+          line.contains(
+            "connect jointGeometryTessellation.io.geometryInvalidate, io.jointTessellationGeometryInvalidate"
+          )
+        )
+          invalidateConnected = true
+        if (
+          line.contains(
+            "connect io.jointTessellationGeometryInvalidateDone.bits, jointGeometryTessellation.io.geometryInvalidateDone.bits"
+          )
+        )
+          doneBitsConnected = true
+        if (
+          line.contains(
+            "connect io.jointTessellationGeometryInvalidateDone.valid, jointGeometryTessellation.io.geometryInvalidateDone.valid"
+          )
+        )
+          doneValidConnected = true
+        if (
+          line.contains(
+            "connect jointGeometryTessellation.io.geometryInvalidateDone.ready, io.jointTessellationGeometryInvalidateDone.ready"
+          )
+        )
+          doneReadyConnected = true
+      }
+      if (part.contains("module TessellationJointThreeDomainGeometryJobImage :"))
+        geometryBody = moduleBody(part, "TessellationJointThreeDomainGeometryJobImage")
+    }
+    assert(moduleCounts("TessellationJointThreeDomainGeometryJobImage") == 1)
+    assert(moduleCounts("TessellationImageBankOwner") == 1)
+    assert(moduleCounts("TessellationImageBankMux") == 1)
+    assert(moduleCounts("TessellationJointGeometryRangeInvalidationGate") == 3)
+    assert(moduleCounts("TessellationHostShaderRouter") == 1)
+    assert(moduleCounts("GpuComputeUnit") == 2)
+    for (
+      name <- Seq(
+        "TessellationJointThreeDomainJobImage",
+        "TessellationNativeThreeDomainJobImage",
+        "TessellationFeedbackAdmission",
+        "TessellationThreeDomainFeedbackBridge",
+        "TransformFeedbackOwnerTransfer"
+      )
+    ) assert(!moduleCounts.contains(name), s"unexpected legacy joint or feedback module $name")
+    val geometryTransactions = TessellationJointThreeDomainGeometryJobImage.transactions(4, 8, 65536, true)
+    val geometryPins = TessellationJointThreeDomainGeometryJobImage.payloadPins(4)
+    assert(geometryBody.nonEmpty && MemoryNativeBinnedGraphicsPipeline.transactions(profile.native) == 2048)
+    assert(geometryBody.contains(s"}}[$geometryPins], memoryRequest"))
+    assert(geometryBody.contains(s"transactionId : UInt<${log2Ceil(geometryTransactions)}>"))
+    assert(topPort.contains("flip jointTessellationGeometryInvalidate :"))
+    assert(topPort.contains("jointTessellationGeometryInvalidateDone :"))
+    assert(invalidateConnected)
+    assert(doneBitsConnected)
+    assert(doneValidConnected)
+    assert(doneReadyConnected)
+  }
+
   it should "elaborate a geometry-only protected top with one shared owner and per-range invalidation gates" in {
     val gpu = GpuConfig(lanes = 16, warps = 8, l2Sets = 8, l2Ways = 2)
     val graphics = GraphicsConfig(
