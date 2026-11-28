@@ -182,6 +182,22 @@ object NativeAlignmentHostProfile {
     tessellationUniforms = true,
     jointTessellationNative = true
   )
+  val protectedJointGeometryTarget: NativeAlignmentHostConfig = target.copy(
+    native = target.native.copy(preflightDescriptors = true, nativeGeometry = true),
+    nativeProtectedSources = true,
+    nativeGeometryTransport = true,
+    tessellationUniforms = true,
+    jointTessellationGeometryNative = true
+  )
+  require(
+    protectedJointGeometryTarget.requiredDiscovery.size == 100 &&
+      protectedJointGeometryTarget.requiredDiscovery.toMap.apply(0x368) == 0x8b67ff &&
+      protectedJointGeometryTarget.requiredDiscovery.takeRight(4) ==
+      TessellationJointGeometryHostProtocol.profileWords.zipWithIndex.map { case (word, index) =>
+        (TessellationJointGeometryHostProtocol.profileBase + 4 * index, word)
+      },
+    "protected joint geometry requires the exact GJP2 discovery profile"
+  )
   // This frozen product target leaves ordinary native GS and advanced blend
   // disabled. An advanced-enabled custom transport configuration is not v2
   // product qualification and reports its additional GAB1 discovery record.
