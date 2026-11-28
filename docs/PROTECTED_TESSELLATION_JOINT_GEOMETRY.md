@@ -88,19 +88,28 @@ CU/frame execution or product acceptance.
   the optional LLVM ISA smoke. That smoke already passed on the unchanged pinned
   LLVM `2ba9912b981d8819ffecda059cc41872f986bcf3` in GPU PR #957; its ended build
   tree was not retained, so this delivery does not claim a fresh LLVM rebuild.
-- A fresh ARM64 Linux 7.2/GCC 15.2 Kbuild compiles all 29 core objects, including
-  `opengpu_protected_tessellation_joint_geometry.o`, plus both module helpers,
-  MODPOST and `gpu_drv.ko`. `-Werror=frame-larger-than=2048` passes. The module was
-  not loaded.
+- The GJP2/GNZ3 codec and public-ioctl exclusion pass. The three-domain actual
+  owner/MMU BUILD/prepare/command/enqueue fixture and all 16 existing plus nine
+  geometry semantic negative controls pass under ASan/UBSan. The unified
+  completion race passes 256 iterations with 46-word GNZ3 reads, IRQ/poll/abort,
+  cancel, timeout, delayed completion and mixed-report fail-closed checks. The
+  actual native submit/owner/MMU and MMIO production-body fixtures also pass
+  under ASan/UBSan.
+- A fresh ARM64 Linux 7.2/GCC 15.2 Kbuild compiles every `gpu_drv` module object,
+  including `opengpu_protected_tessellation_joint_geometry.o`, then MODPOST and
+  `gpu_drv.ko`. `-Werror=frame-larger-than=2048` passes. The module was not loaded.
 
 ## Limits
 
-This delivery does not enable a driver getter, ioctl, queue, public discovery,
-transform feedback or ABI10. The private command/completion/profile codec is
-connected to `TileBinHostCommandPort`, `GpuCommandMmio`, `GpuHostAxi` and the
-opt-in `GpuHostSystemAxi` geometry-native mode, but not to driver C execution,
-scheduler/IRQ, DRM/userspace/public ioctl or Mesa/Gallium producers. GJP2 is an
-internal read-only probe; GCR1 bit23 reports private host presence only.
+This delivery connects the private codec to kernel C command sealing, scheduler
+dispatch, IRQ/poll drain, abort/timeout cleanup and fault snapshots. It does not
+register a driver ioctl, public queue, discovery feature, transform-feedback route
+or ABI10, and it does not change DRM UAPI, userspace Gallium/public submit or
+Mesa/Gallium producers. GJP2 is an internal read-only probe; GCR1 bit23 reports
+private host presence only, and the legacy native-source validator receives a
+mask without bit23. Raster discard and all feedback/TF command metadata remain
+rejected on this private route.
+
 It does not close P17, P39 or P40 and does not replace their actual CU/frame,
 range/image ownership or product checks. No original-shader CU/frame,
 product-FPS or physical-timing result is claimed. The later #961/#962 direct
@@ -122,6 +131,10 @@ sbt -batch 'testOnly opengpu.system.TessellationJointThreeDomainGeometrySpec'
 sbt -batch 'testOnly opengpu.system.TessellationJointEmptyFrameSpec -- -z "GNQ7 GNQ8 GNQ9"'
 python3 -B scripts/generate_protected_tessellation_joint_geometry_abi.py --check
 python3 -B scripts/test_protected_tessellation_joint_abi.py
+python3 -B scripts/test_protected_tessellation_joint_geometry_host.py
+python3 -B scripts/test_protected_tessellation_joint.py --sanitize --negative-controls
+OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_unified_completion_race.py
+OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_submit.py
 python3 -B scripts/test_changed_test_suites.py
 python3 -B scripts/test_test_selection.py
 bash -n scripts/scala_autofix.sh scripts/select_tests.sh scripts/ci_shard_tests.sh scripts/test_scripts.sh

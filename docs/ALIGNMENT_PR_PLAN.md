@@ -105,6 +105,17 @@
   scheduler/IRQ、DRM/userspace/public ioctl/discovery、Mesa/Gallium、TF 或 ABI10，
   不执行原 shader CU/frame 或产品验收，不增加 15/40 闭环计数。
   [合同、限制与复现](GEOMETRY.md#private-geometry-host-abi-codec)。
+- P39/P40 的 kernel-private GNQ7/8/9 enqueue/GNZ3 report 生命周期已在本地
+  topic branch 完成：GJP2/GCR1 bit23 仅内部 probe 并从旧 native-source validator
+  输入掩码；GNQ7/8/9 独立密封 root/request，command tag `0x474a0200`/opcode15，
+  owner limit33 允许 4 GiB；scheduler 显式选择 GNZ3，IRQ/poll/POP 读取46词，
+  abort/timeout/cancel 清理 pending report，GNZ2/GNZ3 混合状态 fail closed。
+  三域实际 owner/MMU BUILD/prepare/command/enqueue、decoder 正负控、256轮 completion
+  race、native submit/MMIO fixture 与 ARM64 Linux 7.2/GCC15.2 Kbuild/MODPOST/ko 链接通过；
+  未加载模块，未运行 Scala regression。未注册 ioctl，未改 DRM UAPI、userspace/Gallium/
+  Mesa producer、TF/ABI10 或公共 discovery。实际原 shader CU/frame、产品 FPS/物理时序和
+  完整 P39/P40 验收仍 pending；本增量不增加15/40闭环计数。
+   [结果、限制与复现](GEOMETRY.md#private-geometry-host-abi-codec)。
 - P16 原 draw catalog/invocation range 捕获、内部语言程序 v3、程序快照
   权限边界与 FS8/9 私有程序验证的六个逻辑提交已通过 #825 合入。
   [交付范围、结果与限制](P16_INVOCATION_SOURCE_DELIVERY.md)：准确交付源完整 host
