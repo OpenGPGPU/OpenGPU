@@ -35,6 +35,8 @@ static void native_fixture_progress(struct opengpu_device *);
 #undef OPENGPU_PRIVATE_SNAPSHOT_TEST_MAIN
 #include "../opengpu_native_frame.h"
 #include "../opengpu_native_sources_features.h"
+#include "../opengpu_native_geometry_transport_features.h"
+#include "../opengpu_tessellation_joint_host.h"
 #include "../opengpu_native_advanced_blend_features.h"
 #ifdef OPENGPU_NATIVE_MMIO
 #include "../opengpu_compute_features.h"
@@ -63,6 +65,7 @@ static void native_fixture_progress(struct opengpu_device *);
 #include "../opengpu_tessellation_vertex_source.c"
 #include "../opengpu_tessellation_vertex_plan.c"
 #include "../opengpu_protected_tessellation_joint.c"
+#include "../opengpu_protected_tessellation_joint_geometry.c"
 #define DMA_RESV_USAGE_READ 1
 #define DMA_RESV_USAGE_WRITE 2
 #define DRM_EXEC_INTERRUPTIBLE_WAIT 1
@@ -109,12 +112,13 @@ static struct native_kernel_session *running;
 /* Private versioned consumers may retain a larger exact discovery table.
  * The legacy constructor/query contract below remains fixed at 96+5 words. */
 #ifndef OPENGPU_NATIVE_PROFILE_STORAGE_WORDS
-#define OPENGPU_NATIVE_PROFILE_STORAGE_WORDS 101
+#define OPENGPU_NATIVE_PROFILE_STORAGE_WORDS 105
 #endif
 struct native_kernel_profile {struct native_kernel_profile_word words[OPENGPU_NATIVE_PROFILE_STORAGE_WORDS];
     struct opengpu_native_source_limits limits;u32 capabilities;bool advanced,missing;
     unsigned word_count;
     struct opengpu_protected_tessellation_joint_profile joint;
+    struct opengpu_protected_tessellation_joint_geometry_profile joint_geometry;
 };
 struct native_kernel_record {
     struct native_kernel_record *next;unsigned index;
@@ -137,6 +141,7 @@ struct native_kernel_session {bool context_destroyed;struct native_kernel_profil
     native_kernel_source_observer observer;void *record;struct dma_fence *hardware;
     struct opengpu_sched_job *submission_allocation;
     struct opengpu_protected_tessellation_joint_profile joint_profile;
+    struct opengpu_protected_tessellation_joint_geometry_profile joint_geometry_profile;
     int copy_error,wait_error,submit_error,submit_revoke_error;void (*progress)(struct native_kernel_session *);};
 static struct native_kernel_record *native_session_record(struct native_kernel_session *s,unsigned index)
 {if(!s)return NULL;for(struct native_kernel_record *r=s->records;r;r=r->next)if(r->index==index)return r;return NULL;}
@@ -273,6 +278,11 @@ int opengpu_hw_protected_tessellation_joint_async(struct opengpu_device *,
     struct opengpu_private_snapshot *,const struct opengpu_render_context *,u32,
     const struct opengpu_tessellation_scope *,struct opengpu_tessellation_joint_completion *,
     struct dma_fence **);
+int opengpu_hw_protected_tessellation_joint_geometry_profile(const struct opengpu_device *,
+    struct opengpu_protected_tessellation_joint_geometry_profile *);
+int opengpu_hw_protected_tessellation_joint_geometry_async(struct opengpu_device *,
+    struct opengpu_private_snapshot *,const struct opengpu_render_context *,u32,
+    struct opengpu_tessellation_joint_geometry_completion *,struct dma_fence **);
 #else
 static int opengpu_hw_protected_tessellation_joint_profile(const struct opengpu_device *gpu,
     struct opengpu_protected_tessellation_joint_profile *profile)
@@ -309,7 +319,16 @@ static int opengpu_hw_protected_tessellation_joint_async(struct opengpu_device *
     running->hardware = *fence;
     return 0;
 }
+static int opengpu_hw_protected_tessellation_joint_geometry_profile(const struct opengpu_device *gpu,
+    struct opengpu_protected_tessellation_joint_geometry_profile *profile)
+{
+    if (!running || gpu != &running->gpu || !running->joint_geometry_profile.available)
+        return -EOPNOTSUPP;
+    *profile = running->joint_geometry_profile;
+    return 0;
+}
 #endif
+#ifndef OPENGPU_NATIVE_MMIO
 static unsigned geometry_async_calls;
 static void *geometry_expected_owner;
 static u32 geometry_expected_segment;
@@ -318,20 +337,141 @@ static int opengpu_hw_protected_tessellation_joint_geometry_async(struct opengpu
     struct opengpu_private_snapshot *owner,const struct opengpu_render_context *context,
     u32 segment,struct opengpu_tessellation_joint_geometry_completion *report,struct dma_fence **fence)
 {
-    assert(running && gpu==&running->gpu && owner==geometry_expected_owner &&
-        context==&running->context && segment==geometry_expected_segment &&
-        report==geometry_expected_report && report && !running->hardware);
+    if(geometry_expected_owner)
+        assert(owner==geometry_expected_owner && segment==geometry_expected_segment && report==geometry_expected_report);
+    assert(running && gpu==&running->gpu && context==&running->context && report && !running->hardware);
     ++geometry_async_calls;
     *fence=calloc(1,sizeof(**fence));
     if(!*fence)return -ENOMEM;
     (*fence)->refs=1;(*fence)->seqno=++running->next_seq;running->hardware=*fence;
     return 0;
 }
+#endif
 #define kzalloc native_submission_alloc
 #define memcpy native_memcpy
 #include "native_submit_under_test.inc"
 #undef memcpy
 #undef kzalloc
+static int native_collect_joint_geometry(struct native_sources *sources,
+    const struct opengpu_protected_tessellation_joint_geometry_source *s)
+{
+    const struct opengpu_native_job_source draws_and_frame = {
+        .plans=s->draw_plans,.plan_count=s->draw_plan_count,
+        .resources=s->resources,.resource_count=s->resource_count,
+    };
+    int ret=native_collect(sources,&draws_and_frame);
+    u32 i;
+    for(i=0;!ret && i<s->plan_count;++i) {
+        const struct opengpu_protected_tessellation_joint_geometry_plan *p=&s->plans[i];
+        ret=joint_retain_stage(sources,&p->control_program,&p->control_uniforms);
+        if(!ret)ret=joint_retain_stage(sources,&p->evaluation_program,&p->evaluation_uniforms);
+    }
+    for(i=0;!ret && i<s->state_plan_count;++i) {
+        const struct opengpu_protected_tessellation_state_plan *p=&s->state_plans[i];
+        ret=joint_retain_stage(sources,&p->fragment_program,&p->fragment_uniforms);
+    }
+    for(i=0;!ret && i<s->geometry_plan_count;++i) {
+        const struct opengpu_joint_geometry_plan *p=&s->geometry_plans[i];
+        ret=joint_retain_stage(sources,&p->program,&p->uniforms);
+    }
+    return ret;
+}
+struct native_joint_geometry_job {
+    struct opengpu_sched_job job;
+    struct opengpu_tessellation_joint_geometry_completion report;
+};
+int native_kernel_submit_joint_geometry(struct native_kernel_session *s,
+    const struct opengpu_protected_tessellation_joint_geometry_source *source,
+    native_kernel_source_observer observer,void *record)
+{
+    struct opengpu_protected_tessellation_joint_geometry_source captured;
+    struct opengpu_protected_tessellation_joint_geometry_profile profile={0};
+    struct native_sources sources={.file=&s->file};
+    const struct opengpu_native_job_copy copy={native_copy,native_resolve,&sources};
+    struct opengpu_sched_dep *deps=NULL;
+    struct native_joint_geometry_job *joint=NULL;
+    struct opengpu_sched_job *job=NULL;
+    struct native_kernel_record *prepared=NULL;
+    struct opengpu_render_context *context=NULL;
+    struct drm_exec exec;
+    const u32 stage_refs=OPENGPU_NATIVE_UNIFORM_BLOCKS+2;
+    u64 max_refs,seqno=0;
+    u32 i;
+    int ret=-EINVAL;
+    if(!s || !source || source->context!=s->context.id || !s->context.vm.enabled)return -EINVAL;
+    prepared=calloc(1,sizeof(*prepared));if(!prepared)return -ENOMEM;
+    assert(!s->pending_record);s->pending_record=prepared;
+    running=s;copy_gpu=&s->gpu;s->observer=observer;s->record=record;
+    ret=opengpu_hw_protected_tessellation_joint_geometry_profile(&s->gpu,&profile);
+    if(ret)goto out;
+#ifndef OPENGPU_NATIVE_MMIO
+    if(!opengpu_protected_tessellation_joint_geometry_profile_valid(&profile)){ret=-EOPNOTSUPP;goto out;}
+#endif
+    captured=*source;captured.profile=profile;
+    max_refs=(u64)captured.draw_count*(2*stage_refs+OPENGPU_NATIVE_VERTEX_BINDINGS+3)+
+        (u64)captured.plan_count*2*stage_refs+(u64)captured.state_plan_count*stage_refs+
+        (u64)captured.geometry_plan_count*stage_refs+captured.resource_count;
+    if(max_refs>0xffffffffu || max_refs>SIZE_MAX/sizeof(*sources.refs) ||
+        max_refs>SIZE_MAX/sizeof(*deps)){ret=-ERANGE;goto out;}
+    sources.capacity=(u32)max_refs;
+    sources.refs=kvzalloc((size_t)max_refs*sizeof(*sources.refs),GFP_KERNEL);
+    deps=kvzalloc((size_t)max_refs*sizeof(*deps),GFP_KERNEL);
+    if(!sources.refs || !deps){ret=-ENOMEM;goto out;}
+    mutex_lock(&s->render.lock);
+    context=opengpu_context_lookup(&s->render,captured.context);
+    if(!context){ret=-EINVAL;goto out_file;}
+    ret=native_collect_joint_geometry(&sources,&captured);if(ret)goto out_file;
+    for(i=0;i<sources.count;++i)deps[i]=(struct opengpu_sched_dep){sources.refs[i].object,
+        sources.refs[i].writable?DMA_RESV_USAGE_READ:DMA_RESV_USAGE_WRITE,
+        sources.refs[i].writable?DMA_RESV_USAGE_WRITE:DMA_RESV_USAGE_READ};
+    drm_exec_init(&exec,DRM_EXEC_INTERRUPTIBLE_WAIT|DRM_EXEC_IGNORE_DUPLICATES,0);
+    drm_exec_until_all_locked(&exec){
+        for(i=0,ret=0;!ret && i<sources.count;++i)ret=drm_exec_prepare_obj(&exec,sources.refs[i].object,1);
+        drm_exec_retry_on_contention(&exec);if(ret)goto out_exec;
+    }
+    for(i=0;i<sources.count;++i) {
+        struct dma_resv_iter cursor;struct dma_fence *producer;
+        dma_resv_for_each_fence(&cursor,sources.refs[i].object->resv,deps[i].wait_usage,producer){
+            ret=opengpu_hw_fence_wait(&s->gpu,producer,OPENGPU_DRAW_WAIT_MS+100,true);
+            if(ret)goto out_exec;
+        }
+    }
+    sources.producers_complete=true;
+    joint=kzalloc(sizeof(*joint),GFP_KERNEL);if(!joint){ret=-ENOMEM;goto out_exec;}
+    job=&joint->job;job->joint_geometry_report=&joint->report;
+    job->joint_report_kind=OPENGPU_TESSELLATION_JOINT_REPORT_GNZ3;
+    job->gpu=&s->gpu;job->context=context;job->vm=&context->vm;job->type=OPENGPU_SCHED_PROTECTED_TESSELLATION;
+    job->native_owner=opengpu_private_snapshot_create(&s->gpu,context);
+    if(IS_ERR(job->native_owner)){ret=PTR_ERR(job->native_owner);job->native_owner=NULL;goto out_exec;}
+    ret=opengpu_protected_tessellation_joint_geometry_build(job->native_owner,&captured,&copy,&job->native_job_segment);
+    if(!ret)ret=opengpu_admission_native_lock(&s->gpu);
+    if(!ret) {
+        ret=opengpu_protected_tessellation_joint_geometry_prepare(job->native_owner,job->native_job_segment);
+        if(!ret)ret=opengpu_private_snapshot_publish(job->native_owner);
+        if(!ret)ret=opengpu_sched_job_submit_locked(&s->render,&s->file,context,job,0,NULL,
+            deps,sources.count,&seqno);
+        opengpu_admission_unlock(&s->gpu);
+    }
+    if(!ret){joint=NULL;job=NULL;}
+out_exec:
+    if(joint) {
+        int revoke=job->native_owner?opengpu_private_snapshot_retire(job->native_owner):0;
+        if(revoke) {
+            WRITE_ONCE(s->gpu.hw.wedged,true);
+            job->native_quarantine_refs=sources.refs;job->native_quarantine_refcount=sources.count;
+            sources.refs=NULL;sources.count=0;ret=revoke;
+        }else kfree(joint);
+    }
+    drm_exec_fini(&exec);
+out_file:
+    mutex_unlock(&s->render.lock);
+out:
+    for(i=0;i<sources.count;++i)drm_gem_object_put(sources.refs[i].object);
+    kvfree(deps);kvfree(sources.refs);
+    s->pending_record=NULL;s->observer=NULL;s->record=NULL;
+    if(ret){assert(!prepared->job);free(prepared);}else assert(prepared->job);
+    return ret;
+}
 struct opengpu_kernel_launch;
 struct opengpu_command_events;
 #ifdef OPENGPU_NATIVE_MMIO
@@ -447,18 +587,69 @@ struct native_kernel_profile *native_kernel_joint_profile_create(
     }
     return p;
 }
+struct native_kernel_profile *native_kernel_joint_geometry_profile_create(
+    const struct native_kernel_profile_word *words,size_t count,
+    const struct native_kernel_profile_word *registers,size_t register_count)
+{
+    static const struct {u32 base,words;} blocks[] = {
+        {0x360,16},{0x160,8},{0x340,8},{0x240,8},{0x260,8},{0x280,8},{0x3a0,16},
+        {OPENGPU_NATIVE_PREFLIGHT_CAPABILITIES,8},{0x300,8},
+        {OPENGPU_NATIVE_GEOMETRY_TRANSPORT_CAPABILITIES,8},
+        {OPENGPU_JOINT_GEOMETRY_PROFILE_BASE,OPENGPU_JOINT_GEOMETRY_PROFILE_WORDS},
+    };
+    static const u32 extra[] = {
+        GPU_REG_ID,GPU_REG_CAPABILITIES,GPU_REG_BIN_CAPABILITY_PTR,0x320,GPU_REG_SHADER_CONFIG,
+    };
+    size_t index=0;
+    if(!words || !registers || register_count!=sizeof(extra)/sizeof(extra[0]) ||
+        count>OPENGPU_NATIVE_PROFILE_STORAGE_WORDS-register_count)return NULL;
+    for(size_t block=0;block<sizeof(blocks)/sizeof(blocks[0]);++block)
+        for(u32 offset=0;offset<blocks[block].words;++offset)
+            if(index>=count || words[index++].address!=blocks[block].base+4u*offset)return NULL;
+    if(index!=count)return NULL;
+    for(size_t i=0;i<register_count;++i)
+        if(registers[i].address!=extra[i])return NULL;
+    struct native_kernel_profile *p=calloc(1,sizeof(*p));
+    if(!p)return NULL;
+    memcpy(p->words,words,count*sizeof(*words));
+    memcpy(p->words+count,registers,register_count*sizeof(*registers));
+    p->word_count=count+register_count;
+    for(size_t i=0;i<p->word_count;++i)
+        for(size_t j=0;j<i;++j)if(p->words[j].address==p->words[i].address)goto fail;
+    u32 id=native_profile_read(p,GPU_REG_ID);
+    u32 flags=native_profile_read(p,OPENGPU_COMPUTE_RESOURCE_REG_FLAGS);
+    u32 source_flags=flags & ~(OPENGPU_COMPUTE_RESOURCE_JOINT_TESSELLATION_V1|
+        OPENGPU_COMPUTE_RESOURCE_JOINT_TESSELLATION_GEOMETRY_V1);
+    p->capabilities=native_profile_read(p,GPU_REG_CAPABILITIES);
+    bool layered=false;
+    struct opengpu_compute_shared_limits shared;
+    bool geometry_ok=opengpu_native_geometry_transport_limits_impl(id,source_flags,p->capabilities,0xfffffu,
+        0x1000,p,native_profile_read,&p->limits,&layered);
+    bool profile_ok=opengpu_read_tessellation_joint_geometry_profile(flags,p->capabilities,0x1000,&p->limits,
+        false,p,native_profile_read,&p->joint_geometry);
+    bool shared_ok=opengpu_read_compute_shared_limits(id,0x1000,flags,p,native_profile_read,&shared);
+    if((id&0xffff0000u)!=0x47550000u || flags!=0x8b67ffu ||
+        !geometry_ok || !layered || !profile_ok ||
+        !opengpu_protected_tessellation_joint_geometry_profile_valid(&p->joint_geometry) ||
+        !shared_ok || !shared.discovered || shared.base!=OPENGPU_TESS_JOINT_HOST_LDS_BASE ||
+        shared.bytes!=OPENGPU_TESS_JOINT_HOST_LDS_BYTES ||
+        !opengpu_native_source_shader_config_valid(&p->limits,p->capabilities,
+            native_profile_read(p,GPU_REG_SHADER_CONFIG)) || p->missing)goto fail;
+    return p;
+fail:free(p);return NULL;
+}
 #endif
 void native_kernel_profile_destroy(struct native_kernel_profile *p){free(p);}
 int native_kernel_profile_query(const struct native_kernel_profile *p,uint32_t param,uint64_t *output)
 {
     u64 value=0;
     if(!p || !output || !p->limits.available || p->missing)return -EINVAL;
-    if(param==OPENGPU_PARAM_DRIVER_FEATURES)value=p->joint.available?0:OPENGPU_DRIVER_FEATURE_NATIVE_BINNED;
+    if(param==OPENGPU_PARAM_DRIVER_FEATURES)value=(p->joint.available||p->joint_geometry.available)?0:OPENGPU_DRIVER_FEATURE_NATIVE_BINNED;
     else if(param==OPENGPU_PARAM_CAPABILITIES)value=p->capabilities;
     else if(param==OPENGPU_PARAM_SHADER_CONFIG){
         for(unsigned i=0;i<p->word_count;i++)if(p->words[i].address==GPU_REG_SHADER_CONFIG)value=p->words[i].value;
     }
-    else if(param==OPENGPU_PARAM_NATIVE_LAYOUT && !p->joint.available){
+    else if(param==OPENGPU_PARAM_NATIVE_LAYOUT && !p->joint.available && !p->joint_geometry.available){
         const struct opengpu_native_binned_host_caps *c=&p->limits.frame;
         value=p->limits.capacity;
 #define SLOT(field,shift) value|=(u64)((c->words[OPENGPU_NATIVE_BINNED_HOST_##field##_WORD]&OPENGPU_NATIVE_BINNED_HOST_##field##_MASK)>>OPENGPU_NATIVE_BINNED_HOST_##field##_SHIFT)<<shift
@@ -472,7 +663,7 @@ int native_kernel_profile_query(const struct native_kernel_profile *p,uint32_t p
     }else if(param==OPENGPU_PARAM_NATIVE_LAYOUT)
         value=0;
     else if(param>=OPENGPU_PARAM_NATIVE_CAPS_BASE && param<OPENGPU_PARAM_NATIVE_CAPS_BASE+8)
-        value=p->joint.available?0:p->limits.frame.words[param-OPENGPU_PARAM_NATIVE_CAPS_BASE];
+        value=(p->joint.available||p->joint_geometry.available)?0:p->limits.frame.words[param-OPENGPU_PARAM_NATIVE_CAPS_BASE];
     else if(param>=OPENGPU_PARAM_TESS_JOINT_PROFILE_BASE &&
         param<OPENGPU_PARAM_TESS_JOINT_PROFILE_BASE+OPENGPU_PARAM_TESS_JOINT_PROFILE_WORDS)
         value=opengpu_tessellation_joint_profile_word(&p->joint,param-OPENGPU_PARAM_TESS_JOINT_PROFILE_BASE);
@@ -503,9 +694,11 @@ struct native_kernel_session *native_kernel_session_create_profile(uint32_t id,c
     s->gpu.hw.native_sources.available=p->limits.available;
     s->gpu.hw.native_sources.capacity=p->limits.capacity;s->gpu.hw.native_sources.engines=p->limits.engines;
     s->gpu.hw.native_sources.frame=p->limits.frame;s->gpu.hw.native_advanced_blend_transport=p->advanced;
+    s->joint_geometry_profile=p->joint_geometry;
 #ifdef OPENGPU_NATIVE_MMIO
     s->gpu.hw.joint_tessellation=p->joint;
-    s->context.vm.reserve_joint_lds=s->context.vm.enabled && p->joint.available;
+    s->gpu.hw.joint_geometry=p->joint_geometry;
+    s->context.vm.reserve_joint_lds=s->context.vm.enabled && (p->joint.available||p->joint_geometry.available);
 #endif
     return s;
 }
@@ -599,9 +792,12 @@ int native_kernel_retire(struct native_kernel_session *s,unsigned index,int erro
     --s->count;opengpu_sched_free_job(&job->base);return 0;
 }
 static bool native_same_held(const struct native_kernel_held_receipt *a,
-    const struct native_kernel_held_receipt *b,bool joint)
+    const struct native_kernel_held_receipt *b,enum opengpu_tessellation_joint_report_kind kind)
 {
-    bool same_detail=joint?!memcmp(a->gnz2,b->gnz2,sizeof(a->gnz2)):!memcmp(a->gnx,b->gnx,sizeof(a->gnx));
+    bool same_detail=kind==OPENGPU_TESSELLATION_JOINT_REPORT_GNZ3?
+        !memcmp(a->gnz3,b->gnz3,sizeof(a->gnz3)):
+        kind==OPENGPU_TESSELLATION_JOINT_REPORT_GNZ2?
+        !memcmp(a->gnz2,b->gnz2,sizeof(a->gnz2)):!memcmp(a->gnx,b->gnx,sizeof(a->gnx));
     return a->record_index==b->record_index && a->command_id==b->command_id &&
         a->completion==b->completion && same_detail &&
         a->append_read_bytes==b->append_read_bytes && a->held_legacy_status==b->held_legacy_status &&
@@ -615,7 +811,7 @@ int native_kernel_observe_retired(struct native_kernel_session *s,unsigned index
     const u32 busy=GPU_UCMD_STATUS_COMPLETION|GPU_UCMD_STATUS_OVERFLOW|
         GPU_UCMD_STATUS_RESET_BUSY|GPU_UCMD_STATUS_RESET_REJECTED|GPU_UCMD_STATUS_VM_BUSY;
     if(!r || !r->job || !observation || !r->captured || !r->drained || r->verified || r->joint_source_cancel ||
-        observation->held.record_index!=index || !native_same_held(&r->held,&observation->held,!!r->job->joint_report) ||
+        observation->held.record_index!=index || !native_same_held(&r->held,&observation->held,r->job->joint_report_kind) ||
         observation->external_drained!=1 || observation->retired_irq_asserted ||
         observation->retired_irq!=GPU_IRQ_ENABLE ||
         !(observation->retired_status&GPU_UCMD_STATUS_READY) || (observation->retired_status&busy) ||
@@ -705,6 +901,23 @@ static void native_test_profile_words(struct native_kernel_profile_word words[96
     BLOCK(0x300,0x47534c01,8,31,32,1048576,0x04051918,0x320,0x138);
 #undef BLOCK
     assert(n==96);
+}
+__attribute__((unused)) static void native_test_joint_geometry_profile_words(struct native_kernel_profile_word words[100],
+    struct native_kernel_profile_word regs[5])
+{
+    struct native_kernel_profile_word base[96];
+    native_test_profile_words(base,regs);
+    unsigned n=0;
+    for(unsigned i=0;i<96;++i)if(i<72 || i>=80)words[n++]=base[i];
+    assert(n==88);
+    words[2].value=0x8b67ff;
+    words[16].value=0x474e4305;words[18].value=0x474e4a02;words[23].value=0x8813db02;
+    const u32 geometry[]={0x47475301,8,0x1f,0x474e4a02,0x474e4603,0x474e5902,0xff840206,0x04001000};
+    const u32 profile[]={0x474a5002,0x8038ff,0x08100207,0x8ce58b2c};
+    for(unsigned i=0;i<8;++i)words[n++]=(struct native_kernel_profile_word){0x500+4*i,geometry[i]};
+    for(unsigned i=0;i<4;++i)words[n++]=(struct native_kernel_profile_word){0x600+4*i,profile[i]};
+    assert(n==100);
+    regs[1].value|=GPU_CAP_NATIVE_PIXEL_FORMATS|(128u<<GPU_CAP_FRAGMENT_BATCH_SHIFT);
 }
 __attribute__((unused)) static void native_test_profile(void)
 {
@@ -821,6 +1034,7 @@ static void test_retire_prior_ordinary(struct native_kernel_session *s)
     s->progress=NULL;++test_ordinary_retire_progress;
     assert(!native_kernel_retire(s,0,0));
 }
+#ifndef OPENGPU_NATIVE_MMIO
 static void test_geometry_async_dispatch(struct native_kernel_session *s)
 {
     struct opengpu_tessellation_joint_completion legacy={0};
@@ -844,13 +1058,41 @@ static void test_geometry_async_dispatch(struct native_kernel_session *s)
     fence=opengpu_protected_tessellation_job_run(&job);
     assert(!IS_ERR(fence) && fence && geometry_async_calls==1 && running->hardware==fence);
     running->hardware=NULL;dma_fence_put(fence);
+    geometry_expected_owner=NULL;geometry_expected_segment=0;geometry_expected_report=NULL;
+}
+#endif
+
+#include "opengpu_joint_drm_inputs.inc"
+static void test_joint_geometry_submit(void)
+{
+    for(u32 domain=0;domain<3;++domain) {
+        struct native_kernel_session *s=native_kernel_session_create(7);assert(s);
+        test_next_handle=0;
+        u32 code=test_gem(s,4096).handle,defaults=test_gem(s,4096).handle;
+        word(original_handle(s,code)->gem.vaddr,0,0x30500073);
+        word(original_handle(s,defaults)->gem.vaddr,4,0x11223344);
+        struct joint_geometry_drm_inputs inputs;
+        joint_geometry_drm_inputs_init(s,&inputs,domain,code,defaults);
+        s->joint_geometry_profile=inputs.source.profile;s->context.vm.reserve_joint_lds=true;
+        assert(!native_kernel_submit_joint_geometry(s,&inputs.source,NULL,NULL));
+        struct opengpu_sched_job *job=native_record(s,0);
+        assert(job && job->type==OPENGPU_SCHED_PROTECTED_TESSELLATION &&
+            job->joint_report_kind==OPENGPU_TESSELLATION_JOINT_REPORT_GNZ3 &&
+            job->joint_geometry_report && !job->joint_report);
+        assert(!native_kernel_run(s,0));
+        assert(!native_kernel_retire(s,0,0));
+        assert(!native_kernel_session_destroy(s));
+    }
 }
 
 int OPENGPU_NATIVE_SUBMIT_FIXTURE_MAIN(void)
 {
     native_test_profile();
     struct native_kernel_session *s=native_kernel_session_create(7);assert(s);
+#ifndef OPENGPU_NATIVE_MMIO
     test_geometry_async_dispatch(s);
+#endif
+    test_joint_geometry_submit();
     /* Traverse every driver-side admission allocation, including the raw
      * execution-chain node freed before drm_sched_job_arm on failure. */
     for(int gate=0;gate<4;gate++){

@@ -266,6 +266,82 @@ static void test_joint_mmio(const char *directory,enum native_joint_replay mode)
     assert(!native_kernel_end_cleanup(s));
     assert(!native_kernel_session_destroy(s) && !live_allocations && !fixture_buffers);
 }
+static struct native_kernel_held_receipt test_joint_geometry_held(struct native_kernel_session *s,unsigned index)
+{
+    struct native_kernel_held_receipt held={
+        .record_index=index,.command_id=s->gpu.hw.unified_command_id,
+        .completion=0x18700u|s->gpu.hw.unified_command_id,.append_read_bytes=64,
+        .held_legacy_status=0,.held_status=GPU_UCMD_STATUS_COMPLETION|GPU_UCMD_STATUS_VM_BUSY,
+        .held_irq=GPU_IRQ_ENABLE|GPU_IRQ_PENDING,.held_irq_asserted=1,
+    };
+    held.gnz3[0]=OPENGPU_JOINT_GEOMETRY_COMPLETION_MAGIC;held.gnz3[1]=0x80;
+    held.gnz3[3]=s->gpu.hw.joint_geometry_context;held.gnz3[4]=s->gpu.hw.joint_geometry_pass;
+    held.gnz3[5]=s->gpu.hw.joint_geometry_generation;held.gnz3[6]=1;held.gnz3[7]=1;
+    return held;
+}
+static void test_joint_geometry_mmio(const char *directory)
+{
+    struct native_kernel_profile_word words[100],registers[5];
+    native_test_joint_geometry_profile_words(words,registers);
+    u32 saved=words[2].value;words[2].value^=1u<<22;
+    assert(!native_kernel_joint_geometry_profile_create(words,100,registers,5));
+    words[2].value=saved;saved=words[98].value;words[98].value^=1u;
+    assert(!native_kernel_joint_geometry_profile_create(words,100,registers,5));words[98].value=saved;
+    struct native_kernel_profile *profile=native_kernel_joint_geometry_profile_create(words,100,registers,5);
+    assert(profile && profile->joint_geometry.available && !profile->joint.available);
+    u64 value=0;
+    assert(!native_kernel_profile_query(profile,OPENGPU_PARAM_DRIVER_FEATURES,&value) && !value);
+    for(unsigned i=0;i<OPENGPU_PARAM_TESS_JOINT_PROFILE_WORDS;++i) {
+        assert(!native_kernel_profile_query(profile,OPENGPU_PARAM_TESS_JOINT_PROFILE_BASE+i,&value) && !value);
+    }
+    struct native_kernel_session *s=native_kernel_session_create_profile(17,profile);
+    assert(s && s->gpu.hw.joint_geometry.available && s->context.vm.reserve_joint_lds);
+    native_kernel_profile_destroy(profile);
+    test_next_handle=0;
+    u32 code=test_gem(s,4096).handle,defaults=test_gem(s,4096).handle;
+    word(original_handle(s,code)->gem.vaddr,0,0x30500073);
+    word(original_handle(s,defaults)->gem.vaddr,4,0x11223344);
+    struct joint_geometry_drm_inputs inputs;
+    joint_geometry_drm_inputs_init(s,&inputs,1,code,defaults);
+    assert(!native_kernel_submit_joint_geometry(s,&inputs.source,NULL,NULL));
+    struct native_kernel_record *record=native_session_record(s,0);
+    assert(record && record->job && record->job->joint_geometry_report && !record->job->joint_report &&
+        record->job->joint_report_kind==OPENGPU_TESSELLATION_JOINT_REPORT_GNZ3);
+    char memory[4096],capture_path[4096],retire[4096],cleanup[4096],rejected[4096];
+    test_path(memory,sizeof(memory),directory,"joint-geometry.memory");
+    test_path(capture_path,sizeof(capture_path),directory,"joint-geometry.capture");
+    test_path(retire,sizeof(retire),directory,"joint-geometry.retire");
+    snprintf(cleanup,sizeof(cleanup),"%s/joint-geometry-cleanup",directory);assert(!mkdir(cleanup,0700));
+    test_path(rejected,sizeof(rejected),directory,"joint-geometry-rejected.capture");
+    assert(!native_kernel_export_memory(s,memory));
+    assert(!native_mmio_capture(s,0,capture_path,1000000,16,NATIVE_JOINT_RENDER));
+    assert(native_kernel_capture_joint_cancel(s,0,rejected,1000000,16)==-EOPNOTSUPP);
+    assert(native_kernel_capture_joint_uniform_read_fault(s,0,rejected,1000000,16)==-EOPNOTSUPP);
+    assert(native_kernel_capture_joint_write_fault(s,0,rejected,1000000,16)==-EOPNOTSUPP);
+    struct native_mmio_state *mmio=native_mmio_state(&s->gpu);
+    assert(mmio->native_waiting && s->gpu.hw.unified_opcode==15 &&
+        (mmio->regs[GPU_REG_UCMD_PATTERN/4]&~7u)==0x474a0200u &&
+        ((mmio->regs[GPU_REG_UCMD_PATTERN/4]>>1)&3u)==1u);
+    struct native_kernel_held_receipt held=test_joint_geometry_held(s,0),wrong=held;
+    wrong.gnz3[20]|=0x40000000u;
+    assert(native_kernel_drain_held(s,0,&wrong,retire)==-EINVAL);
+    wrong=held;wrong.gnz3[45]=2;
+    assert(native_kernel_drain_held(s,0,&wrong,retire)==-EINVAL);
+    wrong=held;wrong.completion=0x8700u|s->gpu.hw.unified_command_id;
+    assert(native_kernel_drain_held(s,0,&wrong,retire)==-EINVAL);
+    assert(!native_kernel_drain_held(s,0,&held,retire));
+    assert(record->job->joint_geometry_report->valid && !s->gpu.hw.joint_geometry_pending_completion);
+    struct native_kernel_observed_receipt observed=test_observed(held);
+    observed.held.gnz3[44]^=1;
+    assert(native_kernel_observe_retired(s,0,&observed)==-EINVAL);
+    struct native_kernel_observed_receipt valid=test_observed(held);
+    assert(!native_kernel_observe_retired(s,0,&valid));
+    assert(!native_kernel_original_close(s,code) && native_kernel_original_refcount(s,code)>0);
+    assert(!native_kernel_begin_cleanup(s,cleanup));
+    assert(!native_kernel_finish_observed(s,0) && !native_kernel_original_refcount(s,code));
+    assert(!native_kernel_end_cleanup(s));
+    assert(!native_kernel_session_destroy(s) && !live_allocations && !fixture_buffers);
+}
 int main(int argc,char **argv)
 {
     assert(argc==2);char memory[4096],capture[2][4096],retire[2][4096];
@@ -351,5 +427,6 @@ int main(int argc,char **argv)
     test_joint_mmio(argv[1],NATIVE_JOINT_WRITE_FAULT);
     test_joint_mmio(argv[1],NATIVE_JOINT_CANCEL);
     test_joint_mmio(argv[1],NATIVE_JOINT_UNIFORM_READ_FAULT);
-    puts("native and joint MMIO production composition CPU checks: PASS");return 0;
+    test_joint_geometry_mmio(argv[1]);
+    puts("native, joint and joint-geometry MMIO production composition CPU checks: PASS");return 0;
 }
