@@ -56,6 +56,22 @@ and `0x5e8` and above return SLVERR. POP and command reset clear the held report
 bit23 when the geometry host is present; it does not add a driver feature,
 `GET_PARAM` or public discovery record.
 
+The kernel-private path reads the same exact GJP2 probe and masks GCR1 bit23
+only for the legacy native-source validator. GNQ7/8/9 prepare seals a separate
+`joint_geometry_root`/`joint_geometry_request`; the GNQ4/5/6 accessor rejects it.
+The private command is opcode 15/tag `0x474a0200`, with a 512-byte root in a
+4096-byte aligned allocation, a nonempty 33-bit owner limit at most 4 GiB, and
+context/pass/generation in `HEIGHT`/`SOURCE_STRIDE`/`DEST_STRIDE`. The enqueue API
+has no scope and submits zero events. Nonzero raster-discard or feedback/TF
+metadata is rejected before publication.
+
+Scheduler jobs select GNZ3 explicitly and retain a geometry-only pending report.
+The unified drain reads all 46 GNZ3 words plus the four zero-padding words before
+POP, validates identity/status/high-bit/cross-field rules, and stores a valid
+fault snapshot. IRQ/poll races share the held-slot lock; completion, abort and
+timeout clear the geometry pending pointer. A mixed GNZ2/GNZ3 pending state fails
+closed. No geometry ioctl, DRM UAPI, Gallium submit or Mesa producer is added.
+
 `GpuHostSystemAxi(jointTessellationGeometryNative=true)` is mutually exclusive
 with legacy `jointTessellationNative`. It instantiates
 `TessellationJointThreeDomainGeometryJobImage` with geometry-specific memory
@@ -79,6 +95,14 @@ parents 3/3, parent elaboration 3/3, shared geometry owner 3/3, command MMIO
 GNQ7→GNQ8→GNQ9 clear-only/invalidation case 1/1. The changed-suite selector
 passed 183 tests and both integration/large-PR catalogs passed.
 
+The driver-private codec, three-domain BUILD/prepare/command/enqueue fixture,
+46-word decoder negatives, native scheduler dispatch and public-ioctl exclusion
+pass. The sanitizer completion-race fixture passes 256 IRQ/poll/abort iterations,
+including GNZ3 cancel, timeout, delayed completion and mixed-report rejection.
+The actual native submit/owner/MMU and MMIO production-body fixtures pass under
+ASan/UBSan. ARM64 Linux 7.2/GCC 15.2 Kbuild compiles every module object and links
+`gpu_drv.ko` with `-Werror=frame-larger-than=2048`; the module was not loaded.
+
 ```sh
 export JAVA_HOME=/opt/homebrew/opt/openjdk@21
 export JAVA_OPTS='-Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8'
@@ -93,17 +117,23 @@ sbt -batch -Dopengpu.productQualification=0 -Dopengpu.simJobs=2 \
 sbt -batch 'runMain opengpu.elaboration.EmitComputeResourceAbi --check'
 python3 -B scripts/generate_protected_tessellation_joint_geometry_abi.py --check
 python3 -B scripts/test_protected_tessellation_joint_abi.py
+python3 -B scripts/test_protected_tessellation_joint_geometry_host.py
+python3 -B scripts/test_protected_tessellation_joint.py --sanitize --negative-controls
+OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_unified_completion_race.py
+OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_submit.py
 python3 -B scripts/test_changed_test_suites.py
 python3 -B scripts/test_test_selection.py
 bash -n scripts/scala_autofix.sh scripts/select_tests.sh scripts/ci_shard_tests.sh scripts/test_scripts.sh
 git diff --check
 ```
 
-This delivery does not change driver C execution, scheduler/IRQ,
-DRM/userspace/public ioctl or discovery, Mesa/Gallium producers, TF or ABI10.
-GJP2 remains an internal read-only probe, not a default public capability. The
-new complete top is elaboration-qualified; no original-shader CU/frame replay,
-product FPS, physical timing or P39/P40 acceptance is claimed.
+This delivery adds only the kernel-private GNQ7/8/9 enqueue and GNZ3 report
+lifecycle. It does not register a public ioctl or change DRM UAPI, userspace
+Gallium/public submit, Mesa producers, TF or ABI10. GJP2/GCR1 bit23 remain
+internal probes, and legacy `GET_PARAM`, driver-feature and public-discovery
+behavior is unchanged. The new complete top is elaboration-qualified; no
+original-shader CU/frame replay, product FPS, physical timing or P39/P40
+acceptance is claimed.
 
 ## Geometry metadata in bin records
 

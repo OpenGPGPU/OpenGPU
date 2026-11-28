@@ -824,8 +824,11 @@ def changed_suites(root, changed, *, test_index=None):
         "src/test/scala/opengpu/graphics/TessellationJointGeometryHostProtocolSpec.scala",
         "docs/abi/protected-tessellation-joint-geometry-v1.json",
         "driver/opengpu_protected_tessellation_joint_geometry_abi.h",
+        "driver/opengpu_tessellation_joint_host.h",
+        "driver/tests/opengpu_tessellation_joint_geometry_host_test.c",
         "scripts/generate_protected_tessellation_joint_geometry_abi.py",
         "scripts/test_protected_tessellation_joint_abi.py",
+        "scripts/test_protected_tessellation_joint_geometry_host.py",
     }
     if changed & geometry_host_abi_paths:
         affected.add("src/test/scala/opengpu/graphics/TessellationJointGeometryHostProtocolSpec.scala")
