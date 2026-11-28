@@ -26,26 +26,29 @@ int main(int argc,char **argv) {
     const std::string mode=argc>1?argv[1]:"";
     const bool compute_probe=mode=="--probe-compute-profile";
     const bool joint_probe=mode=="--probe-joint-profile";
-    if(mode=="--probe-profile" || compute_probe || joint_probe) {
-      require(argc==3,"usage: native_owner_driver --probe[-compute|-joint]-profile NEW_OUTPUT.json");
+    const bool joint_geometry_probe=mode=="--probe-joint-geometry-profile";
+    if(mode=="--probe-profile" || compute_probe || joint_probe || joint_geometry_probe) {
+      require(argc==3,"usage: native_owner_driver --probe[-compute|-joint|-joint-geometry]-profile NEW_OUTPUT.json");
       require(!std::filesystem::exists(argv[2]),"profile output already exists");
       Memory memory;Simulation sim(argc,argv);
-      sim.reset(joint_probe ? Simulation::SramPresence::functional : Simulation::SramPresence::required);
+      sim.reset(joint_probe || joint_geometry_probe ? Simulation::SramPresence::functional : Simulation::SramPresence::required);
       Agent agent(memory);
       ReplayBus<Simulation> bus(sim,agent,100000);
       std::ostringstream observed;
-      if(joint_probe)joint_profile_json(observed,probe_joint_profile(sim,agent,bus));
+      if(joint_geometry_probe)joint_geometry_profile_json(observed,probe_joint_geometry_profile(sim,agent,bus));
+      else if(joint_probe)joint_profile_json(observed,probe_joint_profile(sim,agent,bus));
       else profile_json(observed,probe_profile(sim,agent,bus,compute_probe),compute_probe);
       std::ofstream output(argv[2],std::ios::binary);require(bool(output),"cannot create profile output");
       output<<observed.str();output.close();require(bool(output),"cannot write profile output");
       sim.model->final();return 0;
     }
     const bool joint=mode=="--active-joint-owner-series";
-    if(mode=="--active-series" || mode=="--active-owner-series" || joint) {
+    const bool joint_geometry=mode=="--active-joint-geometry-owner-series";
+    if(mode=="--active-series" || mode=="--active-owner-series" || joint || joint_geometry) {
       const bool cleanup=mode!="--active-series";
-      require(argc==6,"usage: native_owner_driver --active[-owner|-joint-owner]-series UNION.memory NEW_OUTPUT_DIR SESSION_DIR COUNT");
+      require(argc==6,"usage: native_owner_driver --active[-owner|-joint-owner|-joint-geometry-owner]-series UNION.memory NEW_OUTPUT_DIR SESSION_DIR COUNT");
       size_t used=0;const auto count=std::stoull(argv[5],&used);
-      require(used==std::string(argv[5]).size() && count>=(joint?1u:2u) && count<=0xffffffffu,"invalid active record count");
+      require(used==std::string(argv[5]).size() && count>=((joint || joint_geometry)?1u:2u) && count<=0xffffffffu,"invalid active record count");
       const std::filesystem::path output=argv[3],session=argv[4];
       require(std::filesystem::is_directory(session) && !std::filesystem::is_symlink(session),"invalid active session directory");
       require(!std::filesystem::exists(output),"owner replay output already exists");
@@ -56,7 +59,7 @@ int main(int argc,char **argv) {
         verify_readonly(memory,memory,first.writable);
         require(std::filesystem::create_directory(output),"cannot create active output directory");
         Simulation sim(argc,argv);
-        sim.reset(joint ? Simulation::SramPresence::functional : Simulation::SramPresence::required);
+        sim.reset(joint || joint_geometry ? Simulation::SramPresence::functional : Simulation::SramPresence::required);
         Agent agent(memory);ReplayBus<Simulation> bus(sim,agent,100000);
         PtePages pte;
         const auto [read_faults,write_faults]=active_records(sim,agent,bus,memory,output,session,first,count,std::cout,
@@ -64,7 +67,8 @@ int main(int argc,char **argv) {
         if(cleanup)cleanup_records(sim,agent,bus,memory,session,pte,count,response_timeout,read_faults,write_faults);
         sim.model->final();
       };
-      if(joint)run(JointCapture::read(first_path));
+      if(joint_geometry)run(JointGeometryCapture::read(first_path));
+      else if(joint)run(JointCapture::read(first_path));
       else run(Capture::read(first_path,true));
       return 0;
     }

@@ -113,7 +113,9 @@ struct RecordResult {
   uint32_t completion=0, held_legacy_status=0, held_status=0, held_irq=0, retired_status=0, retired_irq=0;
   std::array<uint32_t,12> gnx{};
   std::array<uint32_t,OPENGPU_TESS_JOINT_HOST_COMPLETION_WORDS> gnz2{};
+  std::array<uint32_t,OPENGPU_JOINT_GEOMETRY_COMPLETION_WORDS> gnz3{};
   bool joint_completion=false;
+  bool geometry_completion=false;
   bool held_irq_asserted=false, retired_irq_asserted=false, external_drained=false;
 };
 struct ProfileObservation {
@@ -219,6 +221,34 @@ inline void joint_profile_json(std::ostream &out,const std::vector<Command> &wor
   }
   out<<"],\"resetCount\":1,\"gpuExecution\":false}\n";
 }
+template<class Sim>
+std::vector<Command> probe_joint_geometry_profile(Sim &sim,Agent &agent,ReplayBus<Sim> &bus) {
+  require(agent.drained() && !sim.model->io_m_irq,"joint geometry profile probe requires idle memory and IRQ");
+  const auto initial=agent.traffic;
+  const auto id=bus.read(GPU_REG_ID),caps=bus.read(GPU_REG_CAPABILITIES);
+  require((id&0xffff0000u)==0x47550000u && (id&0xffffu)>=GPU_ABI_COMPUTE_RESOURCE_VERSION &&
+    (caps&required_owner_caps)==required_owner_caps && bus.read(0x360)==0x47435201 &&
+    bus.read(0x364)==16 && bus.read(0x368)==JointGeometryCapture::resource_flags,
+    "actual DUT lacks the protected joint geometry discovery guarantee");
+  std::vector<Command> words;
+  for(const auto address:JointGeometryCapture::discovery_addresses())words.push_back({address,bus.read(address)});
+  JointGeometryCapture::validate_discovery(words);
+  require(agent.drained() && !sim.model->io_m_irq &&
+    !(bus.read(GPU_REG_UCMD_STATUS)&GPU_UCMD_STATUS_COMPLETION),"joint geometry profile probe encountered active work");
+  traffic_unchanged(initial,agent.traffic);
+  return words;
+}
+inline void joint_geometry_profile_json(std::ostream &out,const std::vector<Command> &words) {
+  JointGeometryCapture::validate_discovery(words);
+  const auto boundary=words.size()-JointGeometryCapture::auxiliary_words;
+  out<<"{\"schema\":\"opengpu-protected-joint-geometry-owner-profile-v1\",\"words\":[";
+  for(size_t n=0;n<words.size();++n) {
+    if(n==boundary)out<<"],\"registers\":[";
+    else if(n)out<<',';
+    out<<"{\"address\":"<<words[n].address<<",\"value\":"<<words[n].value<<'}';
+  }
+  out<<"],\"resetCount\":1,\"gpuExecution\":false}\n";
+}
 struct HeldRecord {
   RecordResult result;
   Memory initial;
@@ -254,7 +284,7 @@ HeldRecord hold_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
   replay_enqueue_prefix(sim,agent,bus,capture);
   const auto initial_injected_reads=agent.injected_read_faults();
   const auto initial_injected_writes=agent.injected_write_faults();
-  if constexpr(CaptureType::joint_completion) {
+  if constexpr(CaptureType::joint_completion && !CaptureType::geometry_completion) {
     require(bool(read_fault_line)==capture.uniform_read_fault,"joint uniform fault is missing its exact read line");
     if(read_fault_line)agent.arm_read_faults(read_fault_line,read_fault_line+64);
     if(capture.write_fault) {
@@ -280,7 +310,8 @@ HeldRecord hold_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
   const auto completion=bus.read(GPU_REG_UCMD_COMPLETION);
   auto &result=held_record.result;result.completion=completion;
   result.joint_completion=CaptureType::joint_completion;
-  if constexpr(CaptureType::joint_completion) {
+  result.geometry_completion=CaptureType::geometry_completion;
+  if constexpr(CaptureType::joint_completion && !CaptureType::geometry_completion) {
     const unsigned expected_reads=bool(read_fault_line);
     const unsigned expected_writes=bool(capture.write_fault);
     require(completed.read_faults==held_record.start_traffic.read_faults+expected_reads &&
@@ -316,11 +347,18 @@ HeldRecord hold_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
     const auto value=bus.read(c.address);
     if((value&c.mask)!=c.expected) {
       std::ostringstream message;
-      message<<(CaptureType::joint_completion?"joint completion/GNZ2 check differs: address=0x":
+      message<<(CaptureType::geometry_completion?"joint geometry completion/GNZ3 check differs: address=0x":
+        CaptureType::joint_completion?"joint completion/GNZ2 check differs: address=0x":
         "native completion/GNX check differs: address=0x")<<std::hex<<c.address
         <<" actual=0x"<<value<<" mask=0x"<<c.mask<<" expected=0x"<<c.expected;
-      if constexpr(CaptureType::joint_completion) {
-        message<<" GNZ2=";
+      if constexpr(CaptureType::geometry_completion) {
+        message<<" GNZ3=";
+        for(unsigned word=0;word<result.gnz3.size();++word)
+          message<<(word?",":"")<<bus.read(joint_geometry_detail_address(word));
+        message<<std::dec<<" metadataReadBytes="<<result.append_read_bytes
+          <<" readBusBytes="<<completed.read_bus_bytes-held_record.start_traffic.read_bus_bytes
+          <<" writeBusBytes="<<completed.write_bus_bytes-held_record.start_traffic.write_bus_bytes;
+      }else if constexpr(CaptureType::joint_completion) {
         for(unsigned word=0;word<result.gnz2.size();++word)
           message<<(word?",":"")<<bus.read(joint_detail_address(word));
         message<<std::dec<<" metadataReadBytes="<<result.append_read_bytes
@@ -330,7 +368,10 @@ HeldRecord hold_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
       throw std::runtime_error(message.str());
     }
     held.push_back(value);
-    if constexpr(CaptureType::joint_completion) {
+    if constexpr(CaptureType::geometry_completion) {
+      for(unsigned word=0;word<result.gnz3.size();++word)
+        if(c.address==joint_geometry_detail_address(word))result.gnz3[word]=value;
+    }else if constexpr(CaptureType::joint_completion) {
       for(unsigned word=0;word<result.gnz2.size();++word)
         if(c.address==joint_detail_address(word))result.gnz2[word]=value;
     } else if(c.address>=0x180 && c.address<0x1b0)result.gnx[(c.address-0x180)/4]=value;
@@ -342,7 +383,8 @@ HeldRecord hold_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
   require(bus.read(GPU_REG_UCMD_COMPLETION)==completion,"held native completion changed");
   for(size_t n=0;n<capture.checks.size();++n)
     require(bus.read(capture.checks[n].address)==held[n],
-      CaptureType::joint_completion?"held joint completion/GNZ2 changed":"held native completion/GNX changed");
+      CaptureType::geometry_completion?"held joint geometry completion/GNZ3 changed":
+        CaptureType::joint_completion?"held joint completion/GNZ2 changed":"held native completion/GNX changed");
   require(bus.read(GPU_REG_UCMD_STATUS)==result.held_status && bus.read(GPU_REG_IRQ)==result.held_irq &&
     bus.read(GPU_REG_UCMD_COMPLETION_BYTES_LO)==append_lo && bus.read(GPU_REG_UCMD_COMPLETION_BYTES_HI)==append_hi,
     "held native completion status, IRQ or append telemetry changed");
@@ -363,7 +405,7 @@ RecordResult retire_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
   auto &result=held_record.result;
   if constexpr(CaptureType::joint_completion)
     require(retirement,"protected joint owner requires an observed driver retirement");
-  if(retirement){retirement->validate(CaptureType::joint_completion);for(const auto &a:retirement->actions)bus.action(a);}
+  if(retirement){retirement->validate(CaptureType::joint_completion,CaptureType::geometry_completion);for(const auto &a:retirement->actions)bus.action(a);}
   else {capture.validate();for(const auto &w:capture.finish)bus.write(w.address,w.value);}
   result.retired_status=bus.read(GPU_REG_UCMD_STATUS);
   require(!(result.retired_status&GPU_UCMD_STATUS_COMPLETION),"native completion POP did not retire the slot");
@@ -386,8 +428,10 @@ RecordResult replay_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &mem
   return retire_record(sim,agent,bus,memory,capture,held);
 }
 inline void completion_detail_json(std::ostream &out,const RecordResult &result) {
-  out<<(result.joint_completion?",\"gnz2\":[":",\"gnx\":[");
-  if(result.joint_completion) {
+  out<<(result.geometry_completion?",\"gnz3\":[":result.joint_completion?",\"gnz2\":[":",\"gnx\":[");
+  if(result.geometry_completion) {
+    for(size_t n=0;n<result.gnz3.size();++n)out<<(n?",":"")<<result.gnz3[n];
+  }else if(result.joint_completion) {
     for(size_t n=0;n<result.gnz2.size();++n)out<<(n?",":"")<<result.gnz2[n];
   }else {
     for(size_t n=0;n<result.gnx.size();++n)out<<(n?",":"")<<result.gnx[n];
@@ -578,7 +622,8 @@ std::pair<uint64_t,uint64_t> active_records(Sim &sim,Agent &agent,ReplayBus<Sim>
     const CaptureType &first,uint64_t count,std::ostream &report=std::cout,
     std::chrono::milliseconds response_timeout=std::chrono::minutes(5),PtePages *pte=nullptr) {
   ProfileObservation profile;
-  if constexpr(!CaptureType::joint_completion)profile=probe_profile(sim,agent,bus);
+  if constexpr(CaptureType::geometry_completion)(void)probe_joint_geometry_profile(sim,agent,bus);
+  else if constexpr(!CaptureType::joint_completion)profile=probe_profile(sim,agent,bus);
   std::optional<native_frame::ExecutionProgress> progress;
   if constexpr(CaptureType::joint_completion)progress.emplace(output);
   uint64_t completed_read_faults=0, completed_write_faults=0;
@@ -594,7 +639,7 @@ std::pair<uint64_t,uint64_t> active_records(Sim &sim,Agent &agent,ReplayBus<Sim>
     verify_readonly(memory,memory,capture.writable);
     if(pte)pte->observe(memory,capture);
     uint64_t read_fault_line=0;
-    if constexpr(CaptureType::joint_completion) {
+    if constexpr(CaptureType::joint_completion && !CaptureType::geometry_completion) {
       if(capture.cancel_read) {
         cancel_joint_read(sim,agent,bus,memory,capture,output,session,n,response_timeout);
         continue;
@@ -612,7 +657,8 @@ std::pair<uint64_t,uint64_t> active_records(Sim &sim,Agent &agent,ReplayBus<Sim>
     auto held=hold_record(sim,agent,bus,memory,capture,true,progress?&*progress:nullptr,read_fault_line);
     atomic_json(session/(stem+".held.json"),[&](auto &out){held_json(out,held.result,n,capture.command_id);});
     wait_input(session/(stem+".retire"),session,response_timeout);
-    const auto retirement=Retirement::read((session/(stem+".retire")).string(),CaptureType::joint_completion);
+    const auto retirement=Retirement::read((session/(stem+".retire")).string(),
+        CaptureType::joint_completion,CaptureType::geometry_completion);
     const auto result=retire_record(sim,agent,bus,memory,capture,held,&retirement);
     completed_read_faults+=result.physical_read_faults;
     completed_write_faults+=result.physical_write_faults;
