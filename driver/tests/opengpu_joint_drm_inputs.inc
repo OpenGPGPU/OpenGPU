@@ -1,3 +1,5 @@
+#ifndef OPENGPU_JOINT_DRM_INPUTS_INC
+#define OPENGPU_JOINT_DRM_INPUTS_INC
 /* Typed driver test inputs shared by admission and MMIO composition. */
 struct joint_drm_inputs {
     u32 job[128], draw[512], sequence[512], state[128];
@@ -143,3 +145,71 @@ static void joint_drm_inputs_init(struct native_kernel_session *s, struct joint_
         .resources = (uintptr_t)inputs->encoded.resources, .fence_seqno = 0xfeed,
     };
 }
+
+struct joint_geometry_drm_inputs {
+    struct joint_drm_inputs base;
+    struct opengpu_protected_tessellation_joint_geometry_plan plan;
+    struct opengpu_joint_geometry_plan geometry;
+    struct opengpu_protected_tessellation_joint_geometry_source source;
+    u32 geometry_code;
+};
+static void joint_geometry_drm_inputs_init(struct native_kernel_session *s,
+    struct joint_geometry_drm_inputs *inputs,u32 domain,u32 code,u32 defaults)
+{
+    u32 program[19];
+    program[0]=2u<<7|0x13u;
+    for(u32 component=0;component<4;++component) {
+        program[1+2*component]=(u32)component<<20|(10+component)<<7|0x13u;
+        program[2+2*component]=32u<<25|(10+component)<<20|2u<<15|(14+component)<<7|0x0bu;
+        program[10+component]=33u<<25|(14+component)<<20|(10+component)<<15|0x0bu;
+    }
+    program[9]=1u<<20|20u<<7|0x13u;
+    program[14]=35u<<25|0x0bu;
+    program[15]=(4095u<<20)|20u<<15|20u<<7|0x13u;
+    const u32 branch_bits=(u32)-24 &8191u;
+    const u32 negative_branch=(branch_bits>>12)<<31|((branch_bits>>11)&1u)<<7|
+        ((branch_bits>>5)&63u)<<25|((branch_bits>>1)&15u)<<8|20u<<15|1u<<12|0x63u;
+    program[16]=negative_branch;program[17]=36u<<25|0x0bu;program[18]=OPENGPU_SHADER_CEASE;
+    memset(inputs,0,sizeof(*inputs));
+    joint_drm_inputs_init(s,&inputs->base,domain,code,defaults);
+    u32 *job=inputs->base.job,*sequence=inputs->base.sequence;
+    job[0]=0x474e5107u+domain;job[2]=3;job[36]=1;job[40]=1;job[41]=1024;job[42]=1088;
+    inputs->base.state[OPENGPU_TYPED_FRAGMENT_STATE_FRAGMENT_VERSION_WORD]=5;
+    inputs->base.state[OPENGPU_TYPED_FRAGMENT_STATE_HEADER_HANDLE_WORD]=0;
+    inputs->base.draw[343]=inputs->base.draw[344]=0;
+    sequence[37]=sequence[38]=0;sequence[192]=sequence[193]=0;
+    inputs->geometry_code=test_gem(s,4096).handle;
+    void *bytes=original_handle(s,inputs->geometry_code)->gem.vaddr;
+    for(unsigned i=0;i<19;++i)word((u8 *)bytes+64,4*i,program[i]);
+    struct opengpu_joint_geometry_plan *g=&inputs->geometry;
+    g->sequence_index=0;g->state_handle=0;g->command_id=3;g->gs_task_id_base=100;
+    g->program=(struct drm_opengpu_native_program_view){.handle=inputs->geometry_code,.offset=64,
+        .bytes=sizeof(program),.entry_offset=0};
+    u32 *n=g->gng;
+    n[0]=0x474e4701u;n[1]=1024;n[2]=1;n[3]=s->context.id;n[4]=8;n[5]=9;
+    n[6]=domain?3:2;n[7]=1;n[8]=1;n[9]=1;n[10]=1;n[11]=1;n[13]=1;n[14]=1;n[15]=1;
+    n[96]=1;g->evaluation_components[0]=128;
+    inputs->plan=(struct opengpu_protected_tessellation_joint_geometry_plan){
+        .sequence_index=inputs->base.plan.sequence_index,.state_handle=inputs->base.plan.state_handle,
+        .control_program=inputs->base.plan.control_program,.evaluation_program=inputs->base.plan.evaluation_program,
+        .control_uniforms=inputs->base.plan.control_uniforms,.evaluation_uniforms=inputs->base.plan.evaluation_uniforms,
+    };
+    inputs->source=(struct opengpu_protected_tessellation_joint_geometry_source){
+        .job=job,.frame=&inputs->base.encoded.frame,.sequences=sequence,.sequences_bytes=sizeof(inputs->base.sequence),
+        .states=inputs->base.state,.states_bytes=sizeof(inputs->base.state),.draws=inputs->base.draw,
+        .draws_bytes=sizeof(inputs->base.draw),.draw_plans=&inputs->base.draw_plan,
+        .invocations=&inputs->base.invocation,.invocation_count=1,.ranges=&inputs->base.range,.range_count=1,
+        .plans=&inputs->plan,.plan_count=1,.state_plans=&inputs->base.state_plan,.state_plan_count=1,
+        .resources=inputs->base.encoded.resources,.resource_count=inputs->base.encoded.resource_count,
+        .draw_count=1,.draw_plan_count=1,.context=s->context.id,.pass=8,.generation=9,
+        .geometry_plans=g,.geometry_plan_count=1,
+        .profile={.version=1,.domains=7,.compute_units=2,.lanes=16,.warps=8,.engines=4,
+            .provider="two-cu-vga60-owner-v3-five-stage",.owner_resource_version=3,.payload_bytes=524288,
+            .max_payload_bytes=69632,.payload_owners=5,.payload_ports=12,.image_producer_pins=34,
+            .single_domain_total_pins=37,.available=true,.scalar_fpu=true,.owned_vertex_source=true,
+            .patch_zero_initialized=true,.owned_patch_reads=true,.owned_tessellation_info=true,
+            .geometry_inputs=true,.geometry_route=true,.geometry_uniforms=true,
+            .joint_directory_route=true,.whole_owner_retirement=true}
+    };
+}
+#endif

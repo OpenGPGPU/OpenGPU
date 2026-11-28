@@ -37,6 +37,8 @@ def write_bodies(out):
         'invalidate':'int opengpu_hw_invalidate_buffer_locked(',
         'joint_profile':'int opengpu_hw_protected_tessellation_joint_profile(',
         'joint_submit':'int opengpu_hw_protected_tessellation_joint_async(',
+        'joint_geometry_profile':'int opengpu_hw_protected_tessellation_joint_geometry_profile(',
+        'joint_geometry_submit':'int opengpu_hw_protected_tessellation_joint_geometry_async(',
     }
     for name,start in functions.items():
         first=hw.index(start)
@@ -155,6 +157,48 @@ static void joint_capture(const std::filesystem::path &base) {
   rejects([&]{pop.validate(ResetPhase::retire,cancel.command_id);});
 }
 #endif
+#ifdef OPENGPU_TEST_JOINT_GEOMETRY_CAPTURE
+static void joint_geometry_capture(const std::filesystem::path &base) {
+  auto memory=Memory::read((base/"joint-geometry.memory").string());
+  auto capture=JointGeometryCapture::read((base/"joint-geometry.capture").string());
+  auto retirement=Retirement::read((base/"joint-geometry.retire").string(),true,true);
+  auto rejects=[](auto run) {
+    try {run();}catch(const std::runtime_error &) {return;}
+    throw std::runtime_error("invalid joint geometry capture or retirement was accepted");
+  };
+  rejects([&]{JointCapture::read((base/"joint-geometry.capture").string());});
+  rejects([&]{Retirement::read((base/"joint-geometry.retire").string(),true);});
+  PtePages pte;pte.observe(memory,capture);
+  verify_readonly(memory,memory,capture.writable);
+  require(capture.discovery.size()==105 && capture.checks.size()==47,
+    "joint geometry capture lost its exact profile or GNZ3 witnesses");
+  std::map<uint32_t,uint32_t> regs;
+  for(const auto &action:capture.trace)if(action.kind==Kind::write)regs[action.address]=action.value;
+  auto va=regs.at(GPU_REG_UCMD_SOURCE),satp=regs.at(GPU_REG_UCMD_VECTOR_SATP);
+  auto word=[&](uint32_t address){return pa_word(memory,translate(memory,satp,address));};
+  require(word(va)==0x474e5108 && word(va+2*4)==3 && word(va+40*4)==1 &&
+    (regs.at(GPU_REG_UCMD_PATTERN)&~7u)==0x474a0200u &&
+    ((regs.at(GPU_REG_UCMD_PATTERN)>>1)&3u)==1u,
+    "joint geometry command lost its actual GNQ8 owner or triangle tag");
+  auto table=word(va+37*4);
+  require(word(table)==0x47474101 && word(table+16)==1,
+    "joint geometry command lost its original private GGA1");
+  std::map<uint32_t,uint32_t> before_pop;
+  for(const auto &action:retirement.actions) {
+    if(action.kind==Kind::write && action.address==GPU_REG_UCMD_COMPLETION_POP)break;
+    if(action.kind==Kind::check)before_pop[action.address]=action.value;
+  }
+  for(unsigned index=0;index<OPENGPU_JOINT_GEOMETRY_COMPLETION_WORDS;++index)
+    require(before_pop.count(joint_geometry_detail_address(index)),
+      "joint geometry retirement lost a GNZ3 word before POP");
+  require(before_pop.at(joint_geometry_detail_address(0))==OPENGPU_JOINT_GEOMETRY_COMPLETION_MAGIC &&
+    before_pop.at(joint_geometry_detail_address(45))==0,
+    "joint geometry retirement changed the held GNZ3 report");
+  auto foreign=capture;
+  for(auto &check:foreign.checks)if(check.address==joint_geometry_detail_address(45))++check.expected;
+  rejects([&]{foreign.validate();});
+}
+#endif
 int main(int argc,char **argv) {
   require(argc==2,"missing actual C fixture directory");const std::filesystem::path base=argv[1];
   auto memory=Memory::read((base/"union.memory").string());std::set<uint32_t> ids,roots;PtePages pte;
@@ -192,10 +236,14 @@ int main(int argc,char **argv) {
 #ifdef OPENGPU_TEST_JOINT_CAPTURE
   joint_capture(base);
 #endif
+#ifdef OPENGPU_TEST_JOINT_GEOMETRY_CAPTURE
+  joint_geometry_capture(base);
+#endif
   std::cout<<"actual C capture parser/physical owner checks: PASS\n";
 }
 ''')
     local=['-DOPENGPU_TEST_JOINT_CAPTURE'] if executor_root==ROOT else []
+    if executor_root==ROOT:local.append('-DOPENGPU_TEST_JOINT_GEOMETRY_CAPTURE')
     subprocess.run(shlex.split(os.environ.get('CXX','c++'))+local+['-std=c++17','-O1','-Wall','-Wextra','-Werror',
         '-I'+str(executor_root/'scripts'),str(source),'-o',str(out/'check')],env=env,check=True)
     subprocess.run([str(out/'check'),str(out)],env=env,check=True)
@@ -214,5 +262,8 @@ if __name__=='__main__':
         env=dict(os.environ,TMPDIR=directory)
         subprocess.run(shlex.split(os.environ.get('CC','cc'))+flags+['-I'+str(p) for p in includes]+[
             str(ROOT/'driver/tests/opengpu_native_mmio_test.c'),str(ROOT/'driver/opengpu_native_frame.c'),'-o',str(out/'test')],env=env,check=True)
+        subprocess.run(shlex.split(os.environ.get('CC','cc'))+flags+['-Wno-unused-function']+
+            ['-I'+str(p) for p in includes]+[
+            '-fsyntax-only',str(ROOT/'scripts/native_joint_geometry_live_kernel.c')],env=env,check=True)
         subprocess.run([str(out/'test'),str(out)],env=env,check=True)
         if args.executor_root:check_capture_parser(out,args.executor_root.resolve(strict=True),env)
