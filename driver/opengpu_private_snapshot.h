@@ -112,6 +112,10 @@ int opengpu_private_snapshot_joint_request_locked(
     const struct opengpu_private_snapshot *owner, struct opengpu_device *gpu,
     const struct opengpu_render_context *context, u32 segment,
     struct opengpu_private_snapshot_joint_request *request);
+int opengpu_private_snapshot_joint_geometry_request_locked(
+    const struct opengpu_private_snapshot *owner, struct opengpu_device *gpu,
+    const struct opengpu_render_context *context, u32 segment,
+    struct opengpu_private_snapshot_joint_request *request);
 int opengpu_private_snapshot_retire(struct opengpu_private_snapshot *owner);
 
 #endif

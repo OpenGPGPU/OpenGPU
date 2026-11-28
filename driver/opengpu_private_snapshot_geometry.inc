@@ -41,7 +41,7 @@ static bool snapshot_geometry_attachments(const struct opengpu_private_snapshot 
     for(u32 i=0;i<root[40];i++) {
         u32 *e=scratch->attachment,*n=scratch->program,*d=scratch->sequence;
         if(!snapshot_geometry_words(o,table,64+(size_t)i*1024,e,256) || e[0]!=i || e[2]!=root[0]-0x474e5107u ||
-            e[3] || e[4]!=root[24] || e[5]!=root[26] || e[6]!=root[25] || e[7]>=32 || e[15]!=1024 || e[180]>1 ||
+            e[3] || e[4]!=root[24] || e[5]!=root[26] || e[6]!=root[25] || e[7]>=32 || e[15]!=1024 || e[180] ||
             !snapshot_joint_view(o,e[12],e[13]|(u64)e[14]<<32,1024))return false;
         for(u32 j=181;j<256;j++)if(j!=224 && j!=225 && e[j])return false;
         if((u64)e[1]*512>=states->bytes || !snapshot_geometry_words(o,sequences,(size_t)i*root[20],d,512) ||
@@ -85,72 +85,20 @@ static bool snapshot_geometry_attachments(const struct opengpu_private_snapshot 
 int opengpu_private_snapshot_check_prepared_joint_geometry(struct opengpu_private_snapshot *owner,u32 id)
 {
     struct snapshot_geometry_scratch *scratch=NULL;
-    const struct snapshot_segment *root,*segment;
-    const struct snapshot_resource *resource;
-    const u32 header[]={512,3,16,16,16,4,4};
-    u32 words[128];u64 extent;
-    int ret=-EINVAL;
-    if(!owner || owner->phase!=SNAPSHOT_PREPARED)return -EINVAL;
-    root=snapshot_segment_find(owner,id);
-    if(!root || (owner->joint_root && owner->joint_root!=root) || root->executable ||
-        !root->mapped || root->bytes!=512 || root->bytes>root->backing.size)goto fail;
-    for(u32 i=0;i<128;i++) {
-        if(opengpu_private_snapshot_read32(owner,id,4u*i,&words[i]))goto fail;
-        u32 bits=(i>=36 && i<=42)?(i==39?1:32):opengpu_tess_joint_word_rules[i];
-        if(bits<32 && (words[i]>>bits))goto fail;
-    }
-    if(words[0]<0x474e5107u || words[0]>0x474e5109u || words[24]!=owner->context->id)goto fail;
-    for(u32 i=0;i<7;i++)if(words[i+1]!=header[i])goto fail;
-    if(!snapshot_joint_view(owner,words[21],words[22]|(u64)words[23]<<32,2048))goto fail;
-    const struct snapshot_segment *frame=snapshot_joint_target(owner,words[21]);
-    const u32 identity_words[]={OPENGPU_NATIVE_BINNED_FRAME_FRAME_STATES_IDENTITY_CONTEXT_WORD,
-        OPENGPU_NATIVE_BINNED_FRAME_FRAME_STATES_IDENTITY_GENERATION_WORD,
-        OPENGPU_NATIVE_BINNED_FRAME_FRAME_STATES_IDENTITY_PASS_WORD};
-    for(u32 i=0;i<3;i++) {
-        u32 value;
-        if(opengpu_private_snapshot_read32(owner,frame->id,4u*identity_words[i],&value) ||
-            value!=words[24+i])goto fail;
-    }
-    if(words[17]) {
-        extent=(u64)(words[17]-1u)*words[20]+2048;
-        if(words[20]<2048 || (words[20]&63u) || extent>(1ULL<<32) || words[27]!=2 ||
-            words[31]!=words[17] || (u64)words[32]!=64+(u64)words[17]*64 || words[33]!=64 ||
-            !words[34] || !words[35] || words[35]>words[17] ||
-            !snapshot_joint_view(owner,words[16],words[18]|(u64)words[19]<<32,extent) ||
-            !snapshot_joint_view(owner,words[28],words[29]|(u64)words[30]<<32,words[32]))goto fail;
-        const struct snapshot_segment *directory=snapshot_joint_target(owner,words[28]);
-        const u32 expected[]={0x47564d02u,words[32],2,64,words[34],words[35],words[17],
-            words[24],words[26],words[25],16,16,16,8,2,0};
-        for(u32 i=0;i<16;i++) {
-            u32 value;
-            if(opengpu_private_snapshot_read32(owner,directory->id,4u*i,&value) || value!=expected[i])goto fail;
-        }
-    } else {
-        if(words[16] || words[18] || words[19] || words[20])goto fail;
-        for(u32 i=27;i<36;i++)if(words[i])goto fail;
-    }
+    const struct snapshot_segment *root;
+    struct opengpu_private_snapshot_joint_request request;
+    u32 words[128];
+    int ret=snapshot_joint_validate(owner,id,SNAPSHOT_JOINT_GNQ7,words,&root,&request);
+    if(ret)return ret;
     if(words[17]) {
         scratch=kvzalloc(sizeof(*scratch),GFP_KERNEL);
         if(!scratch){ret=-ENOMEM;goto fail;}
     }
-    if(!snapshot_geometry_attachments(owner,words,scratch))goto fail;
-    for(segment=owner->segments;segment;segment=segment->next) {
-        u64 end=(u64)segment->va+segment->backing.size;
-        if(!segment->mapped || end>(1ULL<<32) ||
-            ((u64)segment->va<OPENGPU_TESS_JOINT_HOST_LDS_BASE+OPENGPU_TESS_JOINT_HOST_LDS_BYTES &&
-             end>OPENGPU_TESS_JOINT_HOST_LDS_BASE))goto fail;
-    }
-    for(resource=owner->resources;resource;resource=resource->next) {
-        u64 end=(u64)resource->reservation.va+resource->bytes;
-        if(!resource->reservation.active || resource->reservation.owner!=&owner->context->vm ||
-            resource->reservation.size!=resource->bytes || end>(1ULL<<32) ||
-            ((u64)resource->reservation.va<OPENGPU_TESS_JOINT_HOST_LDS_BASE+OPENGPU_TESS_JOINT_HOST_LDS_BYTES &&
-             end>OPENGPU_TESS_JOINT_HOST_LDS_BASE))goto fail;
-    }
-    mutex_lock(&owner->gpu->hw.submit_lock);
-    ret=snapshot_verify_phase_locked(owner,owner->gpu,owner->context,SNAPSHOT_PREPARED);
-    mutex_unlock(&owner->gpu->hw.submit_lock);
-    if(!ret){kvfree(scratch);return 0;}
+    if(!snapshot_geometry_attachments(owner,words,scratch)){ret=-EINVAL;goto fail;}
+    ret=snapshot_joint_seal(owner,root,&request,SNAPSHOT_JOINT_GNQ7);
+    if(ret)goto fail;
+    kvfree(scratch);
+    return 0;
 fail:
     kvfree(scratch);
     owner->phase=SNAPSHOT_FAILED;

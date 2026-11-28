@@ -5,21 +5,10 @@
 #include "opengpu_tessellation_vertex_plan.h"
 #include "opengpu_geometry_snapshot.h"
 #include "opengpu_protected_tessellation_joint_geometry_abi.h"
-
-/* Kernel-verified exact joint provider contract, not compiler/GSS permission.
- * No getter, factory, ioctl or queue currently supplies this profile. */
-struct opengpu_protected_tessellation_joint_geometry_profile {
-    u32 version, domains, compute_units, lanes, warps, engines;
-    /* domains is the 3-domain mask7, not the host record domain count3. */
-    char provider[48]; /* exact independent verified record; not GSS1/sampleStage112 */
-    u32 owner_resource_version, payload_bytes, max_payload_bytes, payload_owners, payload_ports;
-    u32 image_producer_pins, single_domain_total_pins;
-    bool available, scalar_fpu, advanced_blend;
-    bool owned_vertex_source, patch_zero_initialized, owned_patch_reads;
-    bool owned_tessellation_info, geometry_inputs, sample_inputs;
-    bool geometry_route, geometry_uniforms;
-    bool joint_directory_route, whole_owner_retirement;
-};
+#include "opengpu_tessellation_joint_host.h"
+struct opengpu_device;
+struct opengpu_private_snapshot;
+struct opengpu_render_context;
 struct opengpu_protected_tessellation_joint_geometry_plan {
     u32 sequence_index, state_handle;
     struct drm_opengpu_native_program_view control_program, evaluation_program;
@@ -72,4 +61,13 @@ int opengpu_protected_tessellation_joint_geometry_build(struct opengpu_private_s
  * It validates the actual placed graph, not a caller's LDS-reserved promise.
  * On failure retire/quarantine the whole owner. The old prepare API is unchanged. */
 int opengpu_protected_tessellation_joint_geometry_prepare(struct opengpu_private_snapshot *owner,u32 job_segment);
+
+struct opengpu_protected_tessellation_joint_geometry_host_command {
+    u32 opcode, source, destination, bytes, pattern;
+    u32 width, height, source_stride, destination_stride;
+};
+int opengpu_protected_tessellation_joint_geometry_command_locked(
+    const struct opengpu_private_snapshot *owner, struct opengpu_device *gpu,
+    const struct opengpu_render_context *context, u32 segment,
+    struct opengpu_protected_tessellation_joint_geometry_host_command *command);
 #endif
