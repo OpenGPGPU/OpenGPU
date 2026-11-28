@@ -3,6 +3,7 @@
 #include "../driver/gpu_abi.h"
 #include "../driver/opengpu_native_binned_host_abi.h"
 #include "../driver/opengpu_protected_tessellation_joint_abi.h"
+#include "../driver/opengpu_protected_tessellation_joint_geometry_abi.h"
 #include "../driver/opengpu_shader_resources.h"
 #include <array>
 #include <filesystem>
@@ -35,6 +36,19 @@ inline uint32_t joint_detail_address(unsigned word) {
 inline bool joint_observed_detail(uint32_t address) {
   for(unsigned word=8;word<OPENGPU_TESS_JOINT_HOST_COMPLETION_WORDS;++word)
     if(address==joint_detail_address(word))return true;
+  return false;
+}
+inline uint32_t joint_geometry_detail_address(unsigned word) {
+  require(word<OPENGPU_JOINT_GEOMETRY_COMPLETION_WORDS,"invalid GNZ3 word");
+  if(word<12)return OPENGPU_JOINT_GEOMETRY_COMPLETION_PREFIX_BASE+4*word;
+  if(word<OPENGPU_JOINT_GEOMETRY_COMPLETION_PREFIX_WORDS)
+    return OPENGPU_JOINT_GEOMETRY_COMPLETION_LEGACY_TAIL_BASE+4*(word-12);
+  return OPENGPU_JOINT_GEOMETRY_COMPLETION_GEOMETRY_BASE+
+    4*(word-OPENGPU_JOINT_GEOMETRY_COMPLETION_PREFIX_WORDS);
+}
+inline bool joint_geometry_observed_detail(uint32_t address) {
+  for(unsigned word=8;word<OPENGPU_JOINT_GEOMETRY_COMPLETION_WORDS;++word)
+    if(address==joint_geometry_detail_address(word))return true;
   return false;
 }
 struct Capture {
@@ -74,10 +88,14 @@ struct Capture {
 private:
   friend struct SampleCapture;
   friend struct JointCapture;
+  friend struct JointGeometryCapture;
   void validate_contract(const std::vector<Command> &required_profile,bool prefix_only,bool joint=false,
-      const JointImageWriteFault *write_fault=nullptr,bool cancel_read=false,bool uniform_read_fault=false) const {
+      const JointImageWriteFault *write_fault=nullptr,bool cancel_read=false,bool uniform_read_fault=false,
+      bool geometry=false) const {
     require(max_cycles>0 && max_cycles<=1000000000 && hold_cycles>=8 && hold_cycles<=4096 && command_id<256,
       "invalid capture execution bounds");
+    require(!geometry || (!write_fault && !cancel_read && !uniform_read_fault),
+      "geometry capture does not admit legacy fault or cancellation modes");
     std::map<uint32_t,uint32_t> found;
     for(const auto &r:discovery) {address(r.address);require(found.emplace(r.address,r.value).second,"duplicate discovery word");}
     for(const auto &r:required_profile) {
@@ -135,7 +153,9 @@ private:
             const uint32_t owner=field(GPU_REG_UCMD_DESTINATION);
             const uint64_t limit=(uint64_t(pattern&1)<<32)|field(GPU_REG_UCMD_WIDTH);
             constexpr auto root=OPENGPU_TESS_JOINT_HOST_ROOT_ALLOCATION_BYTES;
-            require((pattern&~7u)==OPENGPU_TESS_JOINT_HOST_COMMAND_TAG && ((pattern>>1)&3u)<3,
+            const uint32_t tag=geometry?OPENGPU_JOINT_GEOMETRY_HOST_COMMAND_TAG:
+              OPENGPU_TESS_JOINT_HOST_COMMAND_TAG;
+            require((pattern&~7u)==tag && ((pattern>>1)&3u)<3,
               "protected joint command is missing its exact tag or domain");
             require(!((source|owner|limit)&(root-1)) && owner && owner<=source && limit<=Memory::limit &&
               uint64_t(source)+root<=limit && !field(GPU_REG_UCMD_FLAGS),
@@ -167,8 +187,9 @@ private:
       // Successful GNX retains raw reader address/draw fields. Their values
       // are observations, not predeclared predictions; retirement still checks
       // every raw word with a full mask before POP.
-      if(!c.mask)require((joint?joint_observed_detail(c.address):(c.address==0x188 || c.address==0x18c)) &&
-        !c.expected,"only designated raw completion observations may omit an expected predicate");
+      if(!c.mask)require((joint?(geometry?joint_geometry_observed_detail(c.address):joint_observed_detail(c.address)):
+        (c.address==0x188 || c.address==0x18c)) && !c.expected,
+        "only designated raw completion observations may omit an expected predicate");
       else predicate(c.mask,c.expected);
       require(checked.emplace(c.address,c).second,"duplicate held-completion check");}
     auto final=checked.find(GPU_REG_UCMD_COMPLETION);
@@ -176,6 +197,24 @@ private:
       GPU_UCMD_COMPLETION_ID(final->second.expected)==command_id &&
       GPU_UCMD_COMPLETION_OPCODE(final->second.expected)==final_opcode,"missing exact native completion identity");
     if(joint) {
+      if(geometry) {
+        require(final->second.expected==(0x18700u|command_id) &&
+          checked.size()==1+OPENGPU_JOINT_GEOMETRY_COMPLETION_WORDS && prefix_only && finish.empty(),
+          "geometry capture requires the exact held GNZ3 completion with separate retirement");
+        std::array<uint32_t,8> detail{};
+        for(unsigned word=0;word<OPENGPU_JOINT_GEOMETRY_COMPLETION_WORDS;++word) {
+          auto at=checked.find(joint_geometry_detail_address(word));
+          require(at!=checked.end() && at->second.mask==(word<detail.size()?0xffffffffu:0),
+            "incomplete or inexact GNZ3 held-completion checks");
+          if(word<detail.size())detail[word]=at->second.expected;
+        }
+        require(detail[0]==OPENGPU_JOINT_GEOMETRY_COMPLETION_MAGIC &&
+          (detail[1]==0x80 || detail[1]==0xc0) && detail[2]==0 &&
+          detail[3]==field(GPU_REG_UCMD_HEIGHT) &&
+          detail[4]==field(GPU_REG_UCMD_SOURCE_STRIDE) && detail[5]==field(GPU_REG_UCMD_DEST_STRIDE),
+          "GNZ3 status or identity disagrees with the captured geometry owner");
+        return;
+      }
       uint32_t fault_status=0, fault_stage=0;
       if(write_fault) {
         fault_status=JointImageWriteFault::status;
@@ -234,6 +273,7 @@ private:
   }
 public:
   static constexpr bool joint_completion=false;
+  static constexpr bool geometry_completion=false;
   void validate(bool prefix_only=false) const {validate_contract(profile(),prefix_only);}
   static Capture read(std::istream &in,bool prefix_only=false) {
     magic(in,"OGCAP001");auto c=payload(in);c.validate(prefix_only);return c;
@@ -316,11 +356,81 @@ struct JointCapture : Capture {
   }
 };
 
+struct JointGeometryCapture : Capture {
+  static constexpr bool joint_completion=true;
+  static constexpr bool geometry_completion=true;
+  static constexpr uint32_t resource_flags=0x8b67ff;
+  static constexpr unsigned auxiliary_words=5;
+  static std::vector<Command> profile() {
+    auto words=Capture::profile();
+    words.erase(std::remove_if(words.begin(),words.end(),[](const auto &word) {
+      return word.address>=0x4c0 && word.address<0x4e0;
+    }),words.end());
+    for(auto &word:words) {
+      if(word.address==0x368)word.value=resource_flags;
+      if(word.address==0x160)word.value=0x474e4305;
+      if(word.address==0x168)word.value=0x474e4a02;
+      if(word.address==0x17c)word.value=0x8813db02;
+    }
+    const std::array<uint32_t,8> geometry{0x47475301,8,0x1f,0x474e4a02,0x474e4603,
+      0x474e5902,0xff840206,0x04001000};
+    const std::array<uint32_t,4> gjp{0x474a5002,0x8038ff,0x08100207,0x8ce58b2c};
+    for(unsigned i=0;i<geometry.size();++i)words.push_back({0x500+4*i,geometry[i]});
+    for(unsigned i=0;i<gjp.size();++i)words.push_back({0x600+4*i,gjp[i]});
+    require(words.size()==100,"geometry discovery word count");
+    return words;
+  }
+  static std::vector<uint32_t> discovery_addresses() {
+    std::vector<uint32_t> addresses;
+    for(const auto &word:profile())addresses.push_back(word.address);
+    for(uint32_t address:std::array<uint32_t,auxiliary_words>{
+        GPU_REG_ID,GPU_REG_CAPABILITIES,GPU_REG_BIN_CAPABILITY_PTR,0x320,GPU_REG_SHADER_CONFIG})
+      addresses.push_back(address);
+    return addresses;
+  }
+  static void validate_discovery(const std::vector<Command> &discovery) {
+    const auto expected=profile();
+    const auto addresses=discovery_addresses();
+    require(discovery.size()==addresses.size(),"geometry capture discovery length differs from the dedicated host");
+    std::map<uint32_t,uint32_t> found;
+    for(size_t i=0;i<addresses.size();++i) {
+      require(discovery[i].address==addresses[i],"geometry capture has unexpected discovery addresses");
+      found.emplace(discovery[i].address,discovery[i].value);
+      if(i<expected.size())require(discovery[i].value==expected[i].value,
+        "geometry capture lacks the exact protected GJP2 profile");
+    }
+    const auto id=found.at(GPU_REG_ID),caps=found.at(GPU_REG_CAPABILITIES);
+    require((id&0xffff0000u)==0x47550000u && (id&0xffffu)>=GPU_ABI_COMPUTE_RESOURCE_VERSION &&
+      (caps&required_owner_caps)==required_owner_caps && (caps&GPU_CAP_NATIVE_PIXEL_FORMATS) &&
+      ((caps&GPU_CAP_FRAGMENT_BATCH_MASK)>>GPU_CAP_FRAGMENT_BATCH_SHIFT)==128 &&
+      found.at(GPU_REG_BIN_CAPABILITY_PTR)==GPU_REG_BIN_CAPABILITIES && found.at(0x320),
+      "geometry capture lacks the required GPU discovery");
+    require_owner_shader_profile(caps,found.at(GPU_REG_SHADER_CONFIG));
+  }
+  void validate(bool prefix_only=true) const {
+    validate_discovery(discovery);
+    validate_contract({},prefix_only,true,nullptr,false,false,true);
+  }
+  static JointGeometryCapture read(std::istream &in,bool prefix_only=true) {
+    std::string format(8,'\0');in.read(format.data(),format.size());
+    require(format=="OGCAP007","unknown protected joint geometry capture format");
+    JointGeometryCapture capture;
+    static_cast<Capture &>(capture)=Capture::payload(in);
+    capture.validate(prefix_only);return capture;
+  }
+  static JointGeometryCapture read(const std::string &path,bool prefix_only=true) {
+    std::ifstream in(path,std::ios::binary);
+    require(bool(in),"cannot open protected joint geometry capture");
+    return read(in,prefix_only);
+  }
+};
+
 // Emitted only after the original driver's drain consumes a real held receipt.
 // Expected retirement actions cannot be supplied before that execution point.
 struct Retirement {
   std::vector<Action> actions;
-  void validate(bool joint=false) const {
+  void validate(bool joint=false,bool geometry=false) const {
+    require(!geometry || joint,"geometry retirement requires the joint report kind");
     require(!actions.empty() && actions.size()<=1024,"invalid native retirement action count");
     unsigned pops=0;bool witnessed=false;std::set<uint32_t> read_before_pop;
     for(const auto &a:actions) {
@@ -331,10 +441,11 @@ struct Retirement {
           require(!pops && a.value==1 && witnessed,"retirement POP lacks an observed held completion");
           for(uint32_t address:{GPU_REG_UCMD_COMPLETION,GPU_REG_UCMD_COMPLETION_BYTES_LO,GPU_REG_UCMD_COMPLETION_BYTES_HI})
             require(read_before_pop.count(address),"retirement lost command/telemetry before POP");
-          const auto count=joint?OPENGPU_TESS_JOINT_HOST_COMPLETION_WORDS:
-            OPENGPU_TESS_JOINT_HOST_COMPLETION_HEAD_WORDS;
+          const auto count=geometry?OPENGPU_JOINT_GEOMETRY_COMPLETION_WORDS:
+            joint?OPENGPU_TESS_JOINT_HOST_COMPLETION_WORDS:OPENGPU_TESS_JOINT_HOST_COMPLETION_HEAD_WORDS;
           for(unsigned n=0;n<count;n++)
-            require(read_before_pop.count(joint_detail_address(n)),"retirement lost completion detail before POP");
+            require(read_before_pop.count(geometry?joint_geometry_detail_address(n):joint_detail_address(n)),
+              "retirement lost completion detail before POP");
           pops++;
         }else require(a.address==GPU_REG_IRQ && !(a.value&~7u),"retirement may only POP and acknowledge IRQ");
       }else {
@@ -342,7 +453,8 @@ struct Retirement {
         Capture::predicate(a.mask,a.value);
         const bool window=a.address==GPU_REG_UCMD_COMPLETION ||
           a.address==GPU_REG_UCMD_COMPLETION_BYTES_LO || a.address==GPU_REG_UCMD_COMPLETION_BYTES_HI ||
-          (a.address>=0x180 && a.address<0x1b0) || (joint && a.address>=0x540 && a.address<0x550);
+          (a.address>=0x180 && a.address<0x1b0) || (joint && a.address>=0x540 && a.address<0x550) ||
+          (joint && geometry && a.address>=0x540 && a.address<0x5e8);
         require(window || a.address==GPU_REG_STATUS || a.address==GPU_REG_UCMD_STATUS || a.address==GPU_REG_IRQ,
           "retirement read is outside the completion interface");
         require(!pops || !window,"retirement reads cleared completion data after POP");
@@ -353,17 +465,17 @@ struct Retirement {
     }
     require(pops==1,"retirement must POP exactly one command");
   }
-  static Retirement read(std::istream &in,bool joint=false) {
+  static Retirement read(std::istream &in,bool joint=false,bool geometry=false) {
     magic(in,joint?"OGRTR002":"OGRTR001");const auto count=read_le(in,4);
     require(count<=1024,"oversized retirement trace");Retirement retirement;
     for(uint64_t n=0;n<count;n++) {
       const auto kind=read_le(in,4),address=read_le(in,4),value=read_le(in,4),mask=read_le(in,4);
       retirement.actions.push_back({Kind(kind),uint32_t(address),uint32_t(value),uint32_t(mask)});
     }
-    require(in.peek()==EOF,"trailing retirement bytes");retirement.validate(joint);return retirement;
+    require(in.peek()==EOF,"trailing retirement bytes");retirement.validate(joint,geometry);return retirement;
   }
-  static Retirement read(const std::string &path,bool joint=false) {
-    std::ifstream in(path,std::ios::binary);require(bool(in),"cannot open driver retirement trace");return read(in,joint);
+  static Retirement read(const std::string &path,bool joint=false,bool geometry=false) {
+    std::ifstream in(path,std::ios::binary);require(bool(in),"cannot open driver retirement trace");return read(in,joint,geometry);
   }
 };
 
