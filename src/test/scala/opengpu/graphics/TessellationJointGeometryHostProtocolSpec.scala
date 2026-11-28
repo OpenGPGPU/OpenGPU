@@ -209,11 +209,11 @@ class TessellationJointGeometryHostProtocolSpec extends AnyFlatSpec {
     assert(words.zipWithIndex.forall { case (word, _) => word >= 0 && word.bitLength <= 32 })
     assert(protocol.completionDetails(words).get == report)
     assert((words(20) & ~BigInt("3fffffff", 16)) == 0)
-    assert((words(26) & ~BigInt("7fffffff", 16)) == 0)
-    assert((words(32) & ~BigInt("7fffffff", 16)) == 0)
-    assert((words(36) & ~BigInt("7fffffff", 16)) == 0)
-    assert((words(41) & ~BigInt("7fffffff", 16)) == 0)
-    assert((words(45) & ~BigInt("7fffffff", 16)) == 0)
+    assert((words(26) & ~BigInt(1)) == 0)
+    assert((words(32) & ~BigInt(1)) == 0)
+    assert((words(36) & ~BigInt(1)) == 0)
+    assert((words(41) & ~BigInt(1)) == 0)
+    assert((words(45) & ~BigInt(1)) == 0)
     assert(
       words
         .slice(39, 42)
@@ -244,9 +244,10 @@ class TessellationJointGeometryHostProtocolSpec extends AnyFlatSpec {
     rejected(words.updated(1, words(1) | (BigInt(1) << 8)))
     rejected(words.updated(20, words(20) | (BigInt(1) << 30)))
     for (index <- Seq(26, 32, 36, 41, 45)) {
+      rejected(words.updated(index, words(index) | (BigInt(1) << 1)))
       rejected(words.updated(index, words(index) | (BigInt(1) << 31)))
     }
-    val forged = words.updated(41, words(41) | (BigInt(1) << 31))
+    val forged = words.updated(41, words(41) | (BigInt(1) << 1))
     assert(forged(42) == words(42) && forged(43) == words(43))
     rejected(words.updated(42, words(42) ^ 1))
     rejected(words.updated(0, words(0) ^ 1))
