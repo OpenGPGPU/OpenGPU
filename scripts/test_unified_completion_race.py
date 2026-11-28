@@ -17,6 +17,7 @@ complete_start = source.index("static void opengpu_hw_complete(struct opengpu_de
 complete_end = source.index("static u32 opengpu_next_job_id(", complete_start)
 abort_start = source.index("void opengpu_hw_abort(struct opengpu_device *gpu, int error)\n{")
 abort_end = source.index("static void opengpu_timeout_work(", abort_start)
+timeout_end = source.index("static void opengpu_completion_work(", abort_end)
 start = source.index("static bool opengpu_hw_unified_drain(struct opengpu_device *gpu)\n{")
 kick = source.index("static void opengpu_hw_unified_kick(", start)
 end = source.index("static int opengpu_hw_unified_submit_locked(", kick)
@@ -25,7 +26,7 @@ temporary_root.mkdir(exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="completion-race-", dir=temporary_root) as tmp:
     path = Path(tmp)
     (path / "drain_under_test.inc").write_text(source[complete_start:complete_end] +
-        source[abort_start:abort_end] + source[start:end])
+        source[abort_start:timeout_end] + source[start:end])
     cc = shlex.split(os.environ.get("CC", "cc"))
     flags = ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-pthread"]
     if os.environ.get("OPENGPU_TEST_SANITIZERS") == "1":

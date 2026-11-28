@@ -117,10 +117,14 @@ def hw_bodies():
     profile = source.index('int opengpu_hw_protected_tessellation_joint_profile(')
     submit = source.index('int opengpu_hw_protected_tessellation_joint_async(', profile)
     submit_end = source.index('\n}\n', submit) + 2
+    geometry_profile = source.index('int opengpu_hw_protected_tessellation_joint_geometry_profile(', submit_end)
+    geometry_submit = source.index('int opengpu_hw_protected_tessellation_joint_geometry_async(', geometry_profile)
+    geometry_end = source.index('\n}\n', geometry_submit) + 2
     return {
         'snapshot_submission_under_test.inc': source[snapshot:snapshot_end],
         'joint_hw_submission_under_test.inc': source[submission:submission_end],
         'joint_enqueue_under_test.inc': source[profile:submit_end],
+        'joint_geometry_enqueue_under_test.inc': source[geometry_profile:geometry_end],
     }
 
 

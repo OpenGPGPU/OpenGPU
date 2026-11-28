@@ -5,8 +5,10 @@
 #include <sched.h>
 #include <stdatomic.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include <time.h>
 #include "opengpu_tessellation_completion.h"
 #include "opengpu_tessellation_joint_host.h"
@@ -26,32 +28,40 @@ typedef uint64_t u64;
 #define OPENGPU_HW_POLL_INTERVAL_MS 1u
 #define spin_lock_irqsave(lock,flags) do { (flags)=0; pthread_mutex_lock(lock); } while (0)
 #define spin_unlock_irqrestore(lock,flags) do { (void)(flags); pthread_mutex_unlock(lock); } while (0)
+#define container_of(p,t,m) ((t *)((char *)(p)-offsetof(t,m)))
+#define to_delayed_work(w) (w)
 #define dev_err(...) ((void)0)
 struct dma_fence { int signals, error, puts; };
-struct opengpu_device {
+struct work_struct { int unused; };
+struct opengpu_hw {
+    u32 capabilities;
+    pthread_mutex_t fence_lock;
+    unsigned long long regs_size;
+    struct dma_fence *unified_fence, *active_fence;
+    u32 unified_command_id, unified_opcode;
+    u32 unified_completion_delay_ms, active_completion_delay_ms;
+    unsigned int aborting;
+    u64 unified_expected_bytes;
+    void *native_pending_owner;
+    struct opengpu_tessellation_joint_completion *joint_pending_completion;
+    struct opengpu_tessellation_joint_geometry_completion *joint_geometry_pending_completion;
+    u32 joint_geometry_context, joint_geometry_pass, joint_geometry_generation;
+    struct { bool available; } native_sources;
+    u32 native_context, native_pass, native_generation;
     struct {
-        u32 capabilities;
-        pthread_mutex_t fence_lock;
-        unsigned long long regs_size;
-        struct dma_fence *unified_fence, *active_fence;
-        u32 unified_command_id, unified_opcode;
-        u32 unified_completion_delay_ms, active_completion_delay_ms;
-        unsigned int aborting;
-        u64 unified_expected_bytes;
-        void *native_pending_owner;
-        struct opengpu_tessellation_joint_completion *joint_pending_completion;
-        struct { bool available; } native_sources;
-        u32 native_context, native_pass, native_generation;
-        struct {
-            bool native_valid;
-            struct opengpu_native_completion native;
-            bool tessellation_valid;
-            struct opengpu_tessellation_completion tessellation;
-        } last_fault;
-        int timeout_work, completion_work, poll_work;
-    } hw;
+        bool native_valid;
+        struct opengpu_native_completion native;
+        bool tessellation_valid;
+        struct opengpu_tessellation_completion tessellation;
+        bool joint_geometry_valid;
+        struct opengpu_tessellation_joint_geometry_completion joint_geometry;
+    } last_fault;
+    int timeout_work, completion_work, poll_work;
+};
+struct opengpu_device {
+    struct opengpu_hw hw;
     void *dev;
-    atomic_int slot, pops, reads_after_pop, status_observers, doorbells;
+    atomic_int slot, pops, reads_after_pop, status_observers, doorbells, resets;
     u32 completion_override;
     u64 completion_data;
     u32 recorded_fault_flags;
@@ -59,7 +69,15 @@ struct opengpu_device {
     unsigned native_reads;
     u32 joint_words[16], joint_profile[4];
     unsigned joint_reads, joint_profile_reads;
+    u32 geometry_words[46], geometry_padding[4];
+    unsigned geometry_reads, geometry_padding_reads;
 };
+
+static u32 geometry_address(unsigned word)
+{
+    return word < 12 ? 0x180u + 4u * word :
+        word < 16 ? 0x540u + 4u * (word - 12u) : 0x560u + 4u * (word - 16u);
+}
 
 static u32 opengpu_reg_read(struct opengpu_device *g, u32 reg)
 {
@@ -88,6 +106,24 @@ static u32 opengpu_reg_read(struct opengpu_device *g, u32 reg)
         assert(atomic_load(&g->slot));
         ++g->joint_reads;
         return g->joint_words[reg < 0x540 ? (reg - 0x180) / 4 : 12 + (reg - 0x540) / 4];
+    }
+    if (g->hw.joint_geometry_pending_completion) {
+        for (unsigned i = 0; i < 46; ++i) {
+            if (reg == geometry_address(i)) {
+                if (!atomic_load(&g->slot))
+                    atomic_fetch_add(&g->reads_after_pop, 1);
+                ++g->geometry_reads;
+                return g->geometry_words[i];
+            }
+        }
+        for (unsigned i = 0; i < 4; ++i) {
+            if (reg == 0x5d8u + 4u * i) {
+                if (!atomic_load(&g->slot))
+                    atomic_fetch_add(&g->reads_after_pop, 1);
+                ++g->geometry_padding_reads;
+                return g->geometry_padding[i];
+            }
+        }
     }
     if (g->hw.unified_opcode == GPU_UCMD_OP_NATIVE_BINNED_RENDER &&
         reg >= OPENGPU_NATIVE_BINNED_COMPLETION_BASE &&
@@ -134,6 +170,7 @@ static void opengpu_hw_record_fault_locked(struct opengpu_device *g, int error,
     (void)expected_opcode; (void)status; (void)processed; (void)expected;
     g->hw.last_fault.tessellation_valid = false;
     g->hw.last_fault.native_valid = false;
+    g->hw.last_fault.joint_geometry_valid = false;
     g->recorded_fault_flags = flags;
 }
 static void dma_fence_set_error(struct dma_fence *f, int error) { f->error = error; }
@@ -156,7 +193,7 @@ static void mod_delayed_work(void *queue, int *work, u32 delay)
     (void)queue;
     __atomic_store_n(work, (int)delay, __ATOMIC_SEQ_CST);
 }
-static void opengpu_hw_unified_reset_request(struct opengpu_device *g) { (void)g; }
+static void opengpu_hw_unified_reset_request(struct opengpu_device *g) { atomic_fetch_add(&g->resets, 1); }
 #include "drain_under_test.inc"
 
 static void test_joint_profile(void)
@@ -250,6 +287,140 @@ static void test_joint_completion(void)
             assert(g.recorded_fault_flags & OPENGPU_FAULT_BYTES_MISMATCH);
         }
         assert(!g.hw.last_fault.tessellation_valid && !g.hw.last_fault.native_valid);
+        assert(!pthread_mutex_destroy(&g.hw.fence_lock));
+    }
+}
+
+static void geometry_words(u32 words[46], u32 status)
+{
+    memset(words, 0, 46 * sizeof(*words));
+    words[0] = OPENGPU_JOINT_GEOMETRY_COMPLETION_MAGIC;
+    words[1] = 0x80u | status;
+    words[3] = 42;
+    words[4] = 8;
+    words[5] = 9;
+}
+
+static void test_geometry_completion(void)
+{
+    for (unsigned mode = 0; mode < 12; ++mode) {
+        struct opengpu_tessellation_joint_completion old_result = {0};
+        struct opengpu_tessellation_joint_geometry_completion result = {0};
+        struct dma_fence fence = {0};
+        struct opengpu_device g = {
+            .hw.capabilities = GPU_CAP_UNIFIED_COMMANDS,
+            .hw.regs_size = mode == 7 ? 0x5e7 : 0x5e8,
+            .hw.unified_fence = &fence, .hw.unified_command_id = 17,
+            .hw.unified_opcode = GPU_UCMD_OP_TESSELLATION,
+            .hw.joint_geometry_pending_completion = &result,
+            .hw.joint_geometry_context = 42, .hw.joint_geometry_pass = 8,
+            .hw.joint_geometry_generation = 9,
+            .completion_data = mode == 11 ? 0 : 4096,
+        };
+        const u32 status = mode == 1 ? 3u : mode == 2 ? 4u : 0u;
+
+        assert(!pthread_mutex_init(&g.hw.fence_lock, NULL));
+        geometry_words(g.geometry_words, status);
+        if (mode == 1) {
+            g.geometry_words[1] = 3u | (6u << 3);
+            g.geometry_words[2] = 0x1240u;
+        }
+        if (mode == 4)
+            g.geometry_words[5]++;
+        if (mode == 5)
+            g.geometry_words[0] = OPENGPU_TESS_JOINT_HOST_COMPLETION_MAGIC;
+        if (mode == 6)
+            g.geometry_words[1] |= 0x100u;
+        if (mode == 8)
+            g.geometry_words[1] = 0;
+        if (mode == 9)
+            g.geometry_padding[2] = 1;
+        if (mode == 11) {
+            g.hw.joint_pending_completion = &old_result;
+            g.hw.native_context = 42;
+            g.joint_words[0] = OPENGPU_TESS_JOINT_HOST_COMPLETION_MAGIC;
+            g.joint_words[1] = 0x40;
+            g.joint_words[3] = 42;
+        }
+        g.completion_override = (mode == 3 ? 18u : 17u) | (7u << 8) | (1u << 16) |
+            (status << 11) | ((!status && mode != 10) ? (1u << 15) : 0u);
+        atomic_store(&g.slot, 1);
+        atomic_store(&g.status_observers, 2);
+        assert(opengpu_hw_unified_drain(&g));
+        assert(!g.hw.joint_geometry_pending_completion && !g.hw.joint_pending_completion);
+        assert(atomic_load(&g.pops) == 1 && fence.signals == 1 && fence.puts == 1);
+        assert(fence.error == (mode == 0 ? 0 : mode == 2 ? -ECANCELED : -EIO));
+        assert(result.valid == (mode <= 2));
+        assert(!old_result.valid && !g.joint_reads && atomic_load(&g.reads_after_pop) == 0);
+        if (result.valid) {
+            assert(g.geometry_reads == 46 && g.geometry_padding_reads == 4);
+            assert(result.status == status && result.context == 42 && result.pass == 8 &&
+                result.generation == 9 && result.read_bytes == 4096);
+            assert(result.fault_stage == (mode == 1 ? 6u : 0u));
+            assert(result.fault_address == (mode == 1 ? 0x1240u : 0u));
+        } else {
+            unsigned reads = mode == 3 || mode == 7 || mode == 10 || mode == 11 ? 0u :
+                mode == 5 ? 1u : 46u;
+            assert(g.geometry_reads == reads);
+            assert(g.recorded_fault_flags & OPENGPU_FAULT_BYTES_MISMATCH);
+        }
+        assert(g.hw.last_fault.joint_geometry_valid == (mode == 1 || mode == 2));
+        assert(!pthread_mutex_destroy(&g.hw.fence_lock));
+    }
+}
+
+static void test_geometry_cleanup(void)
+{
+    for (unsigned timeout = 0; timeout < 2; ++timeout) {
+        struct opengpu_tessellation_joint_geometry_completion result = {0};
+        struct dma_fence fence = {0};
+        struct opengpu_device g = {
+            .hw.capabilities = GPU_CAP_UNIFIED_COMMANDS,
+            .hw.unified_fence = &fence, .hw.unified_command_id = 17,
+            .hw.unified_opcode = GPU_UCMD_OP_TESSELLATION,
+            .hw.joint_geometry_pending_completion = &result,
+        };
+
+        assert(!pthread_mutex_init(&g.hw.fence_lock, NULL));
+        atomic_store(&g.slot, 1);
+        atomic_store(&g.status_observers, 2);
+        if (timeout)
+            opengpu_timeout_work((struct work_struct *)&g.hw.timeout_work);
+        else
+            opengpu_hw_abort(&g, -ECANCELED);
+        assert(!g.hw.unified_fence && !g.hw.joint_geometry_pending_completion &&
+            !g.hw.joint_pending_completion && !result.valid && !g.geometry_reads);
+        assert(fence.signals == 1 && fence.puts == 1);
+        assert(fence.error == (timeout ? -ETIMEDOUT : -ECANCELED));
+        assert(atomic_load(&g.pops) == (timeout ? 0 : 1));
+        assert(atomic_load(&g.resets) == 1);
+        assert(!pthread_mutex_destroy(&g.hw.fence_lock));
+    }
+    {
+        struct opengpu_tessellation_joint_geometry_completion result = {0};
+        struct dma_fence fence = {0};
+        struct opengpu_device g = {
+            .hw.capabilities = GPU_CAP_UNIFIED_COMMANDS,
+            .hw.regs_size = 0x5e8,
+            .hw.unified_fence = &fence, .hw.unified_command_id = 17,
+            .hw.unified_opcode = GPU_UCMD_OP_TESSELLATION,
+            .hw.unified_completion_delay_ms = 50,
+            .hw.joint_geometry_pending_completion = &result,
+            .hw.joint_geometry_context = 42, .hw.joint_geometry_pass = 8,
+            .hw.joint_geometry_generation = 9,
+        };
+
+        assert(!pthread_mutex_init(&g.hw.fence_lock, NULL));
+        geometry_words(g.geometry_words, 0);
+        g.completion_override = 17u | (7u << 8) | (1u << 16) | (1u << 15);
+        atomic_store(&g.slot, 1);
+        atomic_store(&g.status_observers, 2);
+        assert(opengpu_hw_unified_drain(&g));
+        assert(result.valid && g.geometry_reads == 46 &&
+            !g.hw.joint_geometry_pending_completion && g.hw.active_fence == &fence);
+        opengpu_hw_abort(&g, -ECANCELED);
+        assert(!g.hw.joint_geometry_pending_completion && fence.signals == 1 &&
+            fence.puts == 1 && fence.error == -ECANCELED);
         assert(!pthread_mutex_destroy(&g.hw.fence_lock));
     }
 }
@@ -432,19 +603,21 @@ int main(void)
         assert(f.error == (cancel ? -ECANCELED : success ? 0 : -EIO));
         assert(pthread_mutex_destroy(&g.hw.fence_lock) == 0);
     }
-    for (int i = 0; i < 192; i++) {
-        bool joint = i >= 128;
-        bool native = i >= 64 && !joint;
+    for (int i = 0; i < 256; i++) {
+        bool joint = i >= 128 && i < 192;
+        bool geometry = i >= 192;
+        bool native = i >= 64 && !joint && !geometry;
         struct opengpu_device g = {0};
         struct dma_fence f = {0};
         struct opengpu_tessellation_joint_completion joint_result = {0};
+        struct opengpu_tessellation_joint_geometry_completion geometry_result = {0};
         pthread_t a, b;
         atomic_int ready = 0, go = 0;
         struct worker x = {&g, &ready, &go, false, false};
         struct worker y = {&g, &ready, &go, false, (i % 32) < 16};
         assert(pthread_mutex_init(&g.hw.fence_lock, NULL) == 0);
         g.hw.capabilities = GPU_CAP_UNIFIED_COMMANDS;
-        g.hw.regs_size = joint ? 0x550 : 0x1b0;
+        g.hw.regs_size = geometry ? 0x5e8 : joint ? 0x550 : 0x1b0;
         g.hw.unified_fence = &f;
         g.hw.unified_command_id = 17;
         g.hw.unified_opcode = native ? 7 : 15;
@@ -462,6 +635,17 @@ int main(void)
             g.joint_words[1] = 3u | (6u << 3);
             g.joint_words[2] = 0x1240u;
             g.joint_words[3] = 42;
+            g.completion_override = 17u | (7u << 8) | (1u << 16) | (3u << 11);
+        }
+        if (geometry) {
+            g.hw.joint_geometry_pending_completion = &geometry_result;
+            g.hw.joint_geometry_context = 42;
+            g.hw.joint_geometry_pass = 8;
+            g.hw.joint_geometry_generation = 9;
+            geometry_words(g.geometry_words, 3);
+            g.geometry_words[1] = 3u | (6u << 3);
+            g.geometry_words[2] = 0x1240u;
+            g.completion_override = 17u | (7u << 8) | (1u << 16) | (3u << 11);
         }
         g.words[0] = OPENGPU_NATIVE_TESSELLATION_COMPLETION_MAGIC;
         g.words[1] = 3;
@@ -479,7 +663,10 @@ int main(void)
             assert(__atomic_load_n(&g.hw.completion_work, __ATOMIC_SEQ_CST) == 50);
             opengpu_hw_complete(&g, 0);
         }
-        bool captured = joint ? (joint_result.valid && joint_result.fault_address == 0x1240u &&
+        bool captured = geometry ? (geometry_result.valid &&
+            geometry_result.fault_address == 0x1240u && g.geometry_reads == 46 &&
+            g.hw.last_fault.joint_geometry_valid) : joint ?
+            (joint_result.valid && joint_result.fault_address == 0x1240u &&
             g.joint_reads == 16) : native ? (g.hw.last_fault.native_valid &&
             g.hw.last_fault.native.info.words[6] == 42) :
             (g.hw.last_fault.tessellation_valid && g.hw.last_fault.tessellation.context == 42);
@@ -487,15 +674,18 @@ int main(void)
             f.signals != 1 || f.puts != 1 || f.error == 0 ||
             (!y.abort && (!captured || x.result == y.result)) ||
             (y.abort && x.result && !captured)) {
-            fprintf(stderr, "FAIL pops=%d reads_after_pop=%d signals=%d puts=%d snapshot=%d results=%d,%d\n",
-                atomic_load(&g.pops), atomic_load(&g.reads_after_pop), f.signals,
-                f.puts, g.hw.last_fault.tessellation_valid, x.result, y.result);
+            fprintf(stderr, "FAIL i=%d pops=%d reads_after_pop=%d signals=%d puts=%d geometry=%d valid=%d reads=%u flags=%u error=%d results=%d,%d\n",
+                i, atomic_load(&g.pops), atomic_load(&g.reads_after_pop), f.signals,
+                f.puts, g.hw.last_fault.joint_geometry_valid, geometry_result.valid,
+                g.geometry_reads, g.recorded_fault_flags, f.error, x.result, y.result);
             return 1;
         }
         assert(pthread_mutex_destroy(&g.hw.fence_lock) == 0);
     }
     test_joint_profile();
     test_joint_completion();
+    test_geometry_completion();
+    test_geometry_cleanup();
     puts("completion race: PASS");
     return 0;
 }
